@@ -29,16 +29,12 @@ def _persist_new_document(db: Session, stored: StoredUpload) -> Document:
     )
     try:
         db.add(document)
+        db.flush()
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
         stored.file_path.unlink(missing_ok=True)
         raise DocumentPersistenceError("Could not persist the uploaded document.") from exc
-    try:
-        db.refresh(document)
-    except SQLAlchemyError as exc:
-        db.rollback()
-        raise DocumentPersistenceError("Could not load the persisted document.") from exc
     return document
 
 
@@ -60,7 +56,6 @@ def _persist_failed_status(db: Session, document_id: str, error_message: str) ->
         document.status = DocumentStatus.FAILED
         document.error_message = error_message
         db.commit()
-        db.refresh(document)
         return document
     except SQLAlchemyError as exc:
         db.rollback()
@@ -79,11 +74,9 @@ def index_stored_upload(
             document.status = DocumentStatus.DEFERRED_OCR
             document.error_message = "OCR is not enabled in the local-first MVP."
             db.commit()
-            db.refresh(document)
             return document
         except SQLAlchemyError as exc:
-            db.rollback()
-            raise DocumentPersistenceError("Could not persist the deferred OCR status.") from exc
+            return _persist_failed_status(db, document.id, "Could not persist the deferred OCR status.")
 
     try:
         parsed_pages = parse_pdf(Path(stored.file_path))
@@ -120,7 +113,6 @@ def index_stored_upload(
 
         document.status = DocumentStatus.INDEXED
         db.commit()
-        db.refresh(document)
         return document
     except Exception as exc:
         return _persist_failed_status(db, document.id, _failure_message(exc))

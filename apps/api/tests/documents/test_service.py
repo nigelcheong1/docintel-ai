@@ -2,6 +2,7 @@ from pathlib import Path
 
 import fitz
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models import Document, DocumentStatus
@@ -93,7 +94,7 @@ def test_index_stored_upload_removes_file_when_document_persistence_fails(db_ses
     assert not stored.file_path.exists()
 
 
-def test_index_stored_upload_keeps_file_when_post_commit_refresh_fails(db_session, tmp_path, monkeypatch):
+def test_index_stored_upload_does_not_need_refresh_after_initial_commit(db_session, tmp_path, monkeypatch):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
 
     def fail_refresh(_document):
@@ -101,7 +102,31 @@ def test_index_stored_upload_keeps_file_when_post_commit_refresh_fails(db_sessio
 
     monkeypatch.setattr(db_session, "refresh", fail_refresh)
 
-    with pytest.raises(DocumentPersistenceError, match="Could not load"):
-        index_stored_upload(db_session, stored, None)
+    document = index_stored_upload(db_session, stored, None)
+    persisted = db_session.scalar(select(Document).where(Document.id == document.id))
 
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.DEFERRED_OCR
     assert stored.file_path.exists()
+
+
+def test_index_stored_upload_marks_failed_when_deferred_status_cannot_commit(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    original_commit = db_session.commit
+    commit_calls = 0
+
+    def fail_deferred_status_commit():
+        nonlocal commit_calls
+        commit_calls += 1
+        if commit_calls == 2:
+            raise SQLAlchemyError("forced deferred status failure")
+        original_commit()
+
+    monkeypatch.setattr(db_session, "commit", fail_deferred_status_commit)
+
+    document = index_stored_upload(db_session, stored, None)
+    persisted = db_session.scalar(select(Document).where(Document.id == document.id))
+
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.FAILED
+    assert persisted.error_message == "Could not persist the deferred OCR status."
