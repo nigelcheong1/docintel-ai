@@ -32,7 +32,7 @@ def db_session():
     engine = create_engine(database_url, pool_pre_ping=True)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     session = session_factory()
     try:
         yield session

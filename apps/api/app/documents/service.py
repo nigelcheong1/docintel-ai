@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
@@ -19,7 +20,13 @@ class DocumentPersistenceError(RuntimeError):
 EmbeddingProviderFactory = Callable[[], EmbeddingProvider]
 
 
-def _persist_new_document(db: Session, stored: StoredUpload) -> Document:
+@dataclass(frozen=True)
+class PersistedDocument:
+    model: Document
+    document_id: str
+
+
+def _persist_new_document(db: Session, stored: StoredUpload) -> PersistedDocument:
     document = Document(
         filename=stored.original_filename,
         stored_filename=stored.stored_filename,
@@ -30,12 +37,13 @@ def _persist_new_document(db: Session, stored: StoredUpload) -> Document:
     try:
         db.add(document)
         db.flush()
+        document_id = document.id
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
         stored.file_path.unlink(missing_ok=True)
         raise DocumentPersistenceError("Could not persist the uploaded document.") from exc
-    return document
+    return PersistedDocument(model=document, document_id=document_id)
 
 
 def _failure_message(exc: Exception) -> str:
@@ -67,7 +75,9 @@ def index_stored_upload(
     stored: StoredUpload,
     embedder_factory: EmbeddingProviderFactory | None,
 ) -> Document:
-    document = _persist_new_document(db, stored)
+    persisted_document = _persist_new_document(db, stored)
+    document = persisted_document.model
+    document_id = persisted_document.document_id
 
     if stored.kind == "image":
         try:
@@ -76,7 +86,7 @@ def index_stored_upload(
             db.commit()
             return document
         except SQLAlchemyError as exc:
-            return _persist_failed_status(db, document.id, "Could not persist the deferred OCR status.")
+            return _persist_failed_status(db, document_id, "Could not persist the deferred OCR status.")
 
     try:
         parsed_pages = parse_pdf(Path(stored.file_path))
@@ -86,7 +96,7 @@ def index_stored_upload(
         page_models: dict[int, Page] = {}
         for parsed_page in parsed_pages:
             page = Page(
-                document_id=document.id,
+                document_id=document_id,
                 page_number=parsed_page.page_number,
                 text=parsed_page.text,
                 width=parsed_page.width,
@@ -100,7 +110,7 @@ def index_stored_upload(
         vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
         for text_chunk, vector in zip(text_chunks, vectors, strict=True):
             chunk = Chunk(
-                document_id=document.id,
+                document_id=document_id,
                 page_id=page_models[text_chunk.page_number].id,
                 chunk_index=text_chunk.chunk_index,
                 text=text_chunk.text,
@@ -115,7 +125,7 @@ def index_stored_upload(
         db.commit()
         return document
     except Exception as exc:
-        return _persist_failed_status(db, document.id, _failure_message(exc))
+        return _persist_failed_status(db, document_id, _failure_message(exc))
 
 
 def list_documents(db: Session) -> list[Document]:
