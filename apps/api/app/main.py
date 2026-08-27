@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.db.init_db import init_db
 from app.documents.router import router as documents_router
+from app.retrieval.router import router as retrieval_router
 
 
 @asynccontextmanager
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": settings.app_name}
 
     app.include_router(documents_router)
+    app.include_router(retrieval_router)
     return app
 
 
