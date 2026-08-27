@@ -18,7 +18,7 @@ describe("EvaluationSummary", () => {
             id: "eval-1",
             name: "sample-retrieval-eval",
             model_name: "BAAI/bge-small-en-v1.5",
-            metrics: { hit_rate_at_5: 1, mean_reciprocal_rank: 0.333 },
+            metrics: { evaluated_questions: 2, hit_rate_at_5: 1, mean_reciprocal_rank: 0.333 },
             created_at: "2026-08-27T00:00:00Z",
           },
         ]}
@@ -26,6 +26,8 @@ describe("EvaluationSummary", () => {
     );
 
     expect(screen.getByText("sample-retrieval-eval")).toBeInTheDocument();
+    expect(screen.getByText("evaluated questions")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("hit rate at 5")).toBeInTheDocument();
     expect(screen.getByText("1.00")).toBeInTheDocument();
     expect(screen.getByText("mean reciprocal rank")).toBeInTheDocument();

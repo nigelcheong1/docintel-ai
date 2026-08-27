@@ -1,6 +1,9 @@
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page
@@ -10,7 +13,20 @@ from app.documents.storage import StoredUpload
 from app.retrieval.embeddings import EmbeddingProvider
 
 
-def index_stored_upload(db: Session, stored: StoredUpload, embedder: EmbeddingProvider) -> Document:
+class DocumentPersistenceError(RuntimeError):
+    pass
+
+
+EmbeddingProviderFactory = Callable[[], EmbeddingProvider]
+
+
+@dataclass(frozen=True)
+class PersistedDocument:
+    model: Document
+    document_id: str
+
+
+def _persist_new_document(db: Session, stored: StoredUpload) -> PersistedDocument:
     document = Document(
         filename=stored.original_filename,
         stored_filename=stored.stored_filename,
@@ -18,22 +34,69 @@ def index_stored_upload(db: Session, stored: StoredUpload, embedder: EmbeddingPr
         file_path=str(stored.file_path),
         status=DocumentStatus.PROCESSING,
     )
-    db.add(document)
-    db.flush()
+    try:
+        db.add(document)
+        db.flush()
+        document_id = document.id
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        stored.file_path.unlink(missing_ok=True)
+        raise DocumentPersistenceError("Could not persist the uploaded document.") from exc
+    return PersistedDocument(model=document, document_id=document_id)
+
+
+def _failure_message(exc: Exception) -> str:
+    if isinstance(exc, DocumentParseError):
+        return str(exc)
+    if isinstance(exc, SQLAlchemyError):
+        return "Indexing failed because extracted content could not be stored in the database."
+    detail = str(exc).strip() or exc.__class__.__name__
+    return f"Indexing failed: {detail[:500]}"
+
+
+def _persist_failed_status(db: Session, document_id: str, error_message: str) -> Document:
+    try:
+        db.rollback()
+        document = db.get(Document, document_id)
+        if document is None:
+            raise DocumentPersistenceError("The document record disappeared during indexing.")
+        document.status = DocumentStatus.FAILED
+        document.error_message = error_message
+        db.commit()
+        return document
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise DocumentPersistenceError("Could not persist the document indexing failure.") from exc
+
+
+def index_stored_upload(
+    db: Session,
+    stored: StoredUpload,
+    embedder_factory: EmbeddingProviderFactory | None,
+) -> Document:
+    persisted_document = _persist_new_document(db, stored)
+    document = persisted_document.model
+    document_id = persisted_document.document_id
 
     if stored.kind == "image":
-        document.status = DocumentStatus.DEFERRED_OCR
-        document.error_message = "OCR is not enabled in the local-first MVP."
-        db.commit()
-        db.refresh(document)
-        return document
+        try:
+            document.status = DocumentStatus.DEFERRED_OCR
+            document.error_message = "OCR is not enabled in the local-first MVP."
+            db.commit()
+            return document
+        except SQLAlchemyError as exc:
+            return _persist_failed_status(db, document_id, "Could not persist the deferred OCR status.")
 
     try:
         parsed_pages = parse_pdf(Path(stored.file_path))
+        if embedder_factory is None:
+            raise RuntimeError("No embedding provider is configured for PDF indexing.")
+        embedder = embedder_factory()
         page_models: dict[int, Page] = {}
         for parsed_page in parsed_pages:
             page = Page(
-                document_id=document.id,
+                document_id=document_id,
                 page_number=parsed_page.page_number,
                 text=parsed_page.text,
                 width=parsed_page.width,
@@ -47,7 +110,7 @@ def index_stored_upload(db: Session, stored: StoredUpload, embedder: EmbeddingPr
         vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
         for text_chunk, vector in zip(text_chunks, vectors, strict=True):
             chunk = Chunk(
-                document_id=document.id,
+                document_id=document_id,
                 page_id=page_models[text_chunk.page_number].id,
                 chunk_index=text_chunk.chunk_index,
                 text=text_chunk.text,
@@ -60,14 +123,9 @@ def index_stored_upload(db: Session, stored: StoredUpload, embedder: EmbeddingPr
 
         document.status = DocumentStatus.INDEXED
         db.commit()
-        db.refresh(document)
         return document
-    except DocumentParseError as exc:
-        document.status = DocumentStatus.FAILED
-        document.error_message = str(exc)
-        db.commit()
-        db.refresh(document)
-        return document
+    except Exception as exc:
+        return _persist_failed_status(db, document_id, _failure_message(exc))
 
 
 def list_documents(db: Session) -> list[Document]:

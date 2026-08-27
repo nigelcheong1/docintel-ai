@@ -26,7 +26,7 @@ def create_sample_pdf(path: Path, text: str) -> bytes:
 def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     content = create_sample_pdf(tmp_path / "sample.pdf", "The invoice total is 1250 Malaysian Ringgit.")
     stored = save_upload_bytes("invoice.pdf", "application/pdf", content, tmp_path / "storage", 20)
-    index_stored_upload(db_session, stored, FakeEmbeddingProvider())
+    index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
 
     app = create_app()
 

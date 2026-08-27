@@ -25,4 +25,27 @@ describe("SearchResults", () => {
     expect(screen.getByText("Page 2")).toBeInTheDocument();
     expect(screen.getByText("87%")).toBeInTheDocument();
   });
+
+  it("allows long filenames and snippets to wrap inside result cards", () => {
+    const filename = `${"quarterly".repeat(20)}.pdf`;
+    const snippet = "unbroken".repeat(80);
+    render(
+      <SearchResults
+        hits={[
+          {
+            chunk_id: "chunk-long",
+            document_id: "doc-long",
+            document_filename: filename,
+            page_number: 1,
+            chunk_index: 0,
+            score: 0.5,
+            snippet,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(filename)).toHaveClass("break-all");
+    expect(screen.getByText(snippet)).toHaveClass("break-words");
+  });
 });
