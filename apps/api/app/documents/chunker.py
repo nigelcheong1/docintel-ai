@@ -73,18 +73,26 @@ def _canonical_heading(value: str) -> str:
     return normalized
 
 
-def _is_heading_case(candidate: str, canonical_heading: str) -> bool:
+def _is_uppercase_heading(candidate: str) -> bool:
+    return candidate == candidate.upper()
+
+
+def _is_heading_case(candidate: str, canonical_heading: str, allow_title_case: bool) -> bool:
+    if _is_uppercase_heading(candidate):
+        return True
     if canonical_heading in _SINGLE_WORD_HEADINGS:
-        return candidate == candidate.upper()
+        return False
+    if not allow_title_case:
+        return False
     words = [word for word in re.split(r"[\s&]+", candidate) if word]
-    return candidate == candidate.upper() or all(word[0].isupper() for word in words)
+    return all(word[0].isupper() for word in words)
 
 
-def _section_heading_matches(text: str) -> list[re.Match[str]]:
+def _section_heading_matches(text: str, allow_title_case: bool) -> list[re.Match[str]]:
     matches: list[re.Match[str]] = []
     for match in _HEADING_PATTERN.finditer(text):
         heading = _canonical_heading(match.group(1))
-        if _is_heading_case(match.group(1), heading):
+        if _is_heading_case(match.group(1), heading, allow_title_case):
             matches.append(match)
     return matches
 
@@ -140,18 +148,10 @@ def _split_by_standalone_heading_lines(text: str) -> list[_Section]:
     return sections if heading_found else []
 
 
-def _split_into_sections(text: str) -> list[_Section]:
-    line_sections = _split_by_standalone_heading_lines(text)
-    if line_sections:
-        return line_sections
-
-    normalized_text = _normalize_text(text)
-    if not normalized_text:
-        return []
-
-    matches = _section_heading_matches(normalized_text)
+def _split_inline_sections(normalized_text: str, allow_title_case: bool) -> list[_Section]:
+    matches = _section_heading_matches(normalized_text, allow_title_case)
     if not matches:
-        return [_Section(text=normalized_text, word_start=0)]
+        return []
 
     sections: list[_Section] = []
     first_start = matches[0].start()
@@ -175,6 +175,45 @@ def _split_into_sections(text: str) -> list[_Section]:
         )
 
     return sections
+
+
+def _refine_line_sections(line_sections: Sequence[_Section]) -> list[_Section]:
+    refined_sections: list[_Section] = []
+    for section in line_sections:
+        inline_sections = _split_inline_sections(section.text, allow_title_case=True)
+        if not inline_sections:
+            refined_sections.append(section)
+            continue
+
+        for index, inline_section in enumerate(inline_sections):
+            refined_sections.append(
+                _Section(
+                    text=inline_section.text,
+                    word_start=section.word_start + inline_section.word_start,
+                    heading=inline_section.heading or (section.heading if index == 0 else None),
+                )
+            )
+
+    return refined_sections
+
+
+def _split_into_sections(text: str) -> list[_Section]:
+    line_sections = _split_by_standalone_heading_lines(text)
+    if line_sections:
+        return _refine_line_sections(line_sections)
+
+    normalized_text = _normalize_text(text)
+    if not normalized_text:
+        return []
+
+    uppercase_heading_count = sum(
+        1 for match in _HEADING_PATTERN.finditer(normalized_text) if _is_uppercase_heading(match.group(1))
+    )
+    inline_sections = _split_inline_sections(
+        normalized_text,
+        allow_title_case=uppercase_heading_count >= 2,
+    )
+    return inline_sections or [_Section(text=normalized_text, word_start=0)]
 
 
 def chunk_pages(

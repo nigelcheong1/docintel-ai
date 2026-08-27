@@ -68,3 +68,42 @@ def test_chunk_pages_splits_title_case_headings_on_their_own_lines():
     assert "EDUCATION" in headings
     assert "TECHNICAL SKILLS" in headings
     assert "PROJECTS" in headings
+
+
+def test_chunk_pages_splits_mixed_standalone_and_inline_headings():
+    resume_text = "\n".join(
+        [
+            "Nigel Cheong",
+            "Education",
+            "Xiamen University Malaysia Technical Skills Python React FastAPI",
+            "Key Projects",
+            "Document intelligence search platform",
+        ]
+    )
+    pages = [ParsedPage(page_number=1, text=resume_text, width=600, height=800)]
+
+    chunks = chunk_pages(pages)
+
+    headings = [chunk.layout.get("section_heading") for chunk in chunks]
+    assert "EDUCATION" in headings
+    assert "TECHNICAL SKILLS" in headings
+    assert "KEY PROJECTS" in headings
+
+    education_chunk = next(chunk for chunk in chunks if chunk.layout.get("section_heading") == "EDUCATION")
+    skills_chunk = next(chunk for chunk in chunks if chunk.layout.get("section_heading") == "TECHNICAL SKILLS")
+    assert "Technical Skills" not in education_chunk.text
+    assert "Python React FastAPI" in skills_chunk.text
+
+
+def test_chunk_pages_does_not_label_title_case_phrases_in_regular_prose():
+    prose = (
+        "This candidate has Work Experience at Acme and Technical Skills include Python, "
+        "but this paragraph is written as normal prose rather than formatted resume headings."
+    )
+    pages = [ParsedPage(page_number=1, text=prose, width=600, height=800)]
+
+    chunks = chunk_pages(pages)
+
+    assert len(chunks) == 1
+    assert chunks[0].layout.get("section_heading") is None
+    assert chunks[0].text == prose
