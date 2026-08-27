@@ -12,7 +12,14 @@ export function SearchResults({ hits }: { hits: SearchHit[] }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <h2 className="break-all text-sm font-semibold">{hit.document_filename}</h2>
-              <p className="mt-1 text-xs text-slate-500">Page {hit.page_number}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>Page {hit.page_number}</span>
+                {hit.section_heading ? (
+                  <span className="rounded border border-line px-2 py-0.5 font-medium text-slate-600">
+                    {hit.section_heading}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <span className="rounded border border-line px-2 py-1 text-xs font-medium">{Math.round(hit.score * 100)}%</span>
           </div>

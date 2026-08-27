@@ -16,6 +16,7 @@ export type SearchHit = {
   chunk_index: number;
   score: number;
   snippet: string;
+  section_heading?: string | null;
 };
 
 export type SearchResponse = {
