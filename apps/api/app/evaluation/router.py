@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import EvalRun
+from app.db.models import EvalRun, RetrievalResult
 from app.db.session import get_db
+from app.evaluation.service import aggregate_retrieval_metrics
 
 router = APIRouter(prefix="/eval", tags=["evaluation"])
 
@@ -17,7 +18,7 @@ class EvalRunRead(BaseModel):
     id: str
     name: str
     model_name: str
-    metrics: dict[str, float]
+    metrics: dict[str, int | float]
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -26,10 +27,19 @@ class EvalRunRead(BaseModel):
 @router.post("/runs", response_model=EvalRunRead)
 def create_eval_run(db: Annotated[Session, Depends(get_db)]) -> EvalRun:
     settings = get_settings()
+    retrieval_results = list(
+        db.scalars(
+            select(RetrievalResult).order_by(
+                RetrievalResult.question_id,
+                RetrievalResult.rank,
+                RetrievalResult.created_at,
+            )
+        )
+    )
     eval_run = EvalRun(
-        name="sample-retrieval-eval",
+        name="local-retrieval-benchmark",
         model_name=settings.embedding_model_name,
-        metrics={"hit_rate_at_5": 0.0, "mean_reciprocal_rank": 0.0},
+        metrics=aggregate_retrieval_metrics(retrieval_results),
     )
     db.add(eval_run)
     db.commit()

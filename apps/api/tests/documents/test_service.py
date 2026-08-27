@@ -2,10 +2,11 @@ from pathlib import Path
 
 import fitz
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.models import DocumentStatus
+from app.db.models import Document, DocumentStatus
 from app.documents.storage import save_upload_bytes
-from app.documents.service import index_stored_upload
+from app.documents.service import DocumentPersistenceError, index_stored_upload
 from app.retrieval.embeddings import FakeEmbeddingProvider
 
 pytestmark = pytest.mark.integration
@@ -25,7 +26,7 @@ def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
     content = create_sample_pdf(pdf_path, "Payment due date is 2026-09-01")
     stored = save_upload_bytes("sample.pdf", "application/pdf", content, tmp_path / "storage", 20)
 
-    document = index_stored_upload(db_session, stored, FakeEmbeddingProvider())
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
 
     assert document.status == DocumentStatus.INDEXED
     assert len(document.pages) == 1
@@ -36,7 +37,71 @@ def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
 def test_index_stored_upload_defers_image_ocr(db_session, tmp_path):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
 
-    document = index_stored_upload(db_session, stored, FakeEmbeddingProvider())
+    document = index_stored_upload(db_session, stored, None)
 
     assert document.status == DocumentStatus.DEFERRED_OCR
     assert document.error_message == "OCR is not enabled in the local-first MVP."
+
+
+def test_index_stored_upload_persists_malformed_pdf_failure_without_loading_model(db_session, tmp_path):
+    stored = save_upload_bytes(
+        "malformed.pdf",
+        "application/pdf",
+        b"not a valid PDF",
+        tmp_path / "storage",
+        20,
+    )
+
+    def unexpected_embedder():
+        raise AssertionError("embedding provider must not load before parsing succeeds")
+
+    document = index_stored_upload(db_session, stored, unexpected_embedder)
+
+    persisted = db_session.get(Document, document.id)
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.FAILED
+    assert "Could not read PDF" in (persisted.error_message or "")
+
+
+def test_index_stored_upload_persists_embedding_provider_failure(db_session, tmp_path):
+    pdf_path = tmp_path / "sample.pdf"
+    content = create_sample_pdf(pdf_path, "Embedding failure fixture")
+    stored = save_upload_bytes("sample.pdf", "application/pdf", content, tmp_path / "storage", 20)
+
+    def failing_embedder():
+        raise RuntimeError("local model could not be loaded")
+
+    document = index_stored_upload(db_session, stored, failing_embedder)
+
+    persisted = db_session.get(Document, document.id)
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.FAILED
+    assert persisted.error_message == "Indexing failed: local model could not be loaded"
+
+
+def test_index_stored_upload_removes_file_when_document_persistence_fails(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+
+    def fail_commit():
+        raise SQLAlchemyError("forced persistence failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+
+    with pytest.raises(DocumentPersistenceError, match="Could not persist"):
+        index_stored_upload(db_session, stored, None)
+
+    assert not stored.file_path.exists()
+
+
+def test_index_stored_upload_keeps_file_when_post_commit_refresh_fails(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+
+    def fail_refresh(_document):
+        raise SQLAlchemyError("forced refresh failure")
+
+    monkeypatch.setattr(db_session, "refresh", fail_refresh)
+
+    with pytest.raises(DocumentPersistenceError, match="Could not load"):
+        index_stored_upload(db_session, stored, None)
+
+    assert stored.file_path.exists()

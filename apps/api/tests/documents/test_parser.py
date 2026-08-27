@@ -36,3 +36,11 @@ def test_parse_pdf_rejects_empty_pdf(tmp_path):
 
     with pytest.raises(DocumentParseError, match="No extractable text"):
         parse_pdf(pdf_path)
+
+
+def test_parse_pdf_wraps_malformed_pdf_errors(tmp_path):
+    pdf_path = tmp_path / "malformed.pdf"
+    pdf_path.write_bytes(b"not a valid PDF")
+
+    with pytest.raises(DocumentParseError, match="Could not read PDF"):
+        parse_pdf(pdf_path)

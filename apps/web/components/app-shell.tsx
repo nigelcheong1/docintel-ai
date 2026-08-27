@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="text-sm font-semibold">DocIntel AI</p>
           <p className="mt-1 text-xs text-slate-500">Local document intelligence</p>
         </div>
-        <nav className="space-y-1">
+        <nav aria-label="Desktop navigation" className="space-y-1">
           {navItems.map((item) => (
             <Link key={item.href} href={item.href} className="flex items-center gap-2 rounded px-3 py-2 text-sm hover:bg-panel">
               <item.icon className="h-4 w-4" aria-hidden="true" />
@@ -26,6 +26,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
       </aside>
+      <header className="border-b border-line bg-white md:hidden">
+        <div className="px-4 py-3">
+          <p className="text-sm font-semibold">DocIntel AI</p>
+        </div>
+        <nav aria-label="Mobile navigation" className="flex overflow-x-auto border-t border-line px-2 md:hidden">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex min-w-fit items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-panel"
+            >
+              <item.icon className="h-4 w-4" aria-hidden="true" />
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </header>
       <main className="min-h-screen md:pl-64">
         <div className="mx-auto max-w-6xl p-4 md:p-8">{children}</div>
       </main>

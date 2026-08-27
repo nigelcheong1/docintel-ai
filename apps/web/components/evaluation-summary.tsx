@@ -15,7 +15,9 @@ export function EvaluationSummary({ runs }: { runs: EvalRunSummary[] }) {
             {Object.entries(run.metrics).map(([key, value]) => (
               <div key={key}>
                 <dt className="break-words text-xs uppercase text-slate-500">{key.replaceAll("_", " ")}</dt>
-                <dd className="mt-1 text-xl font-semibold">{value.toFixed(2)}</dd>
+                <dd className="mt-1 text-xl font-semibold">
+                  {key === "evaluated_questions" ? value.toFixed(0) : value.toFixed(2)}
+                </dd>
               </div>
             ))}
           </dl>

@@ -31,6 +31,23 @@ Backend health check:
 Invoke-RestMethod http://localhost:8000/health
 ```
 
+## Run Backend Tests Safely
+
+Integration tests require an explicit disposable database and refuse to run against the normal `docintel` development database. Create the dedicated database once, enable pgvector, and export its URL before running the suite:
+
+```powershell
+$docintelTestExists = docker exec docintel-postgres psql -U docintel -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='docintel_test'"
+if (-not $docintelTestExists) {
+  docker exec docintel-postgres createdb -U docintel docintel_test
+}
+docker exec docintel-postgres psql -U docintel -d docintel_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+$env:DOCINTEL_TEST_DATABASE_URL = "postgresql+psycopg://docintel:docintel@localhost:5432/docintel_test"
+cd apps/api
+.\.venv\Scripts\python.exe -m pytest -v
+```
+
+The integration fixture creates and drops tables only inside `docintel_test`. It has no fallback URL.
+
 ## Start the Frontend
 
 Open a second PowerShell window from the repository root:

@@ -8,8 +8,14 @@ from app.core.config import Settings, get_settings
 from app.db.models import Chunk
 from app.db.session import get_db
 from app.documents.schemas import ChunkRead, DocumentDetail, DocumentRead
-from app.documents.service import get_document_or_404, index_stored_upload, list_documents
-from app.documents.storage import FileValidationError, save_upload_bytes
+from app.documents.service import (
+    DocumentPersistenceError,
+    EmbeddingProviderFactory,
+    get_document_or_404,
+    index_stored_upload,
+    list_documents,
+)
+from app.documents.storage import FileValidationError, UploadTooLargeError, save_upload_stream
 from app.retrieval.embeddings import LocalEmbeddingProvider
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -24,26 +30,36 @@ def get_embedding_provider(settings: Annotated[Settings, Depends(get_settings)])
     return get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
 
 
+def get_embedding_provider_factory(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> EmbeddingProviderFactory:
+    return lambda: get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
+
+
 @router.post("", response_model=DocumentRead)
 async def upload_document(
     file: Annotated[UploadFile, File()],
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
-    embedder: Annotated[LocalEmbeddingProvider, Depends(get_embedding_provider)],
+    embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
 ) -> DocumentRead:
-    content = await file.read()
     try:
-        stored = save_upload_bytes(
+        stored = await save_upload_stream(
             file.filename or "document",
             file.content_type,
-            content,
+            file,
             settings.storage_dir,
             settings.max_upload_mb,
         )
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except FileValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return index_stored_upload(db, stored, embedder)
+    try:
+        return index_stored_upload(db, stored, embedder_factory if stored.kind == "pdf" else None)
+    except DocumentPersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("", response_model=list[DocumentRead])
