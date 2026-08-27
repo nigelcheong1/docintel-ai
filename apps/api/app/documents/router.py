@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -14,8 +15,13 @@ from app.retrieval.embeddings import LocalEmbeddingProvider
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+@lru_cache
+def get_cached_embedding_provider(model_name: str, dimension: int) -> LocalEmbeddingProvider:
+    return LocalEmbeddingProvider(model_name, dimension)
+
+
 def get_embedding_provider(settings: Annotated[Settings, Depends(get_settings)]) -> LocalEmbeddingProvider:
-    return LocalEmbeddingProvider(settings.embedding_model_name, settings.embedding_dimension)
+    return get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
 
 
 @router.post("", response_model=DocumentRead)
