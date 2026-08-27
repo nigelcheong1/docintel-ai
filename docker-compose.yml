@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: docintel-postgres
+    environment:
+      POSTGRES_USER: docintel
+      POSTGRES_PASSWORD: docintel
+      POSTGRES_DB: docintel
+    ports:
+      - "5432:5432"
+    volumes:
+      - docintel-postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/001-init-pgvector.sql:/docker-entrypoint-initdb.d/001-init-pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docintel -d docintel"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  docintel-postgres-data:

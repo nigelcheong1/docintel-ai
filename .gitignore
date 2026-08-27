@@ -25,6 +25,8 @@ data/
 uploads/
 storage/
 models/
+.worktrees/
+.superpowers/
 
 # Docker and databases
 *.sqlite
@@ -36,4 +38,3 @@ postgres-data/
 Thumbs.db
 .vscode/
 .idea/
-

@@ -98,6 +98,7 @@ docintel-ai/
       components/upload-panel.tsx
       lib/api.ts
       lib/types.ts
+      tests/setup.ts
       tests/api-client.test.ts
       tests/status-badge.test.tsx
   docs/
@@ -180,7 +181,7 @@ DOCINTEL_STORAGE_DIR=storage
 DOCINTEL_MAX_UPLOAD_MB=20
 DOCINTEL_EMBEDDING_MODEL_NAME=BAAI/bge-small-en-v1.5
 DOCINTEL_EMBEDDING_DIMENSION=384
-DOCINTEL_BACKEND_CORS_ORIGINS=http://localhost:3000
+DOCINTEL_BACKEND_CORS_ORIGINS=["http://localhost:3000"]
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
@@ -292,7 +293,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DOCINTEL_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="DOCINTEL_", env_file=(".env", "../../.env"), extra="ignore")
 
     app_name: str = "DocIntel AI API"
     database_url: str = "postgresql+psycopg://docintel:docintel@localhost:5432/docintel"
@@ -1357,11 +1358,14 @@ Create `apps/api/tests/documents/test_service.py`:
 from pathlib import Path
 
 import fitz
+import pytest
 
 from app.db.models import DocumentStatus
 from app.documents.storage import save_upload_bytes
 from app.documents.service import index_stored_upload
 from app.retrieval.embeddings import FakeEmbeddingProvider
+
+pytestmark = pytest.mark.integration
 
 
 def create_sample_pdf(path: Path, text: str) -> bytes:
@@ -1698,6 +1702,7 @@ Create `apps/api/tests/retrieval/test_search_api.py`:
 from pathlib import Path
 
 import fitz
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db.session import get_db
@@ -1706,6 +1711,8 @@ from app.documents.storage import save_upload_bytes
 from app.documents.service import index_stored_upload
 from app.main import create_app
 from app.retrieval.embeddings import FakeEmbeddingProvider
+
+pytestmark = pytest.mark.integration
 
 
 def create_sample_pdf(path: Path, text: str) -> bytes:
@@ -1723,7 +1730,11 @@ def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     index_stored_upload(db_session, stored, FakeEmbeddingProvider())
 
     app = create_app()
-    app.dependency_overrides[get_db] = lambda: iter([db_session])
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
     client = TestClient(app)
 
@@ -1963,6 +1974,7 @@ git commit -m "feat: add semantic search API"
 - Create: `apps/web/components/status-badge.tsx`
 - Create: `apps/web/lib/types.ts`
 - Create: `apps/web/lib/api.ts`
+- Test setup: `apps/web/tests/setup.ts`
 - Test: `apps/web/tests/api-client.test.ts`
 - Test: `apps/web/tests/status-badge.test.tsx`
 
@@ -2027,6 +2039,7 @@ Create `apps/web/tsconfig.json`:
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
@@ -2096,7 +2109,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: [],
+    setupFiles: ["./tests/setup.ts"],
   },
 });
 ```
@@ -2174,6 +2187,12 @@ describe("StatusBadge", () => {
     expect(screen.getByText("OCR deferred")).toBeInTheDocument();
   });
 });
+```
+
+Create `apps/web/tests/setup.ts`:
+
+```typescript
+import "@testing-library/jest-dom/vitest";
 ```
 
 - [ ] **Step 4: Run tests to verify they fail before implementation**
