@@ -17,6 +17,10 @@ class DocumentPersistenceError(RuntimeError):
     pass
 
 
+class DocumentReindexError(ValueError):
+    pass
+
+
 EmbeddingProviderFactory = Callable[[], EmbeddingProvider]
 
 
@@ -70,6 +74,42 @@ def _persist_failed_status(db: Session, document_id: str, error_message: str) ->
         raise DocumentPersistenceError("Could not persist the document indexing failure.") from exc
 
 
+def _add_pdf_index_records(
+    db: Session,
+    document: Document,
+    embedder_factory: EmbeddingProviderFactory,
+) -> None:
+    parsed_pages = parse_pdf(Path(document.file_path))
+    embedder = embedder_factory()
+    page_models: dict[int, Page] = {}
+    for parsed_page in parsed_pages:
+        page = Page(
+            document_id=document.id,
+            page_number=parsed_page.page_number,
+            text=parsed_page.text,
+            width=parsed_page.width,
+            height=parsed_page.height,
+        )
+        db.add(page)
+        db.flush()
+        page_models[parsed_page.page_number] = page
+
+    text_chunks = chunk_pages(parsed_pages)
+    vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
+    for text_chunk, vector in zip(text_chunks, vectors, strict=True):
+        chunk = Chunk(
+            document_id=document.id,
+            page_id=page_models[text_chunk.page_number].id,
+            chunk_index=text_chunk.chunk_index,
+            text=text_chunk.text,
+            token_estimate=text_chunk.token_estimate,
+            layout=text_chunk.layout,
+        )
+        db.add(chunk)
+        db.flush()
+        db.add(ChunkEmbedding(chunk_id=chunk.id, model_name=embedder.model_name, embedding=vector))
+
+
 def index_stored_upload(
     db: Session,
     stored: StoredUpload,
@@ -89,38 +129,9 @@ def index_stored_upload(
             return _persist_failed_status(db, document_id, "Could not persist the deferred OCR status.")
 
     try:
-        parsed_pages = parse_pdf(Path(stored.file_path))
         if embedder_factory is None:
             raise RuntimeError("No embedding provider is configured for PDF indexing.")
-        embedder = embedder_factory()
-        page_models: dict[int, Page] = {}
-        for parsed_page in parsed_pages:
-            page = Page(
-                document_id=document_id,
-                page_number=parsed_page.page_number,
-                text=parsed_page.text,
-                width=parsed_page.width,
-                height=parsed_page.height,
-            )
-            db.add(page)
-            db.flush()
-            page_models[parsed_page.page_number] = page
-
-        text_chunks = chunk_pages(parsed_pages)
-        vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
-        for text_chunk, vector in zip(text_chunks, vectors, strict=True):
-            chunk = Chunk(
-                document_id=document_id,
-                page_id=page_models[text_chunk.page_number].id,
-                chunk_index=text_chunk.chunk_index,
-                text=text_chunk.text,
-                token_estimate=text_chunk.token_estimate,
-                layout=text_chunk.layout,
-            )
-            db.add(chunk)
-            db.flush()
-            db.add(ChunkEmbedding(chunk_id=chunk.id, model_name=embedder.model_name, embedding=vector))
-
+        _add_pdf_index_records(db, document, embedder_factory)
         document.status = DocumentStatus.INDEXED
         db.commit()
         return document
@@ -139,3 +150,49 @@ def get_document_or_404(db: Session, document_id: str) -> Document:
 
         raise HTTPException(status_code=404, detail="Document not found.")
     return document
+
+
+def delete_document(db: Session, document_id: str) -> None:
+    document = get_document_or_404(db, document_id)
+    file_path = Path(document.file_path)
+    try:
+        db.delete(document)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise DocumentPersistenceError("Could not delete the document.") from exc
+
+    try:
+        file_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def reindex_document(
+    db: Session,
+    document_id: str,
+    embedder_factory: EmbeddingProviderFactory,
+) -> Document:
+    document = get_document_or_404(db, document_id)
+    if Path(document.stored_filename).suffix.lower() != ".pdf":
+        raise DocumentReindexError("Only PDF documents can be reindexed.")
+
+    try:
+        document.status = DocumentStatus.PROCESSING
+        document.error_message = None
+        for page in list(document.pages):
+            db.delete(page)
+        db.flush()
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise DocumentPersistenceError("Could not clear the document before reindexing.") from exc
+
+    try:
+        _add_pdf_index_records(db, document, embedder_factory)
+        document.status = DocumentStatus.INDEXED
+        db.commit()
+        db.expire(document, ["pages", "chunks"])
+        return document
+    except Exception as exc:
+        return _persist_failed_status(db, document_id, _failure_message(exc))
