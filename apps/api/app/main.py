@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.db.init_db import init_db
 from app.documents.router import router as documents_router
+from app.evaluation.router import router as evaluation_router
 from app.retrieval.router import router as retrieval_router
 
 
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
 
     app.include_router(documents_router)
     app.include_router(retrieval_router)
+    app.include_router(evaluation_router)
     return app
 
 
