@@ -15,6 +15,13 @@ class DocumentRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    model_config = {"from_attributes": True}
+
+
+class DocumentDetail(DocumentRead):
+    page_count: int
+    chunk_count: int
+
 
 class ChunkRead(BaseModel):
     id: str
@@ -23,3 +30,7 @@ class ChunkRead(BaseModel):
     chunk_index: int
     text: str
     token_estimate: int
+
+
+class UploadError(BaseModel):
+    detail: str
