@@ -156,16 +156,16 @@ def delete_document(db: Session, document_id: str) -> None:
     document = get_document_or_404(db, document_id)
     file_path = Path(document.file_path)
     try:
+        file_path.unlink(missing_ok=True)
+    except OSError as exc:
+        raise DocumentPersistenceError("Could not delete the document file.") from exc
+
+    try:
         db.delete(document)
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
         raise DocumentPersistenceError("Could not delete the document.") from exc
-
-    try:
-        file_path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def reindex_document(

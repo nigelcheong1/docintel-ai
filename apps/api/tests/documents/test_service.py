@@ -147,7 +147,7 @@ def test_delete_document_removes_database_records_and_stored_file(db_session, tm
     assert not stored.file_path.exists()
 
 
-def test_delete_document_keeps_database_deletion_when_file_cleanup_fails(db_session, tmp_path, monkeypatch):
+def test_delete_document_keeps_database_record_when_file_removal_fails(db_session, tmp_path, monkeypatch):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
     document = index_stored_upload(db_session, stored, None)
 
@@ -156,9 +156,10 @@ def test_delete_document_keeps_database_deletion_when_file_cleanup_fails(db_sess
 
     monkeypatch.setattr(Path, "unlink", fail_unlink)
 
-    delete_document(db_session, document.id)
+    with pytest.raises(DocumentPersistenceError, match="Could not delete"):
+        delete_document(db_session, document.id)
 
-    assert db_session.get(Document, document.id) is None
+    assert db_session.get(Document, document.id) is not None
 
 
 def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session, tmp_path):
