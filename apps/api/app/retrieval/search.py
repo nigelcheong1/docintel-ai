@@ -16,6 +16,7 @@ class SearchHit:
     chunk_index: int
     text: str
     score: float
+    section_heading: str | None = None
 
 
 class SearchRequest(BaseModel):
@@ -32,6 +33,7 @@ class SearchHitRead(BaseModel):
     chunk_index: int
     score: float
     snippet: str
+    section_heading: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -70,6 +72,7 @@ def search_chunks(
 
     hits: list[SearchHit] = []
     for chunk, page, document, raw_distance in db.execute(statement):
+        section_heading = chunk.layout.get("section_heading") if isinstance(chunk.layout, dict) else None
         hits.append(
             SearchHit(
                 chunk_id=chunk.id,
@@ -79,6 +82,7 @@ def search_chunks(
                 chunk_index=chunk.chunk_index,
                 text=chunk.text,
                 score=cosine_distance_to_score(float(raw_distance)),
+                section_heading=section_heading if isinstance(section_heading, str) else None,
             )
         )
     return hits

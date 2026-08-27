@@ -46,3 +46,27 @@ def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     assert body["hits"][0]["document_filename"] == "invoice.pdf"
     assert body["hits"][0]["page_number"] == 1
     assert "invoice" in body["hits"][0]["snippet"].lower()
+
+
+def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
+    content = create_sample_pdf(
+        tmp_path / "resume.pdf",
+        "KEY PROJECTS Skin Lesion Classification built a CNN dashboard.",
+    )
+    stored = save_upload_bytes("resume.pdf", "application/pdf", content, tmp_path / "storage", 20)
+    index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    client = TestClient(app)
+
+    response = client.post("/search", json={"query": "projects", "top_k": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hits"][0]["section_heading"] == "KEY PROJECTS"

@@ -15,6 +15,7 @@ describe("SearchResults", () => {
             page_number: 2,
             chunk_index: 0,
             score: 0.87,
+            section_heading: "KEY PROJECTS",
             snippet: "Invoice total is 1250 Malaysian Ringgit.",
           },
         ]}
@@ -23,6 +24,7 @@ describe("SearchResults", () => {
 
     expect(screen.getByText("invoice.pdf")).toBeInTheDocument();
     expect(screen.getByText("Page 2")).toBeInTheDocument();
+    expect(screen.getByText("KEY PROJECTS")).toBeInTheDocument();
     expect(screen.getByText("87%")).toBeInTheDocument();
   });
 

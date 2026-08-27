@@ -30,6 +30,7 @@ def search(
                 chunk_index=hit.chunk_index,
                 score=hit.score,
                 snippet=build_snippet(hit.text),
+                section_heading=hit.section_heading,
             )
             for hit in hits
         ],
