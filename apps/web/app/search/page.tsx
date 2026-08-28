@@ -6,11 +6,12 @@ import { Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { SearchResults } from "@/components/search-results";
 import { searchDocuments } from "@/lib/api";
-import type { SearchHit } from "@/lib/types";
+import type { SearchAnswer, SearchHit } from "@/lib/types";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
   const [isSearching, setIsSearching] = useState(false);
 
@@ -25,6 +26,7 @@ export default function SearchPage() {
     try {
       const response = await searchDocuments(query.trim(), 5);
       setHits(response.hits);
+      setAnswer(response.answer);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Search failed.");
@@ -52,7 +54,7 @@ export default function SearchPage() {
         </button>
       </form>
       {message ? <p className="mb-4 text-sm text-slate-600">{message}</p> : null}
-      <SearchResults hits={hits} />
+      <SearchResults hits={hits} answer={answer} />
     </AppShell>
   );
 }

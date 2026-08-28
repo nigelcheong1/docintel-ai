@@ -20,13 +20,28 @@ export type SearchHit = {
   page_number: number;
   chunk_index: number;
   score: number;
+  source_score: number;
+  ranking_signals: Record<string, number>;
   snippet: string;
   section_heading?: string | null;
+};
+
+export type AnswerCitation = {
+  chunk_id: string;
+  document_filename: string;
+  page_number: number;
+  section_heading?: string | null;
+};
+
+export type SearchAnswer = {
+  summary: string;
+  citations: AnswerCitation[];
 };
 
 export type SearchResponse = {
   query: string;
   hits: SearchHit[];
+  answer: SearchAnswer | null;
 };
 
 export type EvalRunSummary = {
