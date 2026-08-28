@@ -10,6 +10,8 @@ from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
 from app.retrieval.embeddings import FakeEmbeddingProvider
+from app.retrieval.search import SearchHit
+import app.retrieval.router as retrieval_router
 
 pytestmark = pytest.mark.integration
 
@@ -70,3 +72,56 @@ def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["hits"][0]["section_heading"] == "KEY PROJECTS"
+
+
+def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):
+    candidates = [
+        SearchHit(
+            chunk_id=f"tool-{index}",
+            document_id="document-1",
+            document_filename="resume.pdf",
+            page_number=1,
+            chunk_index=index,
+            text="Python and Docker",
+            score=0.85,
+            source_score=0.85,
+            section_heading="TOOLS & PLATFORMS",
+        )
+        for index in range(11)
+    ]
+    candidates.append(
+        SearchHit(
+            chunk_id="project-12",
+            document_id="document-1",
+            document_filename="resume.pdf",
+            page_number=1,
+            chunk_index=11,
+            text="PROJECTS: skin lesion classification",
+            score=0.84,
+            source_score=0.84,
+            section_heading="KEY PROJECTS",
+        )
+    )
+    requested_limits: list[int] = []
+
+    def search_only_requested_candidates(_db, _embedding, top_k, _document_id):
+        requested_limits.append(top_k)
+        return candidates[:top_k]
+
+    monkeypatch.setattr(retrieval_router, "search_chunks", search_only_requested_candidates)
+    app = create_app()
+
+    def override_db():
+        yield object()
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post("/search", json={"query": "projects", "top_k": 2})
+
+    assert response.status_code == 200
+    assert requested_limits == [12]
+    body = response.json()
+    assert len(body["hits"]) == 2
+    assert body["hits"][0]["chunk_id"] == "project-12"
+    assert body["hits"][0]["source_score"] == 0.84
+    assert body["hits"][0]["ranking_signals"] == {"keyword_overlap": 1.0, "section_intent": 1.0}

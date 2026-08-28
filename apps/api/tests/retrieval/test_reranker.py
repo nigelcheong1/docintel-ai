@@ -1,3 +1,5 @@
+import pytest
+
 from app.retrieval.reranker import infer_query_intents, keyword_overlap_score, rerank_hits
 from app.retrieval.search import SearchHit
 
@@ -45,6 +47,7 @@ def test_rerank_hits_prefers_projects_section_when_vector_scores_are_close():
     assert [hit.section_heading for hit in reranked] == ["KEY PROJECTS", "TOOLS & PLATFORMS"]
     assert reranked[0].source_score == 0.90
     assert reranked[0].ranking_signals == {"keyword_overlap": 1.0, "section_intent": 1.0}
+    assert reranked[0].score == pytest.approx(0.925)
 
 
 def test_rerank_hits_prefers_matching_skill_and_education_sections():

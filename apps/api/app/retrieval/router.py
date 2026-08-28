@@ -19,10 +19,11 @@ def search(
     embedder: Annotated[EmbeddingProvider, Depends(get_embedding_provider)],
 ) -> SearchResponse:
     query_embedding = embedder.embed_texts([request.query])[0]
+    candidate_limit = min(50, max(request.top_k * 4, request.top_k + 10))
     hits = rerank_hits(
         request.query,
-        search_chunks(db, query_embedding, request.top_k, request.document_id),
-    )
+        search_chunks(db, query_embedding, candidate_limit, request.document_id),
+    )[: request.top_k]
     return SearchResponse(
         query=request.query,
         hits=[format_search_hit(hit) for hit in hits],
