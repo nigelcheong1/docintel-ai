@@ -8,6 +8,11 @@ export type DocumentSummary = {
   updated_at?: string;
 };
 
+export type DocumentDetail = DocumentSummary & {
+  page_count: number;
+  chunk_count: number;
+};
+
 export type SearchHit = {
   chunk_id: string;
   document_id: string;
