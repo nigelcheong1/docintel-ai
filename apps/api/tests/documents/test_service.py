@@ -5,9 +5,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.models import Document, DocumentStatus
+from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page
 from app.documents.storage import save_upload_bytes
-from app.documents.service import DocumentPersistenceError, index_stored_upload
+from app.documents.service import (
+    DocumentPersistenceError,
+    DocumentReindexError,
+    delete_document,
+    index_stored_upload,
+    reindex_document,
+)
 from app.retrieval.embeddings import FakeEmbeddingProvider
 
 pytestmark = pytest.mark.integration
@@ -130,3 +136,108 @@ def test_index_stored_upload_marks_failed_when_deferred_status_cannot_commit(db_
     assert persisted is not None
     assert persisted.status == DocumentStatus.FAILED
     assert persisted.error_message == "Could not persist the deferred OCR status."
+
+
+def test_delete_document_removes_database_records_and_stored_file(db_session, tmp_path):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, None)
+
+    delete_document(db_session, document.id)
+
+    assert db_session.get(Document, document.id) is None
+    assert not stored.file_path.exists()
+
+
+def test_delete_document_keeps_database_record_when_file_removal_fails(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, None)
+
+    def fail_unlink(self, missing_ok=False):
+        raise OSError("storage is unavailable")
+
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    with pytest.raises(DocumentPersistenceError, match="remove the document file"):
+        delete_document(db_session, document.id)
+
+    assert db_session.get(Document, document.id) is not None
+    assert stored.file_path.exists()
+
+
+def test_delete_document_restores_stored_file_when_database_commit_fails(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, None)
+
+    def fail_commit():
+        raise SQLAlchemyError("forced deletion commit failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+
+    with pytest.raises(DocumentPersistenceError):
+        delete_document(db_session, document.id)
+
+    assert db_session.get(Document, document.id) is not None
+    assert stored.file_path.exists()
+    assert stored.file_path.read_bytes() == b"image-bytes"
+
+
+def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session, tmp_path):
+    storage_dir = tmp_path / "storage"
+    original_pdf_path = tmp_path / "original.pdf"
+    stored = save_upload_bytes(
+        "resume.pdf",
+        "application/pdf",
+        create_sample_pdf(original_pdf_path, "Original document content"),
+        storage_dir,
+        20,
+    )
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    old_page_ids = [page.id for page in document.pages]
+    old_chunk_ids = [chunk.id for chunk in document.chunks]
+    old_embedding_ids = [chunk.embedding.id for chunk in document.chunks if chunk.embedding is not None]
+
+    replacement = fitz.open()
+    for text in ("Replacement first page", "Replacement second page"):
+        page = replacement.new_page()
+        page.insert_text((72, 72), text)
+    replacement.save(stored.file_path)
+    replacement.close()
+
+    reindexed = reindex_document(db_session, document.id, lambda: FakeEmbeddingProvider())
+
+    assert reindexed.status == DocumentStatus.INDEXED
+    assert len(reindexed.pages) == 2
+    assert {chunk.text for chunk in reindexed.chunks} >= {"Replacement first page", "Replacement second page"}
+    assert db_session.scalars(select(Page).where(Page.id.in_(old_page_ids))).all() == []
+    assert db_session.scalars(select(Chunk).where(Chunk.id.in_(old_chunk_ids))).all() == []
+    assert db_session.scalars(select(ChunkEmbedding).where(ChunkEmbedding.id.in_(old_embedding_ids))).all() == []
+
+
+def test_reindex_document_preserves_prior_index_when_embedding_fails(db_session, tmp_path):
+    original_pdf_path = tmp_path / "original.pdf"
+    stored = save_upload_bytes(
+        "resume.pdf",
+        "application/pdf",
+        create_sample_pdf(original_pdf_path, "Original searchable content"),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    old_page_ids = [page.id for page in document.pages]
+    old_chunk_ids = [chunk.id for chunk in document.chunks]
+    old_embedding_ids = [chunk.embedding.id for chunk in document.chunks if chunk.embedding is not None]
+
+    def failing_embedder():
+        raise RuntimeError("local model could not be loaded")
+
+    with pytest.raises(DocumentReindexError, match="local model could not be loaded"):
+        reindex_document(db_session, document.id, failing_embedder)
+
+    db_session.expire_all()
+    persisted = db_session.get(Document, document.id)
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.INDEXED
+    assert persisted.error_message is None
+    assert [page.id for page in persisted.pages] == old_page_ids
+    assert [chunk.id for chunk in persisted.chunks] == old_chunk_ids
+    assert [chunk.embedding.id for chunk in persisted.chunks if chunk.embedding is not None] == old_embedding_ids

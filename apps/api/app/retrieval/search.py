@@ -1,10 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Chunk, ChunkEmbedding, Document, Page
+from app.retrieval.answers import ExtractiveAnswer
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,8 @@ class SearchHit:
     chunk_index: int
     text: str
     score: float
+    source_score: float
+    ranking_signals: dict[str, float] = field(default_factory=dict)
     section_heading: str | None = None
 
 
@@ -32,6 +35,8 @@ class SearchHitRead(BaseModel):
     page_number: int
     chunk_index: int
     score: float
+    source_score: float
+    ranking_signals: dict[str, float]
     snippet: str
     section_heading: str | None = None
 
@@ -39,6 +44,7 @@ class SearchHitRead(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     hits: list[SearchHitRead]
+    answer: ExtractiveAnswer | None
 
 
 def build_snippet(text: str, max_chars: int = 260) -> str:
@@ -46,6 +52,21 @@ def build_snippet(text: str, max_chars: int = 260) -> str:
     if len(collapsed) <= max_chars:
         return collapsed
     return collapsed[: max_chars - 3].rstrip() + "..."
+
+
+def format_search_hit(hit: SearchHit) -> SearchHitRead:
+    return SearchHitRead(
+        chunk_id=hit.chunk_id,
+        document_id=hit.document_id,
+        document_filename=hit.document_filename,
+        page_number=hit.page_number,
+        chunk_index=hit.chunk_index,
+        score=hit.score,
+        source_score=hit.source_score,
+        ranking_signals=hit.ranking_signals,
+        snippet=build_snippet(hit.text),
+        section_heading=hit.section_heading,
+    )
 
 
 def cosine_distance_to_score(distance: float) -> float:
@@ -73,6 +94,7 @@ def search_chunks(
     hits: list[SearchHit] = []
     for chunk, page, document, raw_distance in db.execute(statement):
         section_heading = chunk.layout.get("section_heading") if isinstance(chunk.layout, dict) else None
+        source_score = cosine_distance_to_score(float(raw_distance))
         hits.append(
             SearchHit(
                 chunk_id=chunk.id,
@@ -81,7 +103,8 @@ def search_chunks(
                 page_number=page.page_number,
                 chunk_index=chunk.chunk_index,
                 text=chunk.text,
-                score=cosine_distance_to_score(float(raw_distance)),
+                score=source_score,
+                source_score=source_score,
                 section_heading=section_heading if isinstance(section_heading, str) else None,
             )
         )

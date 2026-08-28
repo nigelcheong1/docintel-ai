@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -10,10 +10,13 @@ from app.db.session import get_db
 from app.documents.schemas import ChunkRead, DocumentDetail, DocumentRead
 from app.documents.service import (
     DocumentPersistenceError,
+    DocumentReindexError,
     EmbeddingProviderFactory,
+    delete_document,
     get_document_or_404,
     index_stored_upload,
     list_documents,
+    reindex_document,
 )
 from app.documents.storage import FileValidationError, UploadTooLargeError, save_upload_stream
 from app.retrieval.embeddings import LocalEmbeddingProvider
@@ -99,3 +102,26 @@ def document_chunks(document_id: str, db: Annotated[Session, Depends(get_db)]) -
         for chunk in chunks
         if isinstance(chunk, Chunk)
     ]
+
+
+@router.delete("/{document_id}", status_code=204)
+def delete_document_route(document_id: str, db: Annotated[Session, Depends(get_db)]) -> Response:
+    try:
+        delete_document(db, document_id)
+    except DocumentPersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+
+@router.post("/{document_id}/reindex", response_model=DocumentRead)
+def reindex_document_route(
+    document_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
+) -> DocumentRead:
+    try:
+        return reindex_document(db, document_id, embedder_factory)
+    except DocumentReindexError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DocumentPersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

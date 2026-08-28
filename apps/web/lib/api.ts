@@ -1,4 +1,4 @@
-import type { DocumentSummary, EvalRunSummary, SearchResponse } from "@/lib/types";
+import type { DocumentDetail, DocumentSummary, EvalRunSummary, SearchResponse } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -22,6 +22,24 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 export async function getDocuments(): Promise<DocumentSummary[]> {
   const response = await fetch(`${API_BASE_URL}/documents`, { cache: "no-store" });
   return parseJsonResponse<DocumentSummary[]>(response);
+}
+
+export async function getDocument(documentId: string): Promise<DocumentDetail> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, { cache: "no-store" });
+  return parseJsonResponse<DocumentDetail>(response);
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, { method: "DELETE" });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(parseErrorDetail(body) ?? (body || `Request failed with ${response.status}`));
+  }
+}
+
+export async function reindexDocument(documentId: string): Promise<DocumentSummary> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/reindex`, { method: "POST" });
+  return parseJsonResponse<DocumentSummary>(response);
 }
 
 export async function uploadDocument(file: File): Promise<DocumentSummary> {
