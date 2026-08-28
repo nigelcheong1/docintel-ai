@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Chunk, ChunkEmbedding, Document, Page
+from app.retrieval.answers import ExtractiveAnswer
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class SearchHitRead(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     hits: list[SearchHitRead]
+    answer: ExtractiveAnswer | None
 
 
 def build_snippet(text: str, max_chars: int = 260) -> str:

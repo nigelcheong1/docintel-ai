@@ -48,6 +48,8 @@ def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     assert body["hits"][0]["document_filename"] == "invoice.pdf"
     assert body["hits"][0]["page_number"] == 1
     assert "invoice" in body["hits"][0]["snippet"].lower()
+    assert body["answer"] is not None
+    assert body["answer"]["citations"][0]["chunk_id"] == body["hits"][0]["chunk_id"]
 
 
 def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
