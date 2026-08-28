@@ -42,3 +42,21 @@ def test_build_extractive_answer_uses_top_ranked_evidence_with_citations():
     assert answer.citations[0].document_filename == "invoice.pdf"
     assert answer.citations[0].page_number == 2
     assert answer.citations[0].section_heading == "INVOICE SUMMARY"
+
+
+def test_build_extractive_answer_selects_the_sentence_matching_query_terms():
+    hit = make_hit(
+        chunk_id="chunk-focused",
+        text=(
+            "The supplier was founded in 2012. "
+            "The invoice total is 1250 Malaysian Ringgit. "
+            "Payment is due within 30 days."
+        ),
+        page_number=2,
+        section_heading="INVOICE SUMMARY",
+    )
+
+    answer = build_extractive_answer("invoice total", [hit])
+
+    assert answer is not None
+    assert answer.summary == "The invoice total is 1250 Malaysian Ringgit."

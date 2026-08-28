@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -156,31 +155,37 @@ def get_document_or_404(db: Session, document_id: str) -> Document:
 def delete_document(db: Session, document_id: str) -> None:
     document = get_document_or_404(db, document_id)
     file_path = Path(document.file_path)
-    deleting_file_path: Path | None = None
+    file_contents: bytes | None = None
     if file_path.exists():
-        deleting_file_path = file_path.with_name(f"{file_path.name}.{uuid4().hex}.deleting")
         try:
-            file_path.replace(deleting_file_path)
+            file_contents = file_path.read_bytes()
         except OSError as exc:
-            raise DocumentPersistenceError("Could not stage the document file for deletion.") from exc
+            raise DocumentPersistenceError("Could not prepare the document file for deletion.") from exc
 
     try:
         db.delete(document)
+        db.flush()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise DocumentPersistenceError("Could not delete the document.") from exc
+
+    if file_contents is not None:
+        try:
+            file_path.unlink()
+        except OSError as exc:
+            db.rollback()
+            raise DocumentPersistenceError("Could not remove the document file.") from exc
+
+    try:
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
-        if deleting_file_path is not None:
+        if file_contents is not None:
             try:
-                deleting_file_path.replace(file_path)
+                file_path.write_bytes(file_contents)
             except OSError as restore_exc:
                 raise DocumentPersistenceError("Could not restore the document file after database failure.") from restore_exc
         raise DocumentPersistenceError("Could not delete the document.") from exc
-
-    if deleting_file_path is not None:
-        try:
-            deleting_file_path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def reindex_document(
@@ -198,16 +203,14 @@ def reindex_document(
         for page in list(document.pages):
             db.delete(page)
         db.flush()
-        db.commit()
-    except SQLAlchemyError as exc:
-        db.rollback()
-        raise DocumentPersistenceError("Could not clear the document before reindexing.") from exc
-
-    try:
         _add_pdf_index_records(db, document, embedder_factory)
         document.status = DocumentStatus.INDEXED
         db.commit()
         db.expire(document, ["pages", "chunks"])
         return document
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise DocumentPersistenceError("Could not reindex the document.") from exc
     except Exception as exc:
-        return _persist_failed_status(db, document_id, _failure_message(exc))
+        db.rollback()
+        raise DocumentReindexError(_failure_message(exc)) from exc

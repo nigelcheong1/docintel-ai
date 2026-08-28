@@ -12,6 +12,13 @@ type DocumentListProps = {
   onReindex?: (documentId: string) => Promise<void>;
 };
 
+type DocumentActionType = "delete" | "reindex";
+
+type PendingDocumentAction = {
+  documentId: string;
+  type: DocumentActionType;
+};
+
 function formatUpdatedAt(updatedAt?: string): string {
   if (!updatedAt) {
     return "Not available";
@@ -40,27 +47,32 @@ function DocumentMetadata({ document }: { document: DocumentSummary | DocumentDe
 
 function DocumentActions({
   document,
-  isPending,
+  pendingAction,
   onDelete,
   onReindex,
 }: {
   document: DocumentSummary | DocumentDetail;
-  isPending: boolean;
+  pendingAction: PendingDocumentAction | null;
   onDelete?: (documentId: string) => void;
   onReindex?: (documentId: string) => void;
 }) {
+  const isLocked = pendingAction !== null;
+  const isReindexing = pendingAction?.documentId === document.id && pendingAction.type === "reindex";
+  const isDeleting = pendingAction?.documentId === document.id && pendingAction.type === "delete";
+  const canReindex = document.mime_type === "application/pdf" && onReindex;
+
   return (
     <div className="flex items-center gap-2">
-      {onReindex ? (
+      {canReindex ? (
         <button
           type="button"
           className="inline-flex items-center gap-2 rounded border border-line px-3 py-2 text-sm font-medium text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={`Reindex ${document.filename}`}
           onClick={() => onReindex(document.id)}
-          disabled={isPending}
+          disabled={isLocked}
         >
-          <RotateCw className={isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
-          {isPending ? "Reindexing..." : "Reindex"}
+          <RotateCw className={isReindexing ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+          {isReindexing ? "Reindexing..." : "Reindex"}
         </button>
       ) : null}
       {onDelete ? (
@@ -68,11 +80,15 @@ function DocumentActions({
           type="button"
           className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label={`Delete ${document.filename}`}
-          onClick={() => onDelete(document.id)}
-          disabled={isPending}
+          onClick={() => {
+            if (window.confirm(`Permanently delete ${document.filename}?`)) {
+              onDelete(document.id);
+            }
+          }}
+          disabled={isLocked}
         >
           <Trash2 className="h-4 w-4" aria-hidden="true" />
-          Delete
+          {isDeleting ? "Deleting..." : "Delete"}
         </button>
       ) : null}
     </div>
@@ -80,23 +96,27 @@ function DocumentActions({
 }
 
 export function DocumentList({ documents, onDelete, onReindex }: DocumentListProps) {
-  const [pendingDocumentId, setPendingDocumentId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingDocumentAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const hasActions = Boolean(onDelete || onReindex);
+  const hasActions = Boolean(onDelete || (onReindex && documents.some((document) => document.mime_type === "application/pdf")));
 
-  async function runAction(documentId: string, action?: (id: string) => Promise<void>) {
-    if (!action || pendingDocumentId) {
+  async function runAction(
+    documentId: string,
+    type: DocumentActionType,
+    action?: (id: string) => Promise<void>,
+  ) {
+    if (!action || pendingAction) {
       return;
     }
 
-    setPendingDocumentId(documentId);
+    setPendingAction({ documentId, type });
     setActionError(null);
     try {
       await action(documentId);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Could not update the document. Try again.");
     } finally {
-      setPendingDocumentId(null);
+      setPendingAction(null);
     }
   }
 
@@ -121,9 +141,9 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
             {hasActions ? (
               <DocumentActions
                 document={document}
-                isPending={pendingDocumentId === document.id}
-                onDelete={onDelete ? (documentId) => void runAction(documentId, onDelete) : undefined}
-                onReindex={onReindex ? (documentId) => void runAction(documentId, onReindex) : undefined}
+                pendingAction={pendingAction}
+                onDelete={onDelete ? (documentId) => void runAction(documentId, "delete", onDelete) : undefined}
+                onReindex={onReindex ? (documentId) => void runAction(documentId, "reindex", onReindex) : undefined}
               />
             ) : null}
           </article>
@@ -153,9 +173,9 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
                   <td className="px-4 py-3">
                     <DocumentActions
                       document={document}
-                      isPending={pendingDocumentId === document.id}
-                      onDelete={onDelete ? (documentId) => void runAction(documentId, onDelete) : undefined}
-                      onReindex={onReindex ? (documentId) => void runAction(documentId, onReindex) : undefined}
+                      pendingAction={pendingAction}
+                      onDelete={onDelete ? (documentId) => void runAction(documentId, "delete", onDelete) : undefined}
+                      onReindex={onReindex ? (documentId) => void runAction(documentId, "reindex", onReindex) : undefined}
                     />
                   </td>
                 ) : null}

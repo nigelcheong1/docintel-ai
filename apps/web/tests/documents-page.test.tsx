@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DocumentsPage from "@/app/documents/page";
 
@@ -32,10 +32,15 @@ const documentDetail = {
 describe("DocumentsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     apiMocks.getDocuments.mockResolvedValue([documentSummary]);
     apiMocks.getDocument.mockResolvedValue(documentDetail);
     apiMocks.deleteDocument.mockResolvedValue(undefined);
     apiMocks.reindexDocument.mockResolvedValue(documentSummary);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("hydrates the document list with metadata from each detail request", async () => {

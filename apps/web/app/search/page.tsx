@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { Search } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -9,6 +9,7 @@ import { searchDocuments } from "@/lib/api";
 import type { SearchAnswer, SearchHit } from "@/lib/types";
 
 export default function SearchPage() {
+  const latestSearchId = useRef(0);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
@@ -17,8 +18,11 @@ export default function SearchPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!query.trim()) {
+    const searchId = ++latestSearchId.current;
+    const submittedQuery = query.trim();
+    if (!submittedQuery) {
       setMessage("Enter a question or search phrase.");
+      setIsSearching(false);
       return;
     }
     setHits([]);
@@ -26,14 +30,21 @@ export default function SearchPage() {
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
-      const response = await searchDocuments(query.trim(), 5);
+      const response = await searchDocuments(submittedQuery, 5);
+      if (searchId !== latestSearchId.current) {
+        return;
+      }
       setHits(response.hits);
       setAnswer(response.answer);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Search failed.");
+      if (searchId === latestSearchId.current) {
+        setMessage(error instanceof Error ? error.message : "Search failed.");
+      }
     } finally {
-      setIsSearching(false);
+      if (searchId === latestSearchId.current) {
+        setIsSearching(false);
+      }
     }
   }
 

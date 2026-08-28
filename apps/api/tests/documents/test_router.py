@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -96,6 +98,30 @@ def test_delete_document_endpoint_removes_document_and_stored_file(db_session, t
 
 
 @pytest.mark.integration
+def test_delete_document_endpoint_surfaces_file_removal_failure(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, None)
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    def fail_unlink(self, missing_ok=False):
+        raise OSError("storage is unavailable")
+
+    app.dependency_overrides[get_db] = override_db
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    client = TestClient(app)
+
+    response = client.delete(f"/documents/{document.id}")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Could not remove the document file."
+    assert db_session.get(Document, document.id) is not None
+    assert stored.file_path.exists()
+
+
+@pytest.mark.integration
 def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_path):
     import fitz
 
@@ -121,6 +147,42 @@ def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_pa
     assert response.status_code == 200
     assert response.json()["id"] == document.id
     assert response.json()["status"] == DocumentStatus.INDEXED.value
+
+
+@pytest.mark.integration
+def test_reindex_document_endpoint_surfaces_failure_and_preserves_prior_index(db_session, tmp_path):
+    import fitz
+
+    original_pdf = tmp_path / "original.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_text((72, 72), "Original searchable content")
+    pdf.save(original_pdf)
+    pdf.close()
+    stored = save_upload_bytes("resume.pdf", "application/pdf", original_pdf.read_bytes(), tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    old_chunk_ids = [chunk.id for chunk in document.chunks]
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    def failing_embedder():
+        raise RuntimeError("local model could not be loaded")
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[router.get_embedding_provider_factory] = lambda: failing_embedder
+    client = TestClient(app)
+
+    response = client.post(f"/documents/{document.id}/reindex")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Indexing failed: local model could not be loaded"
+    db_session.expire_all()
+    persisted = db_session.get(Document, document.id)
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.INDEXED
+    assert [chunk.id for chunk in persisted.chunks] == old_chunk_ids
 
 
 @pytest.mark.integration

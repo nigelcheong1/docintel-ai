@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DocumentList } from "@/components/document-list";
 
 describe("DocumentList", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("provides a stacked document view on small screens", () => {
     const { container } = render(
       <DocumentList
@@ -120,6 +124,122 @@ describe("DocumentList", () => {
     expect(reindexButton).toHaveTextContent("Reindexing...");
 
     resolveReindex?.();
+  });
+
+  it("visibly locks actions on every row while one document action is pending", () => {
+    let resolveReindex: (() => void) | undefined;
+    const onReindex = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveReindex = resolve;
+      }),
+    );
+
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+          },
+          {
+            id: "doc-2",
+            filename: "annual-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+          },
+        ]}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+        onReindex={onReindex}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Reindex quarterly-report.pdf" })[0]);
+
+    for (const button of screen.getAllByRole("button", { name: /^(Reindex|Delete) / })) {
+      expect(button).toBeDisabled();
+    }
+
+    resolveReindex?.();
+  });
+
+  it("shows deleting state only on the pending delete control", () => {
+    let resolveDelete: (() => void) | undefined;
+    const onDelete = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+      }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+          },
+        ]}
+        onDelete={onDelete}
+        onReindex={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const deleteButton = screen.getAllByRole("button", { name: "Delete quarterly-report.pdf" })[0];
+    const reindexButton = screen.getAllByRole("button", { name: "Reindex quarterly-report.pdf" })[0];
+    fireEvent.click(deleteButton);
+
+    expect(deleteButton).toHaveTextContent("Deleting...");
+    expect(reindexButton).toHaveTextContent("Reindex");
+
+    resolveDelete?.();
+  });
+
+  it("does not offer reindex for image documents", () => {
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-image",
+            filename: "scan.png",
+            mime_type: "image/png",
+            status: "deferred_ocr",
+          },
+        ]}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+        onReindex={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Reindex scan.png" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Delete scan.png" })).toHaveLength(2);
+  });
+
+  it("requires confirmation before permanently deleting a document", () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+          },
+        ]}
+        onDelete={onDelete}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete quarterly-report.pdf" })[0]);
+
+    expect(window.confirm).toHaveBeenCalledWith("Permanently delete quarterly-report.pdf?");
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
   it("shows a failed action message and lets the user try again", async () => {
