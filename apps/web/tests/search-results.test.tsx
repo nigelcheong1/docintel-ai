@@ -28,6 +28,43 @@ describe("SearchResults", () => {
     expect(screen.getByText("invoice.pdf, page 2, INVOICE SUMMARY")).toBeInTheDocument();
   });
 
+  it("renders an answer before its supporting evidence", () => {
+    render(
+      <SearchResults
+        answer={{
+          summary: "The invoice total is 1250 Malaysian Ringgit.",
+          citations: [
+            {
+              chunk_id: "chunk-1",
+              document_filename: "invoice.pdf",
+              page_number: 2,
+              section_heading: "INVOICE SUMMARY",
+            },
+          ],
+        }}
+        hits={[
+          {
+            chunk_id: "chunk-1",
+            document_id: "doc-1",
+            document_filename: "invoice.pdf",
+            page_number: 2,
+            chunk_index: 0,
+            score: 0.87,
+            source_score: 0.83,
+            ranking_signals: {},
+            section_heading: "INVOICE SUMMARY",
+            snippet: "Invoice total is 1250 Malaysian Ringgit.",
+          },
+        ]}
+      />,
+    );
+
+    const answer = screen.getByRole("heading", { name: "Answer" }).closest("section");
+    const evidence = screen.getByText("invoice.pdf").closest("article");
+
+    expect(answer?.compareDocumentPosition(evidence ?? null)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("shows blended, source, and ranking signal scores for evidence", () => {
     render(
       <SearchResults

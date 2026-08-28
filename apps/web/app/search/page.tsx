@@ -21,6 +21,8 @@ export default function SearchPage() {
       setMessage("Enter a question or search phrase.");
       return;
     }
+    setHits([]);
+    setAnswer(null);
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
