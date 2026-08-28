@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DocumentList } from "@/components/document-list";
@@ -120,5 +120,50 @@ describe("DocumentList", () => {
     expect(reindexButton).toHaveTextContent("Reindexing...");
 
     resolveReindex?.();
+  });
+
+  it("shows a failed action message and lets the user try again", async () => {
+    const onReindex = vi.fn().mockRejectedValue(new Error("Reindexing failed."));
+
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+            page_count: 12,
+            chunk_count: 48,
+          },
+        ]}
+        onReindex={onReindex}
+      />,
+    );
+
+    const reindexButton = screen.getAllByRole("button", { name: "Reindex quarterly-report.pdf" })[0];
+    fireEvent.click(reindexButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Reindexing failed.");
+    await waitFor(() => expect(reindexButton).toBeEnabled());
+  });
+
+  it("renders only the actions that have callbacks", () => {
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+          },
+        ]}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(screen.getAllByRole("button", { name: "Delete quarterly-report.pdf" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Reindex quarterly-report.pdf" })).not.toBeInTheDocument();
   });
 });

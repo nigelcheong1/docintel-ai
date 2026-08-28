@@ -51,32 +51,37 @@ function DocumentActions({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        className="inline-flex items-center gap-2 rounded border border-line px-3 py-2 text-sm font-medium text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-60"
-        aria-label={`Reindex ${document.filename}`}
-        onClick={() => onReindex?.(document.id)}
-        disabled={isPending || !onReindex}
-      >
-        <RotateCw className={isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
-        {isPending ? "Reindexing..." : "Reindex"}
-      </button>
-      <button
-        type="button"
-        className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-        aria-label={`Delete ${document.filename}`}
-        onClick={() => onDelete?.(document.id)}
-        disabled={isPending || !onDelete}
-      >
-        <Trash2 className="h-4 w-4" aria-hidden="true" />
-        Delete
-      </button>
+      {onReindex ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded border border-line px-3 py-2 text-sm font-medium text-ink hover:bg-panel disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label={`Reindex ${document.filename}`}
+          onClick={() => onReindex(document.id)}
+          disabled={isPending}
+        >
+          <RotateCw className={isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+          {isPending ? "Reindexing..." : "Reindex"}
+        </button>
+      ) : null}
+      {onDelete ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label={`Delete ${document.filename}`}
+          onClick={() => onDelete(document.id)}
+          disabled={isPending}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+          Delete
+        </button>
+      ) : null}
     </div>
   );
 }
 
 export function DocumentList({ documents, onDelete, onReindex }: DocumentListProps) {
   const [pendingDocumentId, setPendingDocumentId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const hasActions = Boolean(onDelete || onReindex);
 
   async function runAction(documentId: string, action?: (id: string) => Promise<void>) {
@@ -85,8 +90,11 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
     }
 
     setPendingDocumentId(documentId);
+    setActionError(null);
     try {
       await action(documentId);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Could not update the document. Try again.");
     } finally {
       setPendingDocumentId(null);
     }
@@ -98,6 +106,7 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
 
   return (
     <div className="overflow-hidden rounded border border-line bg-white">
+      {actionError ? <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{actionError}</p> : null}
       <div className="divide-y divide-line md:hidden">
         {documents.map((document) => (
           <article key={document.id} className="space-y-3 p-4">
