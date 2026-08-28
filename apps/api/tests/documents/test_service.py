@@ -147,19 +147,36 @@ def test_delete_document_removes_database_records_and_stored_file(db_session, tm
     assert not stored.file_path.exists()
 
 
-def test_delete_document_keeps_database_record_when_file_removal_fails(db_session, tmp_path, monkeypatch):
+def test_delete_document_keeps_database_record_when_file_staging_move_fails(db_session, tmp_path, monkeypatch):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
     document = index_stored_upload(db_session, stored, None)
 
-    def fail_unlink(self, missing_ok=False):
+    def fail_replace(self, target):
         raise OSError("storage is unavailable")
 
-    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    monkeypatch.setattr(Path, "replace", fail_replace)
 
-    with pytest.raises(DocumentPersistenceError, match="Could not delete"):
+    with pytest.raises(DocumentPersistenceError):
         delete_document(db_session, document.id)
 
     assert db_session.get(Document, document.id) is not None
+    assert stored.file_path.exists()
+
+
+def test_delete_document_restores_stored_file_when_database_commit_fails(db_session, tmp_path, monkeypatch):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, None)
+
+    def fail_commit():
+        raise SQLAlchemyError("forced deletion commit failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+
+    with pytest.raises(DocumentPersistenceError):
+        delete_document(db_session, document.id)
+
+    assert db_session.get(Document, document.id) is not None
+    assert stored.file_path.exists()
 
 
 def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session, tmp_path):

@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -155,17 +156,31 @@ def get_document_or_404(db: Session, document_id: str) -> Document:
 def delete_document(db: Session, document_id: str) -> None:
     document = get_document_or_404(db, document_id)
     file_path = Path(document.file_path)
-    try:
-        file_path.unlink(missing_ok=True)
-    except OSError as exc:
-        raise DocumentPersistenceError("Could not delete the document file.") from exc
+    deleting_file_path: Path | None = None
+    if file_path.exists():
+        deleting_file_path = file_path.with_name(f"{file_path.name}.{uuid4().hex}.deleting")
+        try:
+            file_path.replace(deleting_file_path)
+        except OSError as exc:
+            raise DocumentPersistenceError("Could not stage the document file for deletion.") from exc
 
     try:
         db.delete(document)
         db.commit()
     except SQLAlchemyError as exc:
         db.rollback()
+        if deleting_file_path is not None:
+            try:
+                deleting_file_path.replace(file_path)
+            except OSError as restore_exc:
+                raise DocumentPersistenceError("Could not restore the document file after database failure.") from restore_exc
         raise DocumentPersistenceError("Could not delete the document.") from exc
+
+    if deleting_file_path is not None:
+        try:
+            deleting_file_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def reindex_document(
