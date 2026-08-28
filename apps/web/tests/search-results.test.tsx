@@ -62,7 +62,11 @@ describe("SearchResults", () => {
     const answer = screen.getByRole("heading", { name: "Answer" }).closest("section");
     const evidence = screen.getByText("invoice.pdf").closest("article");
 
-    expect(answer?.compareDocumentPosition(evidence ?? null)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    if (!answer || !evidence) {
+      throw new Error("Expected answer section and evidence card to be rendered");
+    }
+
+    expect(answer.compareDocumentPosition(evidence)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("shows blended, source, and ranking signal scores for evidence", () => {
