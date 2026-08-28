@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.documents.router import get_embedding_provider
 from app.retrieval.embeddings import EmbeddingProvider
-from app.retrieval.search import SearchHitRead, SearchRequest, SearchResponse, build_snippet, search_chunks
+from app.retrieval.reranker import rerank_hits
+from app.retrieval.search import SearchRequest, SearchResponse, format_search_hit, search_chunks
 
 router = APIRouter(tags=["search"])
 
@@ -18,20 +19,11 @@ def search(
     embedder: Annotated[EmbeddingProvider, Depends(get_embedding_provider)],
 ) -> SearchResponse:
     query_embedding = embedder.embed_texts([request.query])[0]
-    hits = search_chunks(db, query_embedding, request.top_k, request.document_id)
+    hits = rerank_hits(
+        request.query,
+        search_chunks(db, query_embedding, request.top_k, request.document_id),
+    )
     return SearchResponse(
         query=request.query,
-        hits=[
-            SearchHitRead(
-                chunk_id=hit.chunk_id,
-                document_id=hit.document_id,
-                document_filename=hit.document_filename,
-                page_number=hit.page_number,
-                chunk_index=hit.chunk_index,
-                score=hit.score,
-                snippet=build_snippet(hit.text),
-                section_heading=hit.section_heading,
-            )
-            for hit in hits
-        ],
+        hits=[format_search_hit(hit) for hit in hits],
     )
