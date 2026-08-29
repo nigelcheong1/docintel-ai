@@ -60,3 +60,59 @@ def test_build_extractive_answer_selects_the_sentence_matching_query_terms():
 
     assert answer is not None
     assert answer.summary == "The invoice total is 1250 Malaysian Ringgit."
+
+
+def test_build_extractive_answer_prefers_matching_sections_and_does_not_force_three_citations():
+    skill_hit = make_hit(
+        chunk_id="skill",
+        text="Technical Skills Python SQL PyTorch.",
+        page_number=1,
+        section_heading="TECHNICAL SKILLS",
+    )
+    education_hit = make_hit(
+        chunk_id="education",
+        text="EDUCATION B.Eng. Artificial Intelligence.",
+        page_number=1,
+        section_heading="EDUCATION",
+    )
+    experience_hit = make_hit(
+        chunk_id="experience",
+        text="EXPERIENCE Mathematics Tutor.",
+        page_number=1,
+        section_heading="EXPERIENCE",
+    )
+
+    answer = build_extractive_answer(
+        "What technical skills are mentioned?",
+        [skill_hit, education_hit, experience_hit],
+    )
+
+    assert answer is not None
+    assert [citation.chunk_id for citation in answer.citations] == ["skill"]
+    assert "EDUCATION" not in answer.summary
+    assert "EXPERIENCE" not in answer.summary
+
+
+def test_build_extractive_answer_uses_programming_language_section_for_language_queries():
+    project_hit = make_hit(
+        chunk_id="project",
+        text="PROJECTS Thesis medical segmentation.",
+        page_number=1,
+        section_heading="PROJECTS",
+    )
+    language_hit = make_hit(
+        chunk_id="languages",
+        text="Programming Languages Python, C++, C language.",
+        page_number=1,
+        section_heading="PROGRAMMING LANGUAGES",
+    )
+
+    answer = build_extractive_answer(
+        "What programming languages does this candidate know?",
+        [project_hit, language_hit],
+    )
+
+    assert answer is not None
+    assert [citation.chunk_id for citation in answer.citations] == ["languages"]
+    assert "Python" in answer.summary
+    assert "PROJECTS" not in answer.summary

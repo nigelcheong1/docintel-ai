@@ -1,6 +1,11 @@
 import pytest
 
-from app.retrieval.reranker import infer_query_intents, keyword_overlap_score, rerank_hits
+from app.retrieval.reranker import (
+    infer_query_intents,
+    infer_section_intents,
+    keyword_overlap_score,
+    rerank_hits,
+)
 from app.retrieval.search import SearchHit
 
 
@@ -29,6 +34,28 @@ def test_infer_query_intents_normalizes_section_concepts():
         "project",
         "skill",
     }
+
+
+def test_infer_query_intents_understands_programming_language_and_tools_queries():
+    assert infer_query_intents("What programming languages does this candidate know?") == {
+        "programming_language",
+        "skill",
+    }
+    assert infer_query_intents("Which tools and frameworks are listed?") == {
+        "framework",
+        "skill",
+        "tool",
+    }
+
+
+def test_infer_section_intents_normalizes_resume_section_families():
+    assert infer_section_intents("TOOLS & PLATFORMS") == {"skill", "tool"}
+    assert infer_section_intents("FRAMEWORKS & LIBRARIES") == {"framework", "skill"}
+    assert infer_section_intents("PROGRAMMING LANGUAGES") == {"programming_language", "skill"}
+    assert infer_section_intents("KEY PROJECTS") == {"project"}
+    assert infer_section_intents("EDUCATION") == {"education"}
+    assert infer_section_intents("EXPERIENCE") == {"experience"}
+    assert infer_section_intents("WORK EXPERIENCE") == {"experience"}
 
 
 def test_keyword_overlap_score_measures_query_terms_present_in_text():
