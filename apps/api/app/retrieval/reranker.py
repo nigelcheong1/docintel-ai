@@ -13,10 +13,13 @@ _INTENT_TERMS = {
     "project": {"project", "projects"},
     "skill": {"skill", "skills"},
     "education": {"education", "educational"},
-    "experience": {"experience", "work", "employment"},
+    "experience": {"experience"},
     "framework": {"framework", "frameworks", "library", "libraries"},
-    "programming_language": {"programming", "language", "languages"},
     "tool": {"tool", "tools"},
+}
+_QUERY_INTENT_PHRASES = {
+    "experience": {"work experience", "work history", "employment history"},
+    "programming_language": {"programming language", "programming languages"},
 }
 _SECTION_INTENTS = {
     "TECHNICAL SKILLS": {"skill"},
@@ -28,6 +31,9 @@ _SECTION_INTENTS = {
     "KEY PROJECTS": {"project"},
     "EDUCATION": {"education"},
     "EXPERIENCE": {"experience"},
+    "WORK EXPERIENCE": {"experience"},
+    "WORK HISTORY": {"experience"},
+    "EMPLOYMENT HISTORY": {"experience"},
 }
 _SKILL_FAMILY_INTENTS = {"framework", "programming_language", "tool"}
 _SOURCE_SCORE_WEIGHT = 0.75
@@ -46,6 +52,12 @@ def infer_query_intents(query: str) -> set[str]:
         for intent, terms in _INTENT_TERMS.items()
         if query_words.intersection(terms)
     }
+    normalized_query = " ".join(_WORD_PATTERN.findall(query.lower()))
+    intents.update(
+        intent
+        for intent, phrases in _QUERY_INTENT_PHRASES.items()
+        if any(phrase in normalized_query for phrase in phrases)
+    )
     if intents.intersection(_SKILL_FAMILY_INTENTS):
         intents.add("skill")
     return intents
@@ -57,7 +69,7 @@ def infer_section_intents(section_heading: str | None) -> set[str]:
     normalized_heading = " ".join(section_heading.upper().split())
     if normalized_heading in _SECTION_INTENTS:
         return set(_SECTION_INTENTS[normalized_heading])
-    return infer_query_intents(section_heading)
+    return set()
 
 
 def keyword_overlap_score(query: str, text: str) -> float:

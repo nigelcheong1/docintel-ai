@@ -116,3 +116,51 @@ def test_build_extractive_answer_uses_programming_language_section_for_language_
     assert [citation.chunk_id for citation in answer.citations] == ["languages"]
     assert "Python" in answer.summary
     assert "PROJECTS" not in answer.summary
+
+
+def test_build_extractive_answer_does_not_treat_bare_work_as_experience_intent():
+    invoice_hit = make_hit(
+        chunk_id="invoice",
+        text="Invoice payment is due within 30 days.",
+        page_number=1,
+        section_heading="PAYMENT TERMS",
+    )
+    experience_hit = make_hit(
+        chunk_id="experience",
+        text="Work history includes accounting process improvements.",
+        page_number=2,
+        section_heading="WORK EXPERIENCE",
+    )
+
+    answer = build_extractive_answer(
+        "How does invoice payment work?",
+        [invoice_hit, experience_hit],
+    )
+
+    assert answer is not None
+    assert answer.citations[0].chunk_id == "invoice"
+    assert answer.summary.startswith("Invoice payment is due within 30 days.")
+
+
+def test_build_extractive_answer_does_not_treat_bare_language_as_programming_intent():
+    contract_hit = make_hit(
+        chunk_id="contract",
+        text="This contract is written in English language.",
+        page_number=1,
+        section_heading="GOVERNING LANGUAGE",
+    )
+    language_hit = make_hit(
+        chunk_id="languages",
+        text="Programming Languages Python and SQL.",
+        page_number=2,
+        section_heading="PROGRAMMING LANGUAGES",
+    )
+
+    answer = build_extractive_answer(
+        "What language is this contract written in?",
+        [contract_hit, language_hit],
+    )
+
+    assert answer is not None
+    assert answer.citations[0].chunk_id == "contract"
+    assert answer.summary.startswith("This contract is written in English language.")

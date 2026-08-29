@@ -48,6 +48,16 @@ def test_infer_query_intents_understands_programming_language_and_tools_queries(
     }
 
 
+def test_infer_query_intents_requires_unambiguous_phrases_for_work_and_language():
+    assert infer_query_intents("How does invoice payment work?") == set()
+    assert infer_query_intents("What language is this contract written in?") == set()
+    assert infer_query_intents("Show the work history") == {"experience"}
+    assert infer_query_intents("Which programming languages are listed?") == {
+        "programming_language",
+        "skill",
+    }
+
+
 def test_infer_section_intents_normalizes_resume_section_families():
     assert infer_section_intents("TOOLS & PLATFORMS") == {"skill", "tool"}
     assert infer_section_intents("FRAMEWORKS & LIBRARIES") == {"framework", "skill"}

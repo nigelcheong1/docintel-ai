@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -21,6 +21,15 @@ export default function SearchPage() {
   useEffect(() => {
     getDocuments().then(setDocuments).catch(() => setDocuments([]));
   }, []);
+
+  function handleScopeChange(event: ChangeEvent<HTMLSelectElement>) {
+    latestSearchId.current += 1;
+    setSelectedDocumentId(event.target.value);
+    setHits([]);
+    setAnswer(null);
+    setIsSearching(false);
+    setMessage("Enter a question or search phrase.");
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,10 +77,10 @@ export default function SearchPage() {
           id="search-scope"
           className="w-48 rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
           value={selectedDocumentId}
-          onChange={(event) => setSelectedDocumentId(event.target.value)}
+          onChange={handleScopeChange}
         >
           <option value="">All documents</option>
-          {documents.map((document) => (
+          {documents.filter((document) => document.status === "indexed").map((document) => (
             <option key={document.id} value={document.id}>
               {document.filename}
             </option>
