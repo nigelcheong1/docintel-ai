@@ -23,6 +23,17 @@ const successfulResponse = {
       },
     ],
   },
+  quality: {
+    status: "answerable",
+    confidence: "strong",
+    reason: "Answer built from 1 cited evidence chunk.",
+    evidence_count: 1,
+    best_score: 0.87,
+    best_source_score: 0.83,
+    best_keyword_overlap: 1,
+    best_section_intent: 1,
+    suggested_questions: [],
+  },
   hits: [
     {
       chunk_id: "chunk-1",
@@ -37,7 +48,7 @@ const successfulResponse = {
       snippet: "Invoice total is 1250 Malaysian Ringgit.",
     },
   ],
-};
+  };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -188,5 +199,48 @@ describe("SearchPage", () => {
 
     expect(screen.getByText("Newer search result.")).toBeInTheDocument();
     expect(searchButton).toBeEnabled();
+  });
+
+  it("renders answer-quality abstentions and lets suggested questions fill the query", async () => {
+    apiMocks.searchDocuments.mockResolvedValue({
+      query: "How does invoice payment work?",
+      answer: null,
+      quality: {
+        status: "insufficient_evidence",
+        confidence: "weak",
+        reason: "The retrieved documents do not contain enough matching evidence to answer this question.",
+        evidence_count: 0,
+        best_score: 0.34,
+        best_source_score: 0.46,
+        best_keyword_overlap: 0,
+        best_section_intent: 0,
+        suggested_questions: ["What technical skills are mentioned?"],
+      },
+      hits: [
+        {
+          chunk_id: "chunk-weak",
+          document_id: "doc-1",
+          document_filename: "resume.pdf",
+          page_number: 1,
+          chunk_index: 0,
+          score: 0.34,
+          source_score: 0.46,
+          ranking_signals: { keyword_overlap: 0, section_intent: 0 },
+          snippet: "Technical Skills Machine Learning, Python, SQL.",
+        },
+      ],
+    });
+
+    render(<SearchPage />);
+
+    const input = screen.getByRole("textbox", { name: "Search query" });
+    fireEvent.change(input, { target: { value: "How does invoice payment work?" } });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(await screen.findByRole("heading", { name: "Not enough evidence" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "What technical skills are mentioned?" }));
+
+    expect(input).toHaveValue("What technical skills are mentioned?");
   });
 });

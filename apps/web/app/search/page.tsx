@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { SearchResults } from "@/components/search-results";
 import { getDocuments, searchDocuments } from "@/lib/api";
-import type { DocumentSummary, SearchAnswer, SearchHit } from "@/lib/types";
+import type { AnswerQuality, DocumentSummary, SearchAnswer, SearchHit } from "@/lib/types";
 
 export default function SearchPage() {
   const latestSearchId = useRef(0);
@@ -15,6 +15,7 @@ export default function SearchPage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
+  const [quality, setQuality] = useState<AnswerQuality | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
   const [isSearching, setIsSearching] = useState(false);
 
@@ -27,8 +28,19 @@ export default function SearchPage() {
     setSelectedDocumentId(event.target.value);
     setHits([]);
     setAnswer(null);
+    setQuality(null);
     setIsSearching(false);
     setMessage("Enter a question or search phrase.");
+  }
+
+  function handleSuggestionSelect(suggestion: string) {
+    latestSearchId.current += 1;
+    setQuery(suggestion);
+    setHits([]);
+    setAnswer(null);
+    setQuality(null);
+    setIsSearching(false);
+    setMessage("Search the suggested question when ready.");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -42,6 +54,7 @@ export default function SearchPage() {
     }
     setHits([]);
     setAnswer(null);
+    setQuality(null);
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
@@ -51,6 +64,7 @@ export default function SearchPage() {
       }
       setHits(response.hits);
       setAnswer(response.answer);
+      setQuality(response.quality);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
     } catch (error) {
       if (searchId === latestSearchId.current) {
@@ -98,7 +112,7 @@ export default function SearchPage() {
         </button>
       </form>
       {message ? <p className="mb-4 text-sm text-slate-600">{message}</p> : null}
-      <SearchResults hits={hits} answer={answer} />
+      <SearchResults hits={hits} answer={answer} quality={quality} onSuggestionSelect={handleSuggestionSelect} />
     </AppShell>
   );
 }

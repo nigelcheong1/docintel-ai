@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.documents.router import get_embedding_provider
-from app.retrieval.answers import build_extractive_answer
+from app.retrieval.answers import build_grounded_answer
 from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.reranker import rerank_hits
 from app.retrieval.search import SearchRequest, SearchResponse, format_search_hit, search_chunks
@@ -25,8 +25,10 @@ def search(
         request.query,
         search_chunks(db, query_embedding, candidate_limit, request.document_id),
     )[: request.top_k]
+    answer, quality = build_grounded_answer(request.query, hits)
     return SearchResponse(
         query=request.query,
         hits=[format_search_hit(hit) for hit in hits],
-        answer=build_extractive_answer(request.query, hits),
+        answer=answer,
+        quality=quality,
     )
