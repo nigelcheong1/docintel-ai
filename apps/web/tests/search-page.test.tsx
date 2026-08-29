@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SearchPage from "@/app/search/page";
 
 const apiMocks = vi.hoisted(() => ({
+  getDocuments: vi.fn(),
   searchDocuments: vi.fn(),
 }));
 
@@ -49,6 +50,22 @@ function deferred<T>() {
 describe("SearchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getDocuments.mockResolvedValue([]);
+  });
+
+  it("loads documents and searches within the selected document", async () => {
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "resume.pdf", mime_type: "application/pdf", status: "indexed" },
+    ]);
+    apiMocks.searchDocuments.mockResolvedValue(successfulResponse);
+
+    render(<SearchPage />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Search scope" }), { target: { value: "doc-1" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search query" }), { target: { value: "technical skills" } });
+    fireEvent.submit(screen.getByRole("textbox", { name: "Search query" }).closest("form")!);
+
+    await waitFor(() => expect(apiMocks.searchDocuments).toHaveBeenCalledWith("technical skills", 5, "doc-1"));
   });
 
   it("clears previous search results when a subsequent search fails", async () => {

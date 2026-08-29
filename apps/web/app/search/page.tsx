@@ -1,20 +1,26 @@
 "use client";
 
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { SearchResults } from "@/components/search-results";
-import { searchDocuments } from "@/lib/api";
-import type { SearchAnswer, SearchHit } from "@/lib/types";
+import { getDocuments, searchDocuments } from "@/lib/api";
+import type { DocumentSummary, SearchAnswer, SearchHit } from "@/lib/types";
 
 export default function SearchPage() {
   const latestSearchId = useRef(0);
   const [query, setQuery] = useState("");
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
   const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    getDocuments().then(setDocuments).catch(() => setDocuments([]));
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +36,7 @@ export default function SearchPage() {
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
-      const response = await searchDocuments(submittedQuery, 5);
+      const response = await searchDocuments(submittedQuery, 5, selectedDocumentId || undefined);
       if (searchId !== latestSearchId.current) {
         return;
       }
@@ -55,6 +61,22 @@ export default function SearchPage() {
         <p className="mt-2 text-sm text-slate-600">Retrieve cited evidence from local document embeddings.</p>
       </section>
       <form className="mb-4 flex gap-2" onSubmit={handleSubmit}>
+        <label className="sr-only" htmlFor="search-scope">
+          Search scope
+        </label>
+        <select
+          id="search-scope"
+          className="w-48 rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          value={selectedDocumentId}
+          onChange={(event) => setSelectedDocumentId(event.target.value)}
+        >
+          <option value="">All documents</option>
+          {documents.map((document) => (
+            <option key={document.id} value={document.id}>
+              {document.filename}
+            </option>
+          ))}
+        </select>
         <input
           className="min-w-0 flex-1 rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
           value={query}

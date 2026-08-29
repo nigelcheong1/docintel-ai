@@ -78,6 +78,22 @@ describe("api client", () => {
     expect(result.query).toBe("invoice");
   });
 
+  it("posts search requests scoped to a selected document", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ query: "invoice", hits: [], answer: null }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchDocuments("invoice", 5, "doc-1");
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      query: "invoice",
+      top_k: 5,
+      document_id: "doc-1",
+    });
+  });
+
   it("surfaces JSON detail from failed backend responses", async () => {
     vi.stubGlobal(
       "fetch",
