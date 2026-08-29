@@ -1,15 +1,41 @@
+from __future__ import annotations
+
 import re
 from collections.abc import Sequence
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from app.retrieval.search import SearchHit
+if TYPE_CHECKING:
+    from app.retrieval.search import SearchHit
 
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _INTENT_TERMS = {
     "project": {"project", "projects"},
     "skill": {"skill", "skills"},
     "education": {"education", "educational"},
+    "experience": {"experience"},
+    "framework": {"framework", "frameworks", "library", "libraries"},
+    "tool": {"tool", "tools"},
 }
+_QUERY_INTENT_PHRASES = {
+    "experience": {"work experience", "work history", "employment history"},
+    "programming_language": {"programming language", "programming languages"},
+}
+_SECTION_INTENTS = {
+    "TECHNICAL SKILLS": {"skill"},
+    "CORE SKILLS": {"skill"},
+    "TOOLS & PLATFORMS": {"skill", "tool"},
+    "FRAMEWORKS & LIBRARIES": {"framework", "skill"},
+    "PROGRAMMING LANGUAGES": {"programming_language", "skill"},
+    "PROJECTS": {"project"},
+    "KEY PROJECTS": {"project"},
+    "EDUCATION": {"education"},
+    "EXPERIENCE": {"experience"},
+    "WORK EXPERIENCE": {"experience"},
+    "WORK HISTORY": {"experience"},
+    "EMPLOYMENT HISTORY": {"experience"},
+}
+_SKILL_FAMILY_INTENTS = {"framework", "programming_language", "tool"}
 _SOURCE_SCORE_WEIGHT = 0.75
 _KEYWORD_OVERLAP_WEIGHT = 0.15
 _SECTION_INTENT_WEIGHT = 0.10
@@ -21,11 +47,29 @@ def _words(text: str) -> set[str]:
 
 def infer_query_intents(query: str) -> set[str]:
     query_words = _words(query)
-    return {
+    intents = {
         intent
         for intent, terms in _INTENT_TERMS.items()
         if query_words.intersection(terms)
     }
+    normalized_query = " ".join(_WORD_PATTERN.findall(query.lower()))
+    intents.update(
+        intent
+        for intent, phrases in _QUERY_INTENT_PHRASES.items()
+        if any(phrase in normalized_query for phrase in phrases)
+    )
+    if intents.intersection(_SKILL_FAMILY_INTENTS):
+        intents.add("skill")
+    return intents
+
+
+def infer_section_intents(section_heading: str | None) -> set[str]:
+    if section_heading is None:
+        return set()
+    normalized_heading = " ".join(section_heading.upper().split())
+    if normalized_heading in _SECTION_INTENTS:
+        return set(_SECTION_INTENTS[normalized_heading])
+    return set()
 
 
 def keyword_overlap_score(query: str, text: str) -> float:
@@ -36,12 +80,7 @@ def keyword_overlap_score(query: str, text: str) -> float:
 
 
 def _section_intent_score(query_intents: set[str], section_heading: str | None) -> float:
-    if not query_intents or section_heading is None:
-        return 0.0
-    heading_words = _words(section_heading)
-    return float(
-        any(heading_words.intersection(_INTENT_TERMS[intent]) for intent in query_intents)
-    )
+    return float(bool(query_intents.intersection(infer_section_intents(section_heading))))
 
 
 def rerank_hits(query: str, hits: Sequence[SearchHit]) -> list[SearchHit]:

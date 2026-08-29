@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SearchPage from "@/app/search/page";
 
 const apiMocks = vi.hoisted(() => ({
+  getDocuments: vi.fn(),
   searchDocuments: vi.fn(),
 }));
 
@@ -49,6 +50,85 @@ function deferred<T>() {
 describe("SearchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getDocuments.mockResolvedValue([]);
+  });
+
+  it("loads documents and searches within the selected document", async () => {
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "resume.pdf", mime_type: "application/pdf", status: "indexed" },
+    ]);
+    apiMocks.searchDocuments.mockResolvedValue(successfulResponse);
+
+    render(<SearchPage />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Search scope" }), { target: { value: "doc-1" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search query" }), { target: { value: "technical skills" } });
+    fireEvent.submit(screen.getByRole("textbox", { name: "Search query" }).closest("form")!);
+
+    await waitFor(() => expect(apiMocks.searchDocuments).toHaveBeenCalledWith("technical skills", 5, "doc-1"));
+  });
+
+  it("only offers indexed documents as search scope options", async () => {
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "resume.pdf", mime_type: "application/pdf", status: "indexed" },
+      { id: "doc-2", filename: "uploading.pdf", mime_type: "application/pdf", status: "processing" },
+      { id: "doc-3", filename: "failed.pdf", mime_type: "application/pdf", status: "failed" },
+    ]);
+
+    render(<SearchPage />);
+
+    const scope = await screen.findByRole("combobox", { name: "Search scope" });
+
+    expect(screen.getByRole("option", { name: "resume.pdf" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "uploading.pdf" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "failed.pdf" })).not.toBeInTheDocument();
+    expect(scope).toHaveValue("");
+  });
+
+  it("clears visible results when the search scope changes", async () => {
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "invoice.pdf", mime_type: "application/pdf", status: "indexed" },
+      { id: "doc-2", filename: "contract.pdf", mime_type: "application/pdf", status: "indexed" },
+    ]);
+    apiMocks.searchDocuments.mockResolvedValue(successfulResponse);
+
+    render(<SearchPage />);
+
+    const input = screen.getByRole("textbox", { name: "Search query" });
+    fireEvent.change(input, { target: { value: "invoice total" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(await screen.findByText("The invoice total is 1250 Malaysian Ringgit.")).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Search scope" }), { target: { value: "doc-2" } });
+
+    expect(screen.queryByText("The invoice total is 1250 Malaysian Ringgit.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "invoice.pdf" })).not.toBeInTheDocument();
+  });
+
+  it("ignores an in-flight result after the search scope changes", async () => {
+    const pendingSearch = deferred<typeof successfulResponse>();
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "invoice.pdf", mime_type: "application/pdf", status: "indexed" },
+      { id: "doc-2", filename: "contract.pdf", mime_type: "application/pdf", status: "indexed" },
+    ]);
+    apiMocks.searchDocuments.mockReturnValueOnce(pendingSearch.promise);
+
+    render(<SearchPage />);
+
+    const scope = await screen.findByRole("combobox", { name: "Search scope" });
+    const input = screen.getByRole("textbox", { name: "Search query" });
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    fireEvent.change(scope, { target: { value: "doc-1" } });
+    fireEvent.change(input, { target: { value: "invoice total" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(searchButton).toBeDisabled();
+
+    fireEvent.change(scope, { target: { value: "doc-2" } });
+    await act(async () => pendingSearch.resolve(successfulResponse));
+
+    expect(screen.queryByText("The invoice total is 1250 Malaysian Ringgit.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "invoice.pdf" })).not.toBeInTheDocument();
+    expect(searchButton).toBeEnabled();
   });
 
   it("clears previous search results when a subsequent search fails", async () => {
