@@ -5,6 +5,7 @@ import SearchPage from "@/app/search/page";
 
 const apiMocks = vi.hoisted(() => ({
   getDocuments: vi.fn(),
+  getDocumentProfile: vi.fn(),
   searchDocuments: vi.fn(),
 }));
 
@@ -12,6 +13,8 @@ vi.mock("@/lib/api", () => apiMocks);
 
 const successfulResponse = {
   query: "invoice total",
+  document_type: "invoice",
+  query_intent: "amounts",
   answer: {
     summary: "The invoice total is 1250 Malaysian Ringgit.",
     citations: [
@@ -62,6 +65,7 @@ describe("SearchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.getDocuments.mockResolvedValue([]);
+    apiMocks.getDocumentProfile.mockResolvedValue(null);
   });
 
   it("loads documents and searches within the selected document", async () => {
@@ -77,6 +81,33 @@ describe("SearchPage", () => {
     fireEvent.submit(screen.getByRole("textbox", { name: "Search query" }).closest("form")!);
 
     await waitFor(() => expect(apiMocks.searchDocuments).toHaveBeenCalledWith("technical skills", 5, "doc-1"));
+  });
+
+  it("loads a selected document profile and lets profile suggestions fill the query", async () => {
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "paper.pdf", mime_type: "application/pdf", status: "indexed" },
+    ]);
+    apiMocks.getDocumentProfile.mockResolvedValue({
+      document_id: "doc-1",
+      filename: "paper.pdf",
+      document_type: "research_paper",
+      title: "Language Guided HRI",
+      overview: "ABSTRACT This paper studies human robot interaction.",
+      sections: [],
+      key_dates: [],
+      key_numbers: [],
+      key_entities: [],
+      suggested_questions: ["What is this document about?"],
+    });
+
+    render(<SearchPage />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Search scope" }), { target: { value: "doc-1" } });
+
+    expect(await screen.findByText("Research paper")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "What is this document about?" }));
+
+    expect(screen.getByRole("textbox", { name: "Search query" })).toHaveValue("What is this document about?");
   });
 
   it("only offers indexed documents as search scope options", async () => {

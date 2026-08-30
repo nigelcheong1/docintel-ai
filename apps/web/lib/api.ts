@@ -1,4 +1,4 @@
-import type { DocumentDetail, DocumentSummary, EvalRunSummary, SearchResponse } from "@/lib/types";
+import type { DocumentDetail, DocumentProfile, DocumentSummary, EvalRunSummary, SearchResponse } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -27,6 +27,11 @@ export async function getDocuments(): Promise<DocumentSummary[]> {
 export async function getDocument(documentId: string): Promise<DocumentDetail> {
   const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, { cache: "no-store" });
   return parseJsonResponse<DocumentDetail>(response);
+}
+
+export async function getDocumentProfile(documentId: string): Promise<DocumentProfile> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/profile`, { cache: "no-store" });
+  return parseJsonResponse<DocumentProfile>(response);
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {
