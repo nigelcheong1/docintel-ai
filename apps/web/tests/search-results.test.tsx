@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { SearchResults } from "@/components/search-results";
 
@@ -26,6 +26,83 @@ describe("SearchResults", () => {
     expect(screen.getByText("The invoice total is 1250 Malaysian Ringgit.")).toBeInTheDocument();
     expect(screen.getByText("1 citation")).toBeInTheDocument();
     expect(screen.getByText("invoice.pdf, page 2, INVOICE SUMMARY")).toBeInTheDocument();
+  });
+
+  it("shows answer confidence when quality metadata is available", () => {
+    render(
+      <SearchResults
+        answer={{
+          summary: "The invoice total is 1250 Malaysian Ringgit.",
+          citations: [
+            {
+              chunk_id: "chunk-1",
+              document_filename: "invoice.pdf",
+              page_number: 2,
+              section_heading: "INVOICE SUMMARY",
+            },
+          ],
+        }}
+        quality={{
+          status: "answerable",
+          confidence: "strong",
+          reason: "Answer built from 1 cited evidence chunk.",
+          evidence_count: 1,
+          best_score: 0.91,
+          best_source_score: 0.87,
+          best_keyword_overlap: 1,
+          best_section_intent: 1,
+          suggested_questions: [],
+        }}
+        hits={[]}
+      />,
+    );
+
+    expect(screen.getByText("Strong confidence")).toBeInTheDocument();
+    expect(screen.getByText("Answer built from 1 cited evidence chunk.")).toBeInTheDocument();
+  });
+
+  it("renders an abstention panel with suggested questions", () => {
+    const handleSuggestionSelect = vi.fn();
+    render(
+      <SearchResults
+        answer={null}
+        quality={{
+          status: "insufficient_evidence",
+          confidence: "weak",
+          reason: "The retrieved documents do not contain enough matching evidence to answer this question.",
+          evidence_count: 0,
+          best_score: 0.34,
+          best_source_score: 0.46,
+          best_keyword_overlap: 0,
+          best_section_intent: 0,
+          suggested_questions: ["What technical skills are mentioned?"],
+        }}
+        hits={[
+          {
+            chunk_id: "chunk-weak",
+            document_id: "doc-1",
+            document_filename: "resume.pdf",
+            page_number: 1,
+            chunk_index: 0,
+            score: 0.34,
+            source_score: 0.46,
+            ranking_signals: { keyword_overlap: 0, section_intent: 0 },
+            snippet: "Technical Skills Machine Learning, Python, SQL.",
+          },
+        ]}
+        onSuggestionSelect={handleSuggestionSelect}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Not enough evidence" })).toBeInTheDocument();
+    expect(screen.getByText("Weak confidence")).toBeInTheDocument();
+    expect(
+      screen.getByText("The retrieved documents do not contain enough matching evidence to answer this question."),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "What technical skills are mentioned?" }));
+
+    expect(handleSuggestionSelect).toHaveBeenCalledWith("What technical skills are mentioned?");
   });
 
   it("renders an answer before its supporting evidence", () => {

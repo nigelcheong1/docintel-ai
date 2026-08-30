@@ -50,6 +50,8 @@ def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     assert "invoice" in body["hits"][0]["snippet"].lower()
     assert body["answer"] is not None
     assert body["answer"]["citations"][0]["chunk_id"] == body["hits"][0]["chunk_id"]
+    assert body["quality"]["status"] == "answerable"
+    assert body["quality"]["confidence"] in {"strong", "moderate"}
 
 
 def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
@@ -127,3 +129,53 @@ def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):
     assert body["hits"][0]["chunk_id"] == "project-12"
     assert body["hits"][0]["source_score"] == 0.84
     assert body["hits"][0]["ranking_signals"] == {"keyword_overlap": 1.0, "section_intent": 1.0}
+
+
+def test_search_endpoint_abstains_when_retrieved_hits_do_not_answer_question(monkeypatch):
+    candidates = [
+        SearchHit(
+            chunk_id="contact",
+            document_id="document-1",
+            document_filename="resume.pdf",
+            page_number=1,
+            chunk_index=0,
+            text="Nigel Cheong Kuala Lumpur github.com/nigelcheong1.",
+            score=0.46,
+            source_score=0.46,
+        ),
+        SearchHit(
+            chunk_id="skills",
+            document_id="document-1",
+            document_filename="resume.pdf",
+            page_number=1,
+            chunk_index=1,
+            text="TECHNICAL SKILLS Machine Learning, Computer Vision, Python, SQL.",
+            score=0.45,
+            source_score=0.45,
+            section_heading="TECHNICAL SKILLS",
+        ),
+    ]
+
+    def search_resume_candidates(_db, _embedding, _top_k, _document_id):
+        return candidates
+
+    monkeypatch.setattr(retrieval_router, "search_chunks", search_resume_candidates)
+    app = create_app()
+
+    def override_db():
+        yield object()
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post(
+        "/search",
+        json={"query": "How does invoice payment work?", "top_k": 2, "document_id": "document-1"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["hits"]) == 2
+    assert body["answer"] is None
+    assert body["quality"]["status"] == "insufficient_evidence"
+    assert body["quality"]["confidence"] == "weak"
+    assert "What technical skills are mentioned?" in body["quality"]["suggested_questions"]

@@ -38,10 +38,23 @@ export type SearchAnswer = {
   citations: AnswerCitation[];
 };
 
+export type AnswerQuality = {
+  status: "answerable" | "insufficient_evidence";
+  confidence: "strong" | "moderate" | "weak";
+  reason: string;
+  evidence_count: number;
+  best_score: number;
+  best_source_score: number;
+  best_keyword_overlap: number;
+  best_section_intent: number;
+  suggested_questions: string[];
+};
+
 export type SearchResponse = {
   query: string;
   hits: SearchHit[];
   answer: SearchAnswer | null;
+  quality: AnswerQuality;
 };
 
 export type EvalRunSummary = {

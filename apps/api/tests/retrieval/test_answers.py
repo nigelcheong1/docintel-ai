@@ -1,4 +1,4 @@
-from app.retrieval.answers import build_extractive_answer
+from app.retrieval.answers import build_extractive_answer, build_grounded_answer
 from app.retrieval.search import SearchHit
 
 
@@ -164,3 +164,146 @@ def test_build_extractive_answer_does_not_treat_bare_language_as_programming_int
     assert answer is not None
     assert answer.citations[0].chunk_id == "contract"
     assert answer.summary.startswith("This contract is written in English language.")
+
+
+def test_build_grounded_answer_reports_strong_quality_for_matching_section_evidence():
+    skill_hit = make_hit(
+        chunk_id="skill",
+        text="Technical Skills Python SQL PyTorch.",
+        page_number=1,
+        section_heading="TECHNICAL SKILLS",
+    )
+    education_hit = make_hit(
+        chunk_id="education",
+        text="EDUCATION B.Eng. Artificial Intelligence.",
+        page_number=1,
+        section_heading="EDUCATION",
+    )
+
+    answer, quality = build_grounded_answer(
+        "What technical skills are mentioned?",
+        [skill_hit, education_hit],
+    )
+
+    assert answer is not None
+    assert [citation.chunk_id for citation in answer.citations] == ["skill"]
+    assert quality.status == "answerable"
+    assert quality.confidence == "strong"
+    assert quality.evidence_count == 1
+    assert quality.best_keyword_overlap >= 0.5
+
+
+def test_build_grounded_answer_abstains_for_unrelated_question():
+    profile_hit = make_hit(
+        chunk_id="profile",
+        text="Nigel Cheong Kuala Lumpur github.com/nigelcheong1.",
+        page_number=1,
+        section_heading=None,
+    )
+    experience_hit = make_hit(
+        chunk_id="experience",
+        text="EXPERIENCE Mathematics Tutor for high-school students.",
+        page_number=1,
+        section_heading="EXPERIENCE",
+    )
+    skill_hit = make_hit(
+        chunk_id="skill",
+        text="TECHNICAL SKILLS Machine Learning, Computer Vision, Python, SQL.",
+        page_number=1,
+        section_heading="TECHNICAL SKILLS",
+    )
+
+    answer, quality = build_grounded_answer(
+        "How does invoice payment work?",
+        [profile_hit, experience_hit, skill_hit],
+    )
+
+    assert answer is None
+    assert quality.status == "insufficient_evidence"
+    assert quality.confidence == "weak"
+    assert "do not contain enough matching evidence" in quality.reason
+    assert "What technical skills are mentioned?" in quality.suggested_questions
+
+
+def test_build_grounded_answer_requires_domain_anchor_for_unfocused_questions():
+    payment_work_hit = make_hit(
+        chunk_id="payment-work",
+        text=(
+            "EXPERIENCE Administrative assistant. "
+            "Coordinated payment records and work schedules for office operations."
+        ),
+        page_number=1,
+        section_heading="EXPERIENCE",
+    )
+
+    answer, quality = build_grounded_answer(
+        "How does invoice payment work?",
+        [payment_work_hit],
+    )
+
+    assert answer is None
+    assert quality.status == "insufficient_evidence"
+    assert quality.best_keyword_overlap < 0.6
+
+
+def test_build_grounded_answer_abstains_for_document_language_without_explicit_evidence():
+    skill_hit = make_hit(
+        chunk_id="skill",
+        text=(
+            "TECHNICAL SKILLS Natural Language Processing. "
+            "Programming Languages Python, C++, SQL."
+        ),
+        page_number=1,
+        section_heading="TECHNICAL SKILLS",
+    )
+
+    answer, quality = build_grounded_answer(
+        "What language is this document written in?",
+        [skill_hit],
+    )
+
+    assert answer is None
+    assert quality.status == "insufficient_evidence"
+    assert "written language" in quality.reason
+
+
+def test_build_grounded_answer_does_not_treat_resume_language_section_as_written_language():
+    language_hit = make_hit(
+        chunk_id="language",
+        text="LANGUAGE English, Malay, Mandarin.",
+        page_number=1,
+        section_heading="LANGUAGE",
+    )
+
+    answer, quality = build_grounded_answer(
+        "What language is this document written in?",
+        [language_hit],
+    )
+
+    assert answer is None
+    assert quality.status == "insufficient_evidence"
+    assert "written language" in quality.reason
+
+
+def test_build_grounded_answer_allows_document_language_when_explicitly_cited():
+    contract_hit = make_hit(
+        chunk_id="contract",
+        text="This contract is written in English language.",
+        page_number=1,
+        section_heading="GOVERNING LANGUAGE",
+    )
+    programming_hit = make_hit(
+        chunk_id="languages",
+        text="Programming Languages Python and SQL.",
+        page_number=2,
+        section_heading="PROGRAMMING LANGUAGES",
+    )
+
+    answer, quality = build_grounded_answer(
+        "What language is this contract written in?",
+        [contract_hit, programming_hit],
+    )
+
+    assert answer is not None
+    assert answer.citations[0].chunk_id == "contract"
+    assert quality.status == "answerable"

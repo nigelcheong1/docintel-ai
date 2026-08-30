@@ -65,7 +65,22 @@ describe("api client", () => {
   it("posts search requests", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ query: "invoice", hits: [] }),
+      json: async () => ({
+        query: "invoice",
+        hits: [],
+        answer: null,
+        quality: {
+          status: "insufficient_evidence",
+          confidence: "weak",
+          reason: "No indexed evidence was retrieved for this question.",
+          evidence_count: 0,
+          best_score: 0,
+          best_source_score: 0,
+          best_keyword_overlap: 0,
+          best_section_intent: 0,
+          suggested_questions: [],
+        },
+      }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -76,12 +91,28 @@ describe("api client", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(result.query).toBe("invoice");
+    expect(result.quality.status).toBe("insufficient_evidence");
   });
 
   it("posts search requests scoped to a selected document", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ query: "invoice", hits: [], answer: null }),
+      json: async () => ({
+        query: "invoice",
+        hits: [],
+        answer: null,
+        quality: {
+          status: "insufficient_evidence",
+          confidence: "weak",
+          reason: "No indexed evidence was retrieved for this question.",
+          evidence_count: 0,
+          best_score: 0,
+          best_source_score: 0,
+          best_keyword_overlap: 0,
+          best_section_intent: 0,
+          suggested_questions: [],
+        },
+      }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
