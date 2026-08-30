@@ -61,7 +61,12 @@ def test_profile_detects_research_paper_sections_and_questions():
 
     assert profile.document_type == "research_paper"
     assert profile.title == "Human-to-Robot Action Recognition with Language Guidance"
-    assert [section.heading for section in profile.sections] == ["ABSTRACT", "RESULTS"]
+    assert [section.heading for section in profile.sections] == [
+        "ABSTRACT",
+        "INTRODUCTION",
+        "RESULTS",
+        "REFERENCES",
+    ]
     assert any(fact.value == "Kinetics-400" for fact in profile.key_entities)
     assert "What is this document about?" in profile.suggested_questions
     assert "What results are reported?" in profile.suggested_questions
@@ -111,6 +116,30 @@ def test_profile_extracts_research_table_metrics_without_percent_symbols():
     assert any(fact.value == "30.650" for fact in profile.key_numbers)
 
 
+def test_profile_merges_chunk_sections_with_numbered_page_headings():
+    document = make_document(
+        "paper.pdf",
+        "\n".join(
+            [
+                "Language Guided Human-to-Robot Action Recognition",
+                "Abstract",
+                "This paper studies human robot interaction.",
+                "1. Introduction",
+                "Human action recognition is important for robotics.",
+                "2. Method",
+                "The method fuses video and language features.",
+            ]
+        ),
+        [
+            ("ABSTRACT This paper studies human robot interaction.", "ABSTRACT"),
+        ],
+    )
+
+    profile = build_document_profile(document)
+
+    assert [section.heading for section in profile.sections] == ["ABSTRACT", "INTRODUCTION", "METHOD"]
+
+
 def test_profile_detects_contract_parties_and_obligation_sections():
     document = make_document(
         "service-agreement.pdf",
@@ -138,3 +167,34 @@ def test_profile_detects_contract_parties_and_obligation_sections():
     assert any(section.heading == "OBLIGATIONS" for section in profile.sections)
     assert any(fact.value == "Acme Robotics Sdn Bhd" for fact in profile.key_entities)
     assert "Who are the parties involved?" in profile.suggested_questions
+
+
+def test_profile_detects_reports_with_findings_recommendations_and_risks():
+    document = make_document(
+        "quarterly-report.pdf",
+        "\n".join(
+            [
+                "Q3 Student Research Operations Report",
+                "Executive Summary",
+                "The report reviews lab usage and thesis milestones.",
+                "Findings",
+                "Students submitted 24 draft proposals.",
+                "Recommendations",
+                "Increase supervisor office hours before proposal week.",
+                "Risks",
+                "Delayed ethics approval may affect data collection.",
+            ]
+        ),
+        [
+            ("EXECUTIVE SUMMARY The report reviews lab usage and thesis milestones.", "EXECUTIVE SUMMARY"),
+            ("FINDINGS Students submitted 24 draft proposals.", "FINDINGS"),
+            ("RECOMMENDATIONS Increase supervisor office hours before proposal week.", "RECOMMENDATIONS"),
+            ("RISKS Delayed ethics approval may affect data collection.", "RISKS"),
+        ],
+    )
+
+    profile = build_document_profile(document)
+
+    assert profile.document_type == "report"
+    assert "What recommendations are listed?" in profile.suggested_questions
+    assert any(section.heading == "FINDINGS" for section in profile.sections)

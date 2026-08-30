@@ -87,6 +87,7 @@ describe("SearchPage", () => {
     apiMocks.getDocuments.mockResolvedValue([
       { id: "doc-1", filename: "paper.pdf", mime_type: "application/pdf", status: "indexed" },
     ]);
+    apiMocks.searchDocuments.mockResolvedValue(successfulResponse);
     apiMocks.getDocumentProfile.mockResolvedValue({
       document_id: "doc-1",
       filename: "paper.pdf",
@@ -108,6 +109,9 @@ describe("SearchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "What is this document about?" }));
 
     expect(screen.getByRole("textbox", { name: "Search query" })).toHaveValue("What is this document about?");
+    await waitFor(() =>
+      expect(apiMocks.searchDocuments).toHaveBeenCalledWith("What is this document about?", 5, "doc-1"),
+    );
   });
 
   it("only offers indexed documents as search scope options", async () => {
@@ -233,7 +237,7 @@ describe("SearchPage", () => {
   });
 
   it("renders answer-quality abstentions and lets suggested questions fill the query", async () => {
-    apiMocks.searchDocuments.mockResolvedValue({
+    apiMocks.searchDocuments.mockResolvedValueOnce({
       query: "How does invoice payment work?",
       answer: null,
       quality: {
@@ -260,7 +264,7 @@ describe("SearchPage", () => {
           snippet: "Technical Skills Machine Learning, Python, SQL.",
         },
       ],
-    });
+    }).mockResolvedValueOnce(successfulResponse);
 
     render(<SearchPage />);
 
@@ -273,5 +277,8 @@ describe("SearchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "What technical skills are mentioned?" }));
 
     expect(input).toHaveValue("What technical skills are mentioned?");
+    await waitFor(() =>
+      expect(apiMocks.searchDocuments).toHaveBeenLastCalledWith("What technical skills are mentioned?", 5, undefined),
+    );
   });
 });

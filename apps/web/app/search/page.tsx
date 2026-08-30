@@ -68,22 +68,9 @@ export default function SearchPage() {
     setMessage("Enter a question or search phrase.");
   }
 
-  function handleSuggestionSelect(suggestion: string) {
-    latestSearchId.current += 1;
-    setQuery(suggestion);
-    setHits([]);
-    setAnswer(null);
-    setQuality(null);
-    setDocumentType(null);
-    setQueryIntent(null);
-    setIsSearching(false);
-    setMessage("Search the suggested question when ready.");
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runSearch(rawQuery: string) {
     const searchId = ++latestSearchId.current;
-    const submittedQuery = query.trim();
+    const submittedQuery = rawQuery.trim();
     if (!submittedQuery) {
       setMessage("Enter a question or search phrase.");
       setIsSearching(false);
@@ -116,6 +103,16 @@ export default function SearchPage() {
         setIsSearching(false);
       }
     }
+  }
+
+  function handleSuggestionSelect(suggestion: string) {
+    setQuery(suggestion);
+    void runSearch(suggestion);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runSearch(query);
   }
 
   return (

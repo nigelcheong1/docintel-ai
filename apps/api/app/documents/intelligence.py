@@ -26,7 +26,26 @@ _DATE_PATTERNS = (
     ),
     re.compile(r"\b(?:19|20)\d{2}\b"),
 )
+_DATE_LABELS = (
+    ("due date", "Due date"),
+    ("payment due", "Due date"),
+    ("issue date", "Issue date"),
+    ("invoice date", "Issue date"),
+    ("effective date", "Effective date"),
+    ("deadline", "Deadline"),
+    ("expected", "Expected date"),
+)
 _MONEY_PATTERN = re.compile(r"\b(?:RM|USD|EUR|GBP|MYR|\$|€|£)\s?\d[\d,]*(?:\.\d{2})?\b", re.IGNORECASE)
+_AMOUNT_LABELS = (
+    ("total due", "Total due"),
+    ("amount due", "Total due"),
+    ("balance due", "Balance due"),
+    ("subtotal", "Subtotal"),
+    ("tax", "Tax"),
+    ("total", "Total"),
+    ("fee", "Fee"),
+    ("cost", "Cost"),
+)
 _PERCENT_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\s?%\b")
 _METRIC_PATTERN = re.compile(r"\b(?:TOP1|TOP5|F1|ACC|AUC|MAP|IOU|DICE|RECALL|PRECISION)[\s:=]*\d+(?:\.\d+)?\b", re.IGNORECASE)
 _TABLE_NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\b")
@@ -311,7 +330,14 @@ def _sections_from_page_lines(pages: Iterable[Page]) -> list[DocumentSectionRead
             if key in seen:
                 continue
             seen.add(key)
-            body_lines = lines[index + 1 : index + 7] or [line]
+            body_lines: list[str] = []
+            for body_line in lines[index + 1 :]:
+                if _line_heading(body_line) in _KNOWN_HEADINGS:
+                    break
+                body_lines.append(body_line)
+                if len(body_lines) >= 6:
+                    break
+            body_lines = body_lines or [line]
             preview = _truncate(" ".join(body_lines))
             sections.append(
                 DocumentSectionRead(
@@ -321,6 +347,19 @@ def _sections_from_page_lines(pages: Iterable[Page]) -> list[DocumentSectionRead
                     intents=sorted(infer_section_intents(heading)),
                 )
             )
+    return sections
+
+
+def _merge_sections(*section_groups: Iterable[DocumentSectionRead]) -> list[DocumentSectionRead]:
+    sections: list[DocumentSectionRead] = []
+    seen: set[tuple[str, int]] = set()
+    for group in section_groups:
+        for section in group:
+            key = (section.heading, section.page_number)
+            if key in seen:
+                continue
+            seen.add(key)
+            sections.append(section)
     return sections
 
 
@@ -341,9 +380,8 @@ def _sections_from_chunks(document: Document) -> list[DocumentSectionRead]:
 
 def extract_sections(document: Document) -> list[DocumentSectionRead]:
     chunk_sections = _sections_from_chunks(document)
-    if chunk_sections:
-        return chunk_sections[:_MAX_SECTIONS]
-    return _sections_from_page_lines(_ordered_pages(document))[:_MAX_SECTIONS]
+    line_sections = _sections_from_page_lines(_ordered_pages(document))
+    return _merge_sections(line_sections, chunk_sections)[:_MAX_SECTIONS]
 
 
 def infer_document_type(filename: str, text: str, sections: Iterable[DocumentSectionRead]) -> DocumentType:
@@ -413,6 +451,18 @@ def _context(text: str, value: str, window: int = 80) -> str:
     return _truncate(text[start:end], 180)
 
 
+def _label_from_context(text: str, match_start: int, labels: tuple[tuple[str, str], ...], default: str) -> str:
+    prefix = clean_text(text[max(0, match_start - 90) : match_start]).lower()
+    best_label = default
+    best_index = -1
+    for marker, label in labels:
+        marker_index = prefix.rfind(marker)
+        if marker_index > best_index:
+            best_label = label
+            best_index = marker_index
+    return best_label
+
+
 def _add_fact(
     facts: list[DocumentFactRead],
     seen: set[tuple[str, str]],
@@ -452,7 +502,7 @@ def extract_dates(document: Document) -> list[DocumentFactRead]:
                     facts,
                     seen,
                     kind="date",
-                    label="Date",
+                    label=_label_from_context(page.text, match.start(), _DATE_LABELS, "Date"),
                     value=match.group(0),
                     page_number=page.page_number,
                     source_text=page.text,
@@ -473,11 +523,16 @@ def extract_numbers(document: Document) -> list[DocumentFactRead]:
             ("metric", "Metric", _METRIC_PATTERN),
         ):
             for match in pattern.finditer(page.text):
+                fact_label = (
+                    _label_from_context(page.text, match.start(), _AMOUNT_LABELS, label)
+                    if kind == "amount"
+                    else label
+                )
                 _add_fact(
                     facts,
                     seen,
                     kind=kind,
-                    label=label,
+                    label=fact_label,
                     value=match.group(0),
                     page_number=page.page_number,
                     source_text=page.text,

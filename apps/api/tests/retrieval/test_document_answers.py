@@ -82,6 +82,59 @@ def test_builds_invoice_amount_answer_from_total_chunk():
     assert result.quality.confidence == "strong"
 
 
+def test_amount_answer_prioritizes_total_due_and_cites_only_present_values():
+    document = make_document(
+        "invoice.pdf",
+        "\n".join(
+            [
+                "Invoice",
+                "Subtotal RM 1,200.00",
+                "Tax RM 72.00",
+                "Total Due RM 1,272.00",
+            ]
+        ),
+        [("PAYMENT SUMMARY Total Due RM 1,272.00", "PAYMENT SUMMARY")],
+    )
+
+    result = answer_for("What total amount is due?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Total due: RM 1,272.00" in result.answer.summary
+    assert "RM 1,200.00" not in result.answer.summary
+    assert "RM 72.00" not in result.answer.summary
+    assert len(result.answer.citations) == 1
+
+
+def test_date_answer_prioritizes_due_date_over_issue_date():
+    document = make_document(
+        "invoice.pdf",
+        "Invoice\nIssue Date: 2026-08-01\nDue Date: 2026-08-30",
+        [("PAYMENT SUMMARY Issue Date: 2026-08-01 Due Date: 2026-08-30", "PAYMENT SUMMARY")],
+    )
+
+    result = answer_for("When is payment due?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Due date: 2026-08-30" in result.answer.summary
+    assert "Issue date: 2026-08-01" not in result.answer.summary
+
+
+def test_fact_answer_does_not_fallback_to_uncited_opening_chunks():
+    document = make_document(
+        "invoice.pdf",
+        "Invoice\nTotal Due RM 1,272.00",
+        [("This opening chunk does not contain the invoice amount.", None)],
+    )
+
+    result = answer_for("What total amount is due?", document)
+
+    assert result is not None
+    assert result.answer is None
+    assert result.quality.status == "insufficient_evidence"
+
+
 def test_builds_research_metric_answer_from_table_numbers():
     document = make_document(
         "paper.pdf",
@@ -97,6 +150,23 @@ def test_builds_research_metric_answer_from_table_numbers():
     assert result is not None
     assert result.answer is not None
     assert "30.650" in result.answer.summary
+
+
+def test_builds_report_recommendation_answer():
+    document = make_document(
+        "quarterly-report.pdf",
+        "Executive Summary\nThe report reviews lab usage.\nRecommendations\nIncrease supervisor office hours.",
+        [
+            ("EXECUTIVE SUMMARY The report reviews lab usage.", "EXECUTIVE SUMMARY"),
+            ("RECOMMENDATIONS Increase supervisor office hours.", "RECOMMENDATIONS"),
+        ],
+    )
+
+    result = answer_for("What recommendations are listed?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Increase supervisor office hours" in result.answer.summary
 
 
 def test_builds_contract_parties_answer():

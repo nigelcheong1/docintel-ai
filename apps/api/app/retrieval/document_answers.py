@@ -74,6 +74,10 @@ def _words(text: str) -> set[str]:
     return set(_WORD_PATTERN.findall(text.lower()))
 
 
+def _normalized(text: str) -> str:
+    return " ".join(_WORD_PATTERN.findall(text.lower()))
+
+
 def _snippet(text: str, query: str, *, prefer_first: bool = False) -> str:
     cleaned = clean_text(text)
     sentences = [sentence.strip() for sentence in _SENTENCE_BOUNDARY.split(cleaned) if sentence.strip()]
@@ -172,6 +176,57 @@ def _chunks_containing_values(document: Document, values: list[str]) -> list[Chu
     return selected
 
 
+def _chunk_for_fact(document: Document, fact: DocumentFactRead) -> Chunk | None:
+    lowered_value = fact.value.lower()
+    for chunk in ordered_chunks(document):
+        if lowered_value in chunk.text.lower():
+            return chunk
+    return None
+
+
+def _fact_relevance(query: str, fact: DocumentFactRead) -> int:
+    normalized_query = _normalized(query)
+    searchable = _normalized(f"{fact.label} {fact.kind} {fact.source_text}")
+    query_words = _words(query)
+    score = len(query_words.intersection(_words(searchable)))
+
+    label = fact.label.lower()
+    source = fact.source_text.lower()
+    if "total" in normalized_query and "total" in label:
+        score += 6
+    if "due" in normalized_query and "due" in label:
+        score += 5
+    if "payment" in normalized_query and ("payment" in source or "due" in label):
+        score += 2
+    if "issue" in normalized_query and "issue" in label:
+        score += 5
+    if "effective" in normalized_query and "effective" in label:
+        score += 5
+    if "subtotal" in normalized_query and "subtotal" in label:
+        score += 5
+    if "tax" in normalized_query and "tax" in label:
+        score += 5
+    if ("billed to" in normalized_query or "bill to" in normalized_query) and "bill to" in source:
+        score += 5
+    if fact.kind == "metric" and any(term in normalized_query for term in ("amount", "total", "metric", "number")):
+        score += 1
+    return score
+
+
+def _rank_facts(query: str, facts: list[DocumentFactRead]) -> list[DocumentFactRead]:
+    ranked = sorted(facts, key=lambda fact: _fact_relevance(query, fact), reverse=True)
+    if not ranked:
+        return []
+    best_score = _fact_relevance(query, ranked[0])
+    if best_score <= 0:
+        return ranked[:_MAX_ANSWER_CHUNKS]
+    return [fact for fact in ranked if _fact_relevance(query, fact) == best_score][:_MAX_ANSWER_CHUNKS]
+
+
+def _fact_label(fact: DocumentFactRead) -> str:
+    return fact.label[:1].upper() + fact.label[1:]
+
+
 def _answer_from_facts(
     *,
     query: str,
@@ -182,31 +237,45 @@ def _answer_from_facts(
     label: str,
     confidence: Literal["strong", "moderate", "weak"] = "moderate",
 ) -> DocumentAwareAnswer | None:
-    values = [fact.value for fact in facts[:6]]
-    if not values:
-        return None
-    chunks = _chunks_containing_values(document, values)
-    if not chunks:
-        chunks = _fallback_opening_chunks(document)
-    if not chunks:
-        return None
-    result = _build_answer(
-        query=query,
-        chunks=chunks,
-        profile=profile,
-        route=route,
-        confidence=confidence,
-        reason=f"Document-aware {route.intent} answer built from extracted {label} evidence.",
-    )
-    if result is None or result.answer is None:
+    pairs: list[tuple[DocumentFactRead, Chunk]] = []
+    seen_values: set[str] = set()
+    for fact in _rank_facts(query, facts):
+        chunk = _chunk_for_fact(document, fact)
+        if chunk is None:
+            continue
+        key = f"{fact.kind}:{fact.value.lower()}"
+        if key in seen_values:
+            continue
+        seen_values.add(key)
+        pairs.append((fact, chunk))
+        if len(pairs) >= _MAX_ANSWER_CHUNKS:
+            break
+
+    if not pairs:
         return None
 
-    fact_text = f"{label.capitalize()} mentioned: {', '.join(values)}."
+    citations: list[AnswerCitation] = []
+    seen_chunk_ids: set[str] = set()
+    for _fact, chunk in pairs:
+        if chunk.id in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(chunk.id)
+        citations.append(_citation(chunk))
+
+    fact_text = f"{label.capitalize()} mentioned: " + ", ".join(
+        f"{_fact_label(fact)}: {fact.value}" for fact, _chunk in pairs
+    ) + "."
     return DocumentAwareAnswer(
-        answer=ExtractiveAnswer(summary=fact_text, citations=result.answer.citations),
-        quality=result.quality,
-        query_intent=result.query_intent,
-        document_type=result.document_type,
+        answer=ExtractiveAnswer(summary=fact_text, citations=citations),
+        quality=_quality(
+            status="answerable",
+            confidence=confidence,
+            reason=f"Document-aware {route.intent} answer built from extracted {label} evidence.",
+            evidence_count=len(citations),
+            suggested_questions=profile.suggested_questions,
+        ),
+        query_intent=route.intent,
+        document_type=profile.document_type,
     )
 
 
@@ -325,6 +394,16 @@ def build_document_aware_answer(
     if route.intent == "amounts":
         result = _amount_answer(query, document, profile, route)
         return result or _no_answer("No amounts, totals, or measurable metrics were detected in this document.", profile, route)
+    if route.intent == "payment_terms":
+        return _section_answer(
+            query,
+            document,
+            profile,
+            route,
+            headings={"PAYMENT TERMS", "PAYMENT SUMMARY", "PAYMENT"},
+            terms={"payment terms", "payment term", "due date", "balance due", "total due"},
+            confidence="strong",
+        )
     if route.intent == "parties":
         result = _party_answer(query, document, profile, route)
         return result or _no_answer("No party, vendor, client, or bill-to evidence was detected in this document.", profile, route)
@@ -367,6 +446,16 @@ def build_document_aware_answer(
             route,
             headings={"RESULT", "RESULTS", "EVALUATION", "FINDINGS", "EXPERIMENTS"},
             terms={"result", "accuracy", "performance", "top1", "top5", "f1", "findings", "improve"},
+            confidence="strong",
+        )
+    if route.intent == "recommendations":
+        return _section_answer(
+            query,
+            document,
+            profile,
+            route,
+            headings={"RECOMMENDATIONS", "NEXT STEPS", "CONCLUSION"},
+            terms={"recommendation", "recommendations", "recommend", "should", "next steps"},
             confidence="strong",
         )
     if route.intent in {"limitations", "risks", "obligations"}:

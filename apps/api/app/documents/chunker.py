@@ -98,7 +98,7 @@ _HEADING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _STANDALONE_HEADING_PATTERN = re.compile(
-    r"^\s*(?:[-*#]+\s*)?("
+    r"^\s*(?:[-*#]+\s*)?(?:\d+(?:\.\d+)*\.?\s*)?("
     + "|".join(re.escape(heading) for heading in sorted(_SECTION_HEADINGS, key=len, reverse=True))
     + r")\s*:?\s*$",
     re.IGNORECASE,

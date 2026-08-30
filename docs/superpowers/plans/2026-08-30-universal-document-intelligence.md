@@ -89,7 +89,7 @@
 
 - [x] Step 1: Run full backend tests.
 - [x] Step 2: Run full frontend tests, lint, and build.
-- [ ] Step 3: Run `git diff --check` and review the branch diff.
-- [ ] Step 4: Use a sidecar review agent for final code review.
+- [x] Step 3: Run `git diff --check` and review the branch diff.
+- [x] Step 4: Use a sidecar review agent for final code review.
 - [ ] Step 5: Commit and push `feature/universal-document-intelligence`.
 - [ ] Step 6: Provide the PR compare URL if a PR is not created automatically.
