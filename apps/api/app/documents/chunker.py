@@ -104,6 +104,61 @@ _STANDALONE_HEADING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SINGLE_WORD_HEADINGS = {heading for heading in _SECTION_HEADINGS if " " not in heading}
+_HEADING_BY_NORMALIZED = {re.sub(r"[^A-Z0-9]+", " ", heading).strip(): heading for heading in _SECTION_HEADINGS}
+_HEADING_BY_COMPACT = {re.sub(r"[^A-Z0-9]+", "", heading): heading for heading in _SECTION_HEADINGS}
+_SPACED_HEADING_REPLACEMENTS = tuple(
+    (
+        re.compile(r"\b" + r"\s+".join(re.escape(char) for char in re.sub(r"[^A-Z0-9]+", "", heading)) + r"\b", re.IGNORECASE),
+        heading,
+    )
+    for heading in sorted(_SECTION_HEADINGS, key=len, reverse=True)
+    if len(re.sub(r"[^A-Z0-9]+", "", heading)) >= 4
+)
+_ACADEMIC_NUMBERED_HEADING_PATTERN = re.compile(
+    r"^\s*(?P<number>\d+(?:\.\d+)*\.)\s*(?P<title>[A-Za-z][A-Za-z0-9 /&,\-–]{2,90})\s*:?\s*$"
+)
+_ACADEMIC_HEADING_SKIP_PATTERN = re.compile(r"^(?:fig|figure|table)\.?\s+\d+", re.IGNORECASE)
+_ACADEMIC_DATASET_TERMS = {"dataset", "datasets", "benchmark", "benchmarks", "corpus"}
+_ACADEMIC_METHOD_TERMS = {
+    "architecture",
+    "attention",
+    "encoder",
+    "framework",
+    "fusion",
+    "implementation setting",
+    "implementation settings",
+    "learning framework",
+    "methodology",
+    "model",
+    "module",
+    "pipeline",
+    "task formulation",
+    "textual supervision",
+    "translation",
+}
+_ACADEMIC_RESULT_TERMS = {
+    "ablation",
+    "case study",
+    "comparison",
+    "effectiveness",
+    "evaluation",
+    "experiment",
+    "experiments",
+    "finding",
+    "findings",
+    "performance",
+    "result",
+    "results",
+}
+_ACADEMIC_LIMITATION_TERMS = {
+    "conclusion",
+    "future direction",
+    "future directions",
+    "future research",
+    "future work",
+    "limitation",
+    "limitations",
+}
 
 
 @dataclass(frozen=True)
@@ -123,15 +178,52 @@ class _Section:
 
 
 def _normalize_text(text: str) -> str:
-    return " ".join(text.split())
+    normalized = text
+    for pattern, heading in _SPACED_HEADING_REPLACEMENTS:
+        normalized = pattern.sub(heading, normalized)
+    return " ".join(normalized.split())
 
 
 def _canonical_heading(value: str) -> str:
-    normalized = _normalize_text(value).upper()
-    for heading in _SECTION_HEADINGS:
-        if normalized == heading.upper():
-            return heading.upper()
-    return normalized
+    normalized = re.sub(r"[^A-Za-z0-9]+", " ", _normalize_text(value)).strip().upper()
+    compact = re.sub(r"[^A-Z0-9]+", "", normalized)
+    return _HEADING_BY_NORMALIZED.get(normalized, _HEADING_BY_COMPACT.get(compact, normalized))
+
+
+def _academic_heading_alias(line: str) -> str | None:
+    normalized_line = _normalize_text(line).strip()
+    if not normalized_line or len(normalized_line) > 110:
+        return None
+    if _ACADEMIC_HEADING_SKIP_PATTERN.match(normalized_line):
+        return None
+
+    number_match = _ACADEMIC_NUMBERED_HEADING_PATTERN.match(normalized_line)
+    if number_match is None:
+        return None
+
+    title = number_match.group("title") if number_match else normalized_line
+    normalized_title = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    title_words = normalized_title.split()
+    words = set(title_words)
+    major_section = number_match.group("number").split(".")[0] if number_match else None
+
+    if words.intersection(_ACADEMIC_DATASET_TERMS):
+        return "DATASET"
+    if words.intersection(_ACADEMIC_LIMITATION_TERMS) or any(
+        term in normalized_title for term in _ACADEMIC_LIMITATION_TERMS
+    ):
+        return "FUTURE WORK" if "future" in normalized_title else "CONCLUSION"
+    if "implementation setting" in normalized_title:
+        return "METHOD"
+    if major_section == "3":
+        return "METHOD"
+    if major_section == "4":
+        return "RESULTS"
+    if any(term in normalized_title for term in _ACADEMIC_METHOD_TERMS):
+        return "METHOD"
+    if any(term in normalized_title for term in _ACADEMIC_RESULT_TERMS):
+        return "RESULTS"
+    return None
 
 
 def _is_uppercase_heading(candidate: str) -> bool:
@@ -160,9 +252,9 @@ def _section_heading_matches(text: str, allow_title_case: bool) -> list[re.Match
 
 def _standalone_heading_for_line(line: str) -> str | None:
     match = _STANDALONE_HEADING_PATTERN.match(line)
-    if match is None:
-        return None
-    return _canonical_heading(match.group(1))
+    if match is not None:
+        return _canonical_heading(match.group(1))
+    return _academic_heading_alias(line)
 
 
 def _split_by_standalone_heading_lines(text: str) -> list[_Section]:

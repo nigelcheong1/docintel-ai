@@ -30,6 +30,13 @@ const profile: DocumentProfile = {
   ],
   key_entities: [
     { kind: "dataset", label: "Dataset", value: "Kinetics-400", page_number: 6, source_text: "Kinetics-400." },
+    {
+      kind: "research_method",
+      label: "Method",
+      value: "The model uses multimodal self-attention.",
+      page_number: 4,
+      source_text: "Method.",
+    },
   ],
   suggested_questions: ["What is this document about?", "What methods are used?"],
 };
@@ -46,6 +53,10 @@ describe("DocumentProfilePanel", () => {
     expect(screen.getByText("Kinetics-400")).toBeInTheDocument();
     expect(screen.getByText("92.5%")).toBeInTheDocument();
     expect(screen.getByText("ABSTRACT")).toBeInTheDocument();
+    expect(screen.getByText("Research signals")).toBeInTheDocument();
+    expect(screen.getByText("Metrics")).toBeInTheDocument();
+    expect(screen.getByText("Dataset")).toBeInTheDocument();
+    expect(screen.getByText("Method")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "What methods are used?" }));
 

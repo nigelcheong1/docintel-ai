@@ -99,3 +99,22 @@ def test_rerank_hits_prefers_matching_skill_and_education_sections():
 
     assert rerank_hits("skills", skill_hits)[0].section_heading == "TECHNICAL SKILLS"
     assert rerank_hits("education", education_hits)[0].section_heading == "EDUCATION"
+
+
+def test_rerank_hits_prefers_research_results_section_over_intro_with_close_score():
+    hits = [
+        make_hit(
+            score=0.92,
+            section_heading="INTRODUCTION",
+            text="Existing studies report limited action categories.",
+        ),
+        make_hit(
+            score=0.84,
+            section_heading="RESULTS",
+            text="Table 7 reports zero-shot TOP1 35.240 and two-shot TOP1 42.307 on HRI30.",
+        ),
+    ]
+
+    reranked = rerank_hits("What results are reported?", hits)
+
+    assert reranked[0].section_heading == "RESULTS"

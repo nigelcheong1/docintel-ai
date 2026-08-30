@@ -5,7 +5,16 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.db.models import Chunk, Document
-from app.documents.intelligence import chunk_heading, clean_text, ordered_chunks, strip_leading_heading
+from app.documents.intelligence import (
+    chunk_heading,
+    clean_research_text,
+    clean_text,
+    is_research_table_like_text,
+    is_research_noise_sentence,
+    ordered_chunks,
+    research_text_after_heading,
+    strip_leading_heading,
+)
 from app.documents.schemas import DocumentFactRead, DocumentProfileRead
 from app.retrieval.answers import AnswerCitation, AnswerQuality, ExtractiveAnswer
 from app.retrieval.query_router import QueryRoute
@@ -14,6 +23,94 @@ _MAX_ANSWER_CHUNKS = 3
 _MAX_SUMMARY_CHARS = 480
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_RESEARCH_RESULT_CLAIM_TERMS = {
+    "achieve",
+    "achieved",
+    "achieves",
+    "achieving",
+    "demonstrate",
+    "demonstrated",
+    "demonstrates",
+    "finding",
+    "findings",
+    "highlight",
+    "highlighted",
+    "highlights",
+    "improve",
+    "improved",
+    "improvement",
+    "outperform",
+    "outperformed",
+    "outperforms",
+    "performance",
+    "result",
+    "results",
+    "show",
+    "shown",
+    "shows",
+}
+_RESEARCH_PARAMETER_SETTING_PATTERN = re.compile(
+    r"\b(?:number of .*heads|transformer heads|layers|dimensions?|embedding|width|parameters?|"
+    r"H\s*=|L[VTL]?\s*=|D[VTL]?\s*=|batch size|learning rate)\b",
+    re.IGNORECASE,
+)
+_RESEARCH_METHOD_SNIPPET_TERMS = {
+    "architecture",
+    "attention",
+    "encoder",
+    "framework",
+    "fusion",
+    "model",
+    "module",
+    "pipeline",
+    "prompt",
+    "temporal",
+    "token",
+    "transformer",
+    "visual",
+}
+_RESEARCH_LIMITATION_CLAIM_TERMS = {
+    "adaptation",
+    "bottleneck",
+    "bottlenecks",
+    "challenge",
+    "challenges",
+    "direction",
+    "directions",
+    "future",
+    "goal",
+    "limitation",
+    "limitations",
+    "limited",
+    "mapping",
+    "overcome",
+    "refinement",
+    "room",
+}
+_RESEARCH_FUTURE_DIRECTION_PATTERN = re.compile(
+    r"\b(?:future research directions include|future directions include|future work|to address these challenges)\b",
+    re.IGNORECASE,
+)
+_QUERY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "about",
+    "does",
+    "document",
+    "discussed",
+    "in",
+    "is",
+    "mentioned",
+    "or",
+    "reported",
+    "the",
+    "this",
+    "used",
+    "what",
+    "which",
+}
 
 
 @dataclass(frozen=True)
@@ -96,6 +193,71 @@ def _snippet(text: str, query: str, *, prefer_first: bool = False) -> str:
     return selected[: _MAX_SUMMARY_CHARS - 3].rstrip() + "..."
 
 
+def _answer_text_for_chunk(chunk: Chunk, profile: DocumentProfileRead, route: QueryRoute) -> str:
+    heading = chunk_heading(chunk)
+    if profile.document_type != "research_paper":
+        return strip_leading_heading(chunk.text, heading)
+
+    target_heading = heading
+    if route.intent == "overview" and "ABSTRACT" in clean_text(chunk.text):
+        target_heading = "ABSTRACT"
+    text = research_text_after_heading(chunk.text, target_heading)
+    return clean_research_text(text)
+
+
+def _research_snippet(text: str, query: str, *, intent: str | None = None, prefer_first: bool = False) -> str:
+    cleaned = clean_research_text(text)
+    sentences = [
+        sentence.strip()
+        for sentence in _SENTENCE_BOUNDARY.split(cleaned)
+        if sentence.strip() and not is_research_noise_sentence(sentence)
+    ]
+    if not sentences:
+        return ""
+    if prefer_first:
+        selected = sentences[0]
+    else:
+        query_words = _words(query).difference(_QUERY_STOPWORDS)
+
+        def score_sentence(sentence: str, index: int) -> tuple[int, int, int]:
+            sentence_words = _words(sentence)
+            lower_sentence = sentence.lower()
+            intent_score = 0
+            if intent == "methods":
+                intent_score = len(sentence_words.intersection(_RESEARCH_METHOD_SNIPPET_TERMS))
+            elif intent == "results":
+                intent_score = len(sentence_words.intersection(_RESEARCH_RESULT_CLAIM_TERMS))
+                if any(metric in lower_sentence for metric in ("top1", "top-1", "top5", "top-5", "f1", "accuracy")):
+                    intent_score += 2
+                if _RESEARCH_PARAMETER_SETTING_PATTERN.search(sentence):
+                    intent_score -= 4
+            elif intent == "limitations":
+                intent_score = len(sentence_words.intersection(_RESEARCH_LIMITATION_CLAIM_TERMS))
+                if _RESEARCH_FUTURE_DIRECTION_PATTERN.search(sentence):
+                    intent_score += 5
+            else:
+                intent_score = int(
+                    bool(
+                        sentence_words.intersection(
+                            {"achieve", "achieved", "result", "results", "propose", "proposed", "method", "future"}
+                        )
+                    )
+                )
+            return (
+                intent_score,
+                len(sentence_words.intersection(query_words)),
+                -index,
+            )
+
+        selected = max(
+            enumerate(sentences),
+            key=lambda item: score_sentence(item[1], item[0]),
+        )[1]
+    if len(selected) <= _MAX_SUMMARY_CHARS:
+        return selected
+    return selected[: _MAX_SUMMARY_CHARS - 3].rstrip() + "..."
+
+
 def _build_answer(
     *,
     query: str,
@@ -114,7 +276,12 @@ def _build_answer(
         if chunk.id in seen_chunk_ids:
             continue
         seen_chunk_ids.add(chunk.id)
-        snippet = _snippet(strip_leading_heading(chunk.text, chunk_heading(chunk)), query, prefer_first=prefer_first_sentence)
+        answer_text = _answer_text_for_chunk(chunk, profile, route)
+        snippet = (
+            _research_snippet(answer_text, query, intent=route.intent, prefer_first=prefer_first_sentence)
+            if profile.document_type == "research_paper"
+            else _snippet(answer_text, query, prefer_first=prefer_first_sentence)
+        )
         if not snippet:
             continue
         snippets.append(snippet)
@@ -137,7 +304,7 @@ def _build_answer(
 
 
 def _chunk_text(chunk: Chunk) -> str:
-    return " ".join(part for part in (chunk_heading(chunk), chunk.text) if part).lower()
+    return clean_text(" ".join(part for part in (chunk_heading(chunk), chunk.text) if part)).lower()
 
 
 def _chunks_by_heading_or_terms(
@@ -146,16 +313,74 @@ def _chunks_by_heading_or_terms(
     headings: set[str],
     terms: set[str],
     exclude_references: bool = True,
+    prefer_heading_matches: bool = False,
+    exclude_table_like: bool = False,
+    include_following_unheaded: bool = False,
 ) -> list[Chunk]:
     matches: list[Chunk] = []
+    heading_matches: list[Chunk] = []
+    term_matches: list[Chunk] = []
+    carry_heading_match = False
     for chunk in ordered_chunks(document):
         heading = chunk_heading(chunk)
         if exclude_references and (heading == "REFERENCES" or _chunk_text(chunk).startswith("references")):
+            carry_heading_match = False
+            continue
+        if exclude_table_like and is_research_table_like_text(chunk.text):
             continue
         normalized_text = _chunk_text(chunk)
-        if heading in headings or any(term in normalized_text for term in terms):
-            matches.append(chunk)
+        if heading in headings:
+            heading_matches.append(chunk)
+            carry_heading_match = True
+        elif include_following_unheaded and carry_heading_match and heading is None:
+            heading_matches.append(chunk)
+        else:
+            if heading is not None:
+                carry_heading_match = False
+            if any(term in normalized_text for term in terms):
+                term_matches.append(chunk)
+    if prefer_heading_matches and heading_matches:
+        return heading_matches
+    matches.extend(heading_matches)
+    matches.extend(term_matches)
     return matches
+
+
+def _research_answer_chunk_score(chunk: Chunk, intent: str) -> int:
+    heading = chunk_heading(chunk)
+    text = clean_research_text(research_text_after_heading(chunk.text, heading)).lower()
+    words = set(_WORD_PATTERN.findall(text))
+    score = 0
+    if intent == "results":
+        score += 4 if heading in {"RESULT", "RESULTS", "EVALUATION", "EXPERIMENT", "EXPERIMENTS"} else 0
+        score += 2 * len(words.intersection(_RESEARCH_RESULT_CLAIM_TERMS))
+        if any(metric in text for metric in ("top1", "top-1", "top5", "top-5", "f1", "accuracy")):
+            score += 3
+        if _RESEARCH_PARAMETER_SETTING_PATTERN.search(text):
+            score -= 8
+    elif intent == "limitations":
+        score += 4 if heading in {"LIMITATION", "LIMITATIONS", "FUTURE WORK", "CONCLUSION", "DISCUSSION"} else 0
+        score += 2 * len(words.intersection(_RESEARCH_LIMITATION_CLAIM_TERMS))
+        if _RESEARCH_FUTURE_DIRECTION_PATTERN.search(text):
+            score += 8
+        if text.startswith("this paper presents") and not _RESEARCH_FUTURE_DIRECTION_PATTERN.search(text):
+            score -= 4
+    return score
+
+
+def _rank_research_answer_chunks(chunks: list[Chunk], intent: str) -> list[Chunk]:
+    if intent not in {"results", "limitations"}:
+        return chunks
+
+    scored = [(_research_answer_chunk_score(chunk, intent), index, chunk) for index, chunk in enumerate(chunks)]
+    if not scored:
+        return chunks
+    best_score = max(score for score, _index, _chunk in scored)
+    if best_score <= 0:
+        return chunks
+    cutoff = max(1, best_score - 2)
+    filtered = [(score, index, chunk) for score, index, chunk in scored if score >= cutoff]
+    return [chunk for _score, _index, chunk in sorted(filtered, key=lambda item: (-item[0], item[1]))]
 
 
 def _fallback_opening_chunks(document: Document) -> list[Chunk]:
@@ -279,20 +504,95 @@ def _answer_from_facts(
     )
 
 
-def _overview_answer(query: str, document: Document, profile: DocumentProfileRead, route: QueryRoute) -> DocumentAwareAnswer | None:
-    chunks = _chunks_by_heading_or_terms(
-        document,
-        headings={"ABSTRACT", "EXECUTIVE SUMMARY", "SUMMARY", "ABOUT ME", "OVERVIEW", "INTRODUCTION"},
-        terms={"abstract", "executive summary", "overview", "introduction", "this paper", "this report"},
+def _dataset_answer(
+    *,
+    facts: list[DocumentFactRead],
+    document: Document,
+    profile: DocumentProfileRead,
+    route: QueryRoute,
+) -> DocumentAwareAnswer | None:
+    selected_facts: list[DocumentFactRead] = []
+    seen_values: set[str] = set()
+    for fact in facts:
+        key = fact.value.lower()
+        if key in seen_values:
+            continue
+        seen_values.add(key)
+        selected_facts.append(fact)
+        if len(selected_facts) >= 8:
+            break
+
+    if not selected_facts:
+        return None
+
+    citations: list[AnswerCitation] = []
+    seen_chunk_ids: set[str] = set()
+    for fact in selected_facts:
+        chunk = _chunk_for_fact(document, fact)
+        if chunk is None or chunk.id in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(chunk.id)
+        citations.append(_citation(chunk))
+        if len(citations) >= _MAX_ANSWER_CHUNKS:
+            break
+
+    if not citations:
+        return None
+
+    return DocumentAwareAnswer(
+        answer=ExtractiveAnswer(
+            summary="Datasets mentioned: " + ", ".join(fact.value for fact in selected_facts) + ".",
+            citations=citations,
+        ),
+        quality=_quality(
+            status="answerable",
+            confidence="strong",
+            reason="Document-aware datasets answer built from extracted dataset evidence.",
+            evidence_count=len(citations),
+            suggested_questions=profile.suggested_questions,
+        ),
+        query_intent=route.intent,
+        document_type=profile.document_type,
     )
+
+
+def _overview_answer(query: str, document: Document, profile: DocumentProfileRead, route: QueryRoute) -> DocumentAwareAnswer | None:
+    if profile.document_type == "research_paper":
+        chunks = _chunks_by_heading_or_terms(
+            document,
+            headings={"ABSTRACT"},
+            terms={"abstract"},
+            prefer_heading_matches=True,
+        )
+        used_preferred_heading = any(
+            chunk_heading(chunk) == "ABSTRACT" or _chunk_text(chunk).startswith("abstract") for chunk in chunks
+        )
+        if not used_preferred_heading:
+            chunks = []
+        if not chunks:
+            chunks = _chunks_by_heading_or_terms(
+                document,
+                headings={"INTRODUCTION", "CONCLUSION"},
+                terms=set(),
+                prefer_heading_matches=True,
+            )
+            used_preferred_heading = bool(chunks and any(chunk_heading(chunk) in {"INTRODUCTION", "CONCLUSION"} for chunk in chunks))
+    else:
+        chunks = _chunks_by_heading_or_terms(
+            document,
+            headings={"ABSTRACT", "EXECUTIVE SUMMARY", "SUMMARY", "ABOUT ME", "OVERVIEW", "INTRODUCTION"},
+            terms={"abstract", "executive summary", "overview", "introduction", "this paper", "this report"},
+        )
+        used_preferred_heading = bool(chunks)
     if not chunks:
         chunks = _fallback_opening_chunks(document)
+        used_preferred_heading = False
     return _build_answer(
         query=query,
         chunks=chunks,
         profile=profile,
         route=route,
-        confidence="strong" if chunks else "moderate",
+        confidence="strong" if used_preferred_heading else "moderate",
         reason="Document-aware overview answer built from high-level sections.",
         prefer_first_sentence=True,
     )
@@ -365,14 +665,32 @@ def _section_answer(
     headings: set[str],
     terms: set[str],
     confidence: Literal["strong", "moderate", "weak"] = "moderate",
+    prefer_heading_matches: bool = False,
+    require_heading_for_strong: bool = False,
+    exclude_table_like: bool = False,
+    include_following_unheaded: bool = False,
 ) -> DocumentAwareAnswer | None:
-    chunks = _chunks_by_heading_or_terms(document, headings=headings, terms=terms)
+    chunks = _chunks_by_heading_or_terms(
+        document,
+        headings=headings,
+        terms=terms,
+        prefer_heading_matches=prefer_heading_matches,
+        exclude_table_like=exclude_table_like,
+        include_following_unheaded=include_following_unheaded,
+    )
+    if profile.document_type == "research_paper":
+        chunks = _rank_research_answer_chunks(chunks, route.intent)
+    answer_confidence = confidence
+    if require_heading_for_strong and confidence == "strong":
+        has_heading_evidence = any(chunk_heading(chunk) in headings for chunk in chunks[:_MAX_ANSWER_CHUNKS])
+        if not has_heading_evidence:
+            answer_confidence = "moderate"
     return _build_answer(
         query=query,
         chunks=chunks,
         profile=profile,
         route=route,
-        confidence=confidence,
+        confidence=answer_confidence,
         reason=f"Document-aware {route.intent} answer built from matching sections.",
     )
 
@@ -409,14 +727,11 @@ def build_document_aware_answer(
         return result or _no_answer("No party, vendor, client, or bill-to evidence was detected in this document.", profile, route)
     if route.intent == "datasets":
         dataset_facts = [fact for fact in profile.key_entities if fact.kind == "dataset"]
-        result = _answer_from_facts(
-            query=query,
+        result = _dataset_answer(
             facts=dataset_facts,
             document=document,
             profile=profile,
             route=route,
-            label="datasets",
-            confidence="strong" if dataset_facts else "moderate",
         )
         if result:
             return result
@@ -435,8 +750,27 @@ def build_document_aware_answer(
             profile,
             route,
             headings={"METHODOLOGY", "METHOD", "METHODS", "APPROACH", "MODEL"},
-            terms={"method", "approach", "model", "architecture", "propose", "proposed", "framework"},
+            terms={
+                "approach",
+                "architecture",
+                "attention",
+                "encoder",
+                "framework",
+                "fusion",
+                "method",
+                "model",
+                "module",
+                "pipeline",
+                "propose",
+                "proposed",
+                "temporal",
+                "transformer",
+                "visual",
+            },
             confidence="strong",
+            prefer_heading_matches=profile.document_type == "research_paper",
+            require_heading_for_strong=profile.document_type == "research_paper",
+            exclude_table_like=profile.document_type == "research_paper",
         )
     if route.intent == "results":
         return _section_answer(
@@ -447,6 +781,9 @@ def build_document_aware_answer(
             headings={"RESULT", "RESULTS", "EVALUATION", "FINDINGS", "EXPERIMENTS"},
             terms={"result", "accuracy", "performance", "top1", "top5", "f1", "findings", "improve"},
             confidence="strong",
+            prefer_heading_matches=profile.document_type == "research_paper",
+            require_heading_for_strong=profile.document_type == "research_paper",
+            include_following_unheaded=profile.document_type == "research_paper",
         )
     if route.intent == "recommendations":
         return _section_answer(
@@ -489,5 +826,7 @@ def build_document_aware_answer(
                 "termination",
                 "liability",
             },
+            prefer_heading_matches=profile.document_type == "research_paper",
+            include_following_unheaded=profile.document_type == "research_paper",
         )
     return None

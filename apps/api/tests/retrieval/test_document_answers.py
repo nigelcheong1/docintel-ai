@@ -67,6 +67,286 @@ def test_builds_research_paper_overview_from_abstract():
     assert result.answer.citations[0].section_heading == "ABSTRACT"
 
 
+def test_research_overview_answer_cleans_abstract_and_ignores_boilerplate():
+    document = make_document(
+        "paper.pdf",
+        "\n".join(
+            [
+                "Contents lists available at ScienceDirect",
+                "Journal of Manufacturing Systems",
+                "Technical paper",
+                "H2R Bridge: Transferring vision-language models to few-shot intention meta-perception",
+                "A B S T R A C T",
+                "Human-robot collaboration enhances efficiency by enabling robots to work alongside human operators.",
+                "The proposed H2R Bridge transfers vision-language models to few-shot intention meta-perception.",
+            ]
+        ),
+        [
+            (
+                "Contents lists available at ScienceDirect Journal of Manufacturing Systems Technical paper H2R Bridge: "
+                "Transferring vision-language models to few-shot intention meta-perception. A B S T R A C T "
+                "Human-robot collaboration enhances efficiency by enabling robots to work alongside human operators. "
+                "All rights are reserved, including those for text and data mining, AI training, and similar technologies.",
+                "ABSTRACT",
+            )
+        ],
+    )
+
+    result = answer_for("What is this document about?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Human-robot collaboration enhances efficiency" in result.answer.summary
+    assert "ScienceDirect" not in result.answer.summary
+    assert "All rights are reserved" not in result.answer.summary
+    assert "D. D." not in result.answer.summary
+
+
+def test_research_methods_answer_prefers_method_section_over_front_matter():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nExisting methods heavily rely on case-specific data.\nMethod\nThe H2R Bridge freezes the vision encoder and trains a lightweight temporal transformer.",
+        [
+            (
+                "Contents lists available at ScienceDirect. Existing methods heavily rely on case-specific data and face challenges with unseen categories.",
+                None,
+            ),
+            (
+                "METHOD The H2R Bridge freezes the vision encoder and trains a lightweight temporal transformer for few-shot intention recognition.",
+                "METHOD",
+            ),
+        ],
+    )
+
+    result = answer_for("What methods are used?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "freezes the vision encoder" in result.answer.summary
+    assert "ScienceDirect" not in result.answer.summary
+    assert result.answer.citations[0].section_heading == "METHOD"
+
+
+def test_research_methods_answer_avoids_method_named_result_tables():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper proposes H2R Bridge.\n3. Multimodal learning framework\nThe proposed framework extracts temporal tokens and uses a visual encoder for spatial-temporal attention.",
+        [
+            (
+                "The proposed framework extracts temporal tokens and uses a visual encoder for spatial-temporal attention.",
+                None,
+            ),
+            ("METHOD Method Pretrain TOP1(%) TOP5(%) TSN 41.06 75.20 I3D 82.06 98.63.", "METHOD"),
+            ("RESULTS Table 7 reports TOP1 91.10 and F1 89.58 on HRI30.", "RESULTS"),
+        ],
+    )
+
+    result = answer_for("What methods are used?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "visual encoder" in result.answer.summary
+    assert "Pretrain TOP1" not in result.answer.summary
+    assert result.quality.confidence == "moderate"
+
+
+def test_research_methods_answer_downgrades_term_only_intro_evidence():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper studies human-robot collaboration.\nIntroduction\nExisting methods rely on case-specific data.\nReferences",
+        [
+            ("ABSTRACT This paper studies human-robot collaboration.", "ABSTRACT"),
+            ("INTRODUCTION Existing methods rely on case-specific data and do not generalize well.", "INTRODUCTION"),
+            ("REFERENCES Smith 2025.", "REFERENCES"),
+        ],
+    )
+
+    result = answer_for("What methods are used?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.quality.confidence == "moderate"
+    assert result.answer.citations[0].section_heading == "INTRODUCTION"
+
+
+def test_research_results_answer_uses_results_section_not_intro_or_copyright():
+    document = make_document(
+        "paper.pdf",
+        "Introduction\nAll rights are reserved. Existing studies report limited categories.\nResults\nTable 7 reports zero-shot TOP1 35.240 and two-shot TOP1 42.307 on HRI30.",
+        [
+            (
+                "INTRODUCTION All rights are reserved, including text and data mining. Existing studies report limited categories.",
+                "INTRODUCTION",
+            ),
+            (
+                "RESULTS Table 7 reports zero-shot TOP1 35.240 and two-shot TOP1 42.307 on HRI30.",
+                "RESULTS",
+            ),
+        ],
+    )
+
+    result = answer_for("What results are reported?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Table 7 reports zero-shot TOP1 35.240" in result.answer.summary
+    assert "All rights are reserved" not in result.answer.summary
+    assert result.answer.citations[0].section_heading == "RESULTS"
+
+
+def test_research_results_answer_downgrades_term_only_intro_evidence():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper studies human-robot collaboration.\nIntroduction\nPrior work reports limited accuracy.\nReferences",
+        [
+            ("ABSTRACT This paper studies human-robot collaboration.", "ABSTRACT"),
+            ("INTRODUCTION Prior work reports limited accuracy on industrial scenarios.", "INTRODUCTION"),
+            ("REFERENCES Smith 2025.", "REFERENCES"),
+        ],
+    )
+
+    result = answer_for("What results are reported?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.quality.confidence == "moderate"
+    assert result.answer.citations[0].section_heading == "INTRODUCTION"
+
+
+def test_research_results_answer_prefers_result_claims_over_parameter_settings():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper proposes H2R Bridge.\nResults\nThe model improves performance.\nReferences",
+        [
+            (
+                "RESULTS The number of transformer heads H and vision transformer layers are H = [12, 8, 8] and L = [12, 12, 24].",
+                "RESULTS",
+            ),
+            (
+                "RESULTS The proposed method consistently demonstrates superior performance across three HRI datasets, achieving the highest positive deviations.",
+                "RESULTS",
+            ),
+            ("REFERENCES Smith 2025.", "REFERENCES"),
+        ],
+    )
+
+    result = answer_for("What results are reported?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "superior performance" in result.answer.summary
+    assert "transformer heads" not in result.answer.summary
+
+
+def test_research_limitations_answer_prefers_future_work_over_generic_challenges():
+    document = make_document(
+        "paper.pdf",
+        "Related Work\nIndustrial action recognition remains a challenge.\nFuture Work\nFuture work will explore language-conditioned robotic policy learning and virtual-to-real mapping.",
+        [
+            (
+                "RELATED WORK Industrial action recognition remains a challenge for general scenarios.",
+                "RELATED WORK",
+            ),
+            (
+                "FUTURE WORK Future work will explore language-conditioned robotic policy learning and virtual-to-real mapping.",
+                "FUTURE WORK",
+            ),
+        ],
+    )
+
+    result = answer_for("What limitations or future work are discussed?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "language-conditioned robotic policy learning" in result.answer.summary
+    assert "general scenarios" not in result.answer.summary
+    assert result.answer.citations[0].section_heading == "FUTURE WORK"
+
+
+def test_research_future_work_answer_prefers_future_directions_inside_conclusion_chunk():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper proposes H2R Bridge.\nConclusion\nThis paper presents advancements in human-robot collaboration. To address these challenges, potential future research directions include language-conditioned robotic policy learning and virtual-to-real mapping.",
+        [
+            ("ABSTRACT This paper proposes H2R Bridge.", "ABSTRACT"),
+            (
+                "FUTURE WORK This paper presents advancements in human-robot collaboration. "
+                "To address these challenges, potential future research directions include language-conditioned robotic policy learning and virtual-to-real mapping.",
+                "FUTURE WORK",
+            ),
+        ],
+    )
+
+    result = answer_for("What limitations or future work are discussed?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "future research directions include language-conditioned robotic policy learning" in result.answer.summary
+    assert "This paper presents advancements" not in result.answer.summary
+
+
+def test_research_future_work_answer_uses_following_unheaded_section_continuation():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper proposes H2R Bridge.\nConclusion\nThis paper presents advancements.\nTo address these challenges, potential future research directions include language-conditioned robotic policy learning.",
+        [
+            ("ABSTRACT This paper proposes H2R Bridge.", "ABSTRACT"),
+            ("FUTURE WORK This paper presents advancements in human-robot collaboration.", "FUTURE WORK"),
+            (
+                "To address these challenges, potential future research directions include language-conditioned robotic policy learning and virtual-to-real mapping.",
+                None,
+            ),
+        ],
+    )
+
+    result = answer_for("What limitations or future work are discussed?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "future research directions include language-conditioned robotic policy learning" in result.answer.summary
+    assert "This paper presents advancements" not in result.answer.summary
+
+
+def test_research_dataset_answer_lists_multiple_detected_benchmarks():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper evaluates H2R Bridge.\nDataset\nExperiments use MECCANO, InHARD, HRI30, Kinetics-400, UCF-101, and HMDB-51.",
+        [
+            ("ABSTRACT This paper evaluates H2R Bridge.", "ABSTRACT"),
+            (
+                "DATASET Experiments use MECCANO, InHARD, HRI30, Kinetics-400, UCF-101, and HMDB-51.",
+                "DATASET",
+            ),
+        ],
+    )
+
+    result = answer_for("What datasets are mentioned?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    for dataset in ["MECCANO", "InHARD", "HRI30", "Kinetics-400", "UCF-101", "HMDB-51"]:
+        assert dataset in result.answer.summary
+
+
+def test_research_overview_fallback_downgrades_when_high_level_sections_are_missing():
+    document = make_document(
+        "paper.pdf",
+        "Background\nThis paper studies industrial action recognition.\nMethod\nThe method uses a temporal encoder.\nReferences",
+        [
+            ("BACKGROUND This paper studies industrial action recognition.", "BACKGROUND"),
+            ("METHOD The method uses a temporal encoder.", "METHOD"),
+            ("REFERENCES Smith 2025.", "REFERENCES"),
+        ],
+    )
+
+    result = answer_for("What is this document about?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.quality.confidence == "moderate"
+    assert result.answer.citations[0].section_heading == "BACKGROUND"
+
+
 def test_builds_invoice_amount_answer_from_total_chunk():
     document = make_document(
         "invoice.pdf",

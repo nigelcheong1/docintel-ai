@@ -70,6 +70,75 @@ def test_chunk_pages_splits_title_case_headings_on_their_own_lines():
     assert "PROJECTS" in headings
 
 
+def test_chunk_pages_normalizes_spaced_academic_headings():
+    paper_text = "\n".join(
+        [
+            "H2R Bridge",
+            "A B S T R A C T",
+            "Human-robot collaboration improves shared industrial tasks.",
+            "M E T H O D",
+            "The method fuses language and video features.",
+        ]
+    )
+    pages = [ParsedPage(page_number=1, text=paper_text, width=600, height=800)]
+
+    chunks = chunk_pages(pages)
+
+    headings = [chunk.layout.get("section_heading") for chunk in chunks]
+    assert "ABSTRACT" in headings
+    assert "METHOD" in headings
+
+
+def test_chunk_pages_maps_numbered_research_headings_to_canonical_intents():
+    pages = [
+        ParsedPage(
+            page_number=1,
+            text="\n".join(
+                [
+                    "3. Multimodal learning framework",
+                    "The proposed framework extracts temporal tokens and uses a visual encoder.",
+                    "4. Experiments and results",
+                    "The proposed method achieves TOP1 91.10 on HRI30.",
+                    "4.3.1. Industrial-like HRI datasets",
+                    "The experiments use MECCANO, InHARD, and HRI30.",
+                ]
+            ),
+            width=600,
+            height=800,
+        )
+    ]
+
+    chunks = chunk_pages(pages, chunk_size=40, overlap=0)
+
+    headings = [chunk.layout.get("section_heading") for chunk in chunks]
+    assert headings == ["METHOD", "RESULTS", "DATASET"]
+
+
+def test_chunk_pages_does_not_promote_research_keywords_to_method_headings():
+    pages = [
+        ParsedPage(
+            page_number=1,
+            text="\n".join(
+                [
+                    "Keywords",
+                    "Human-robot collaboration",
+                    "Intent recognition",
+                    "Vision-language models",
+                    "Abstract",
+                    "This paper proposes a multimodal framework.",
+                ]
+            ),
+            width=600,
+            height=800,
+        )
+    ]
+
+    chunks = chunk_pages(pages, chunk_size=40, overlap=0)
+
+    headings = [chunk.layout.get("section_heading") for chunk in chunks]
+    assert headings == ["KEYWORDS", "ABSTRACT"]
+
+
 def test_chunk_pages_splits_mixed_standalone_and_inline_headings():
     resume_text = "\n".join(
         [
