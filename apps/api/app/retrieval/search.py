@@ -46,6 +46,8 @@ class SearchResponse(BaseModel):
     hits: list[SearchHitRead]
     answer: ExtractiveAnswer | None
     quality: AnswerQuality
+    document_type: str | None = None
+    query_intent: str = "evidence_search"
 
 
 def build_snippet(text: str, max_chars: int = 260) -> str:

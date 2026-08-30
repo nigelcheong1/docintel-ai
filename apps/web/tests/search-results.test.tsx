@@ -31,6 +31,8 @@ describe("SearchResults", () => {
   it("shows answer confidence when quality metadata is available", () => {
     render(
       <SearchResults
+        documentType="research_paper"
+        queryIntent="overview"
         answer={{
           summary: "The invoice total is 1250 Malaysian Ringgit.",
           citations: [
@@ -58,6 +60,8 @@ describe("SearchResults", () => {
     );
 
     expect(screen.getByText("Strong confidence")).toBeInTheDocument();
+    expect(screen.getByText("Research paper")).toBeInTheDocument();
+    expect(screen.getByText("Overview")).toBeInTheDocument();
     expect(screen.getByText("Answer built from 1 cited evidence chunk.")).toBeInTheDocument();
   });
 
@@ -65,6 +69,8 @@ describe("SearchResults", () => {
     const handleSuggestionSelect = vi.fn();
     render(
       <SearchResults
+        documentType="resume"
+        queryIntent="amounts"
         answer={null}
         quality={{
           status: "insufficient_evidence",
@@ -96,6 +102,8 @@ describe("SearchResults", () => {
 
     expect(screen.getByRole("heading", { name: "Not enough evidence" })).toBeInTheDocument();
     expect(screen.getByText("Weak confidence")).toBeInTheDocument();
+    expect(screen.getByText("Resume")).toBeInTheDocument();
+    expect(screen.getByText("Amounts")).toBeInTheDocument();
     expect(
       screen.getByText("The retrieved documents do not contain enough matching evidence to answer this question."),
     ).toBeInTheDocument();

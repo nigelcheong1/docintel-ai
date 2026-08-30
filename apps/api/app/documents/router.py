@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.db.models import Chunk
 from app.db.session import get_db
-from app.documents.schemas import ChunkRead, DocumentDetail, DocumentRead
+from app.documents.intelligence import build_document_profile
+from app.documents.schemas import ChunkRead, DocumentDetail, DocumentProfileRead, DocumentRead
 from app.documents.service import (
     DocumentPersistenceError,
     DocumentReindexError,
@@ -84,6 +85,12 @@ def document_detail(document_id: str, db: Annotated[Session, Depends(get_db)]) -
         page_count=len(document.pages),
         chunk_count=len(document.chunks),
     )
+
+
+@router.get("/{document_id}/profile", response_model=DocumentProfileRead)
+def document_profile(document_id: str, db: Annotated[Session, Depends(get_db)]) -> DocumentProfileRead:
+    document = get_document_or_404(db, document_id)
+    return build_document_profile(document)
 
 
 @router.get("/{document_id}/chunks", response_model=list[ChunkRead])

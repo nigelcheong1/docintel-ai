@@ -13,6 +13,34 @@ export type DocumentDetail = DocumentSummary & {
   chunk_count: number;
 };
 
+export type DocumentSection = {
+  heading: string;
+  page_number: number;
+  text_preview: string;
+  intents: string[];
+};
+
+export type DocumentFact = {
+  kind: string;
+  label: string;
+  value: string;
+  page_number: number;
+  source_text: string;
+};
+
+export type DocumentProfile = {
+  document_id: string;
+  filename: string;
+  document_type: string;
+  title?: string | null;
+  overview?: string | null;
+  sections: DocumentSection[];
+  key_dates: DocumentFact[];
+  key_numbers: DocumentFact[];
+  key_entities: DocumentFact[];
+  suggested_questions: string[];
+};
+
 export type SearchHit = {
   chunk_id: string;
   document_id: string;
@@ -55,6 +83,8 @@ export type SearchResponse = {
   hits: SearchHit[];
   answer: SearchAnswer | null;
   quality: AnswerQuality;
+  document_type?: string | null;
+  query_intent: string;
 };
 
 export type EvalRunSummary = {

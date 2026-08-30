@@ -23,6 +23,34 @@ class DocumentDetail(DocumentRead):
     chunk_count: int
 
 
+class DocumentSectionRead(BaseModel):
+    heading: str
+    page_number: int
+    text_preview: str
+    intents: list[str]
+
+
+class DocumentFactRead(BaseModel):
+    kind: str
+    label: str
+    value: str
+    page_number: int
+    source_text: str
+
+
+class DocumentProfileRead(BaseModel):
+    document_id: str
+    filename: str
+    document_type: str
+    title: str | None
+    overview: str | None
+    sections: list[DocumentSectionRead]
+    key_dates: list[DocumentFactRead]
+    key_numbers: list[DocumentFactRead]
+    key_entities: list[DocumentFactRead]
+    suggested_questions: list[str]
+
+
 class ChunkRead(BaseModel):
     id: str
     document_id: str

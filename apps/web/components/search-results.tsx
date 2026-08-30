@@ -7,6 +7,11 @@ function formatSignalName(signal: string) {
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
+function formatMetadataValue(value: string) {
+  const label = value.replace(/_/g, " ").toLowerCase();
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
+}
+
 function formatPercentage(score: number) {
   return `${Math.round(score * 100)}%`;
 }
@@ -35,15 +40,35 @@ function ConfidenceBadge({ confidence }: { confidence: AnswerQuality["confidence
   );
 }
 
+function MetadataBadges({ documentType, queryIntent }: { documentType?: string | null; queryIntent?: string | null }) {
+  const items = [documentType, queryIntent].filter((item): item is string => Boolean(item));
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {items.map((item) => (
+        <span key={item} className="rounded border border-line bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
+          {formatMetadataValue(item)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function SearchResults({
   hits,
   answer,
   quality,
+  documentType,
+  queryIntent,
   onSuggestionSelect,
 }: {
   hits: SearchHit[];
   answer?: SearchAnswer | null;
   quality?: AnswerQuality | null;
+  documentType?: string | null;
+  queryIntent?: string | null;
   onSuggestionSelect?: (question: string) => void;
 }) {
   if (hits.length === 0 && !answer && quality?.status !== "insufficient_evidence") {
@@ -55,9 +80,12 @@ export function SearchResults({
       {answer ? (
         <section className="border-l-2 border-accent bg-white px-4 py-4" aria-labelledby="answer-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="answer-heading" className="text-sm font-semibold">
-              Answer
-            </h2>
+            <div>
+              <h2 id="answer-heading" className="text-sm font-semibold">
+                Answer
+              </h2>
+              <MetadataBadges documentType={documentType} queryIntent={queryIntent} />
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {quality ? <ConfidenceBadge confidence={quality.confidence} /> : null}
               <span className="text-xs font-medium text-slate-500">
@@ -84,9 +112,12 @@ export function SearchResults({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
-              <h2 id="abstention-heading" className="text-sm font-semibold">
-                Not enough evidence
-              </h2>
+              <div>
+                <h2 id="abstention-heading" className="text-sm font-semibold">
+                  Not enough evidence
+                </h2>
+                <MetadataBadges documentType={documentType} queryIntent={queryIntent} />
+              </div>
             </div>
             <ConfidenceBadge confidence={quality.confidence} />
           </div>

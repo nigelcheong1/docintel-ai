@@ -25,6 +25,15 @@ def create_sample_pdf(path: Path, text: str) -> bytes:
     return path.read_bytes()
 
 
+def create_multiline_pdf(path: Path, lines: list[str]) -> bytes:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_textbox(fitz.Rect(72, 72, 540, 720), "\n".join(lines), fontsize=11)
+    document.save(path)
+    document.close()
+    return path.read_bytes()
+
+
 def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     content = create_sample_pdf(tmp_path / "sample.pdf", "The invoice total is 1250 Malaysian Ringgit.")
     stored = save_upload_bytes("invoice.pdf", "application/pdf", content, tmp_path / "storage", 20)
@@ -179,3 +188,115 @@ def test_search_endpoint_abstains_when_retrieved_hits_do_not_answer_question(mon
     assert body["quality"]["status"] == "insufficient_evidence"
     assert body["quality"]["confidence"] == "weak"
     assert "What technical skills are mentioned?" in body["quality"]["suggested_questions"]
+
+
+def test_search_endpoint_answers_research_paper_overview_from_profile(db_session, tmp_path):
+    content = create_multiline_pdf(
+        tmp_path / "paper.pdf",
+        [
+            "Human-to-Robot Action Recognition with Language Guidance",
+            "Abstract",
+            "This paper proposes a vision-language transformer for industrial human action recognition.",
+            "Method",
+            "The method fuses video features with language instructions.",
+            "Results",
+            "Experiments report improved TOP1 accuracy on Kinetics-400 and UCF-101.",
+            "References",
+            "D. Wu et al. 2026.",
+        ],
+    )
+    stored = save_upload_bytes("paper.pdf", "application/pdf", content, tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post(
+        "/search",
+        json={"query": "What is this document about?", "top_k": 3, "document_id": document.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_type"] == "research_paper"
+    assert body["query_intent"] == "overview"
+    assert body["answer"] is not None
+    assert "vision-language transformer" in body["answer"]["summary"]
+    assert body["quality"]["status"] == "answerable"
+
+
+def test_search_endpoint_answers_invoice_totals_from_profile(db_session, tmp_path):
+    content = create_multiline_pdf(
+        tmp_path / "invoice.pdf",
+        [
+            "Invoice INV-1001",
+            "Vendor: DocIntel Labs",
+            "Bill To: Xiamen University Malaysia",
+            "Issue Date: 2026-08-01",
+            "Due Date: 2026-08-30",
+            "Subtotal RM 1,200.00",
+            "Tax RM 72.00",
+            "Total Due RM 1,272.00",
+        ],
+    )
+    stored = save_upload_bytes("invoice.pdf", "application/pdf", content, tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post(
+        "/search",
+        json={"query": "What total amount is due?", "top_k": 3, "document_id": document.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_type"] == "invoice"
+    assert body["query_intent"] == "amounts"
+    assert body["answer"] is not None
+    assert "RM 1,272.00" in body["answer"]["summary"]
+    assert body["quality"]["confidence"] == "strong"
+
+
+def test_search_endpoint_returns_type_aware_mismatch_for_research_paper(db_session, tmp_path):
+    content = create_multiline_pdf(
+        tmp_path / "paper.pdf",
+        [
+            "Human-to-Robot Action Recognition with Language Guidance",
+            "Abstract",
+            "This paper proposes a transformer for industrial human action recognition.",
+            "References",
+            "D. Wu et al. 2026.",
+        ],
+    )
+    stored = save_upload_bytes("paper.pdf", "application/pdf", content, tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post(
+        "/search",
+        json={"query": "Who are the parties involved?", "top_k": 3, "document_id": document.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_type"] == "research_paper"
+    assert body["query_intent"] == "parties"
+    assert body["answer"] is None
+    assert body["quality"]["status"] == "insufficient_evidence"
+    assert "research paper" in body["quality"]["reason"].lower()

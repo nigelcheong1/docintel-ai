@@ -4,49 +4,73 @@ import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "r
 import { Search } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { DocumentProfilePanel } from "@/components/document-profile-panel";
 import { SearchResults } from "@/components/search-results";
-import { getDocuments, searchDocuments } from "@/lib/api";
-import type { AnswerQuality, DocumentSummary, SearchAnswer, SearchHit } from "@/lib/types";
+import { getDocumentProfile, getDocuments, searchDocuments } from "@/lib/api";
+import type { AnswerQuality, DocumentProfile, DocumentSummary, SearchAnswer, SearchHit } from "@/lib/types";
 
 export default function SearchPage() {
   const latestSearchId = useRef(0);
+  const latestProfileId = useRef(0);
   const [query, setQuery] = useState("");
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState<DocumentProfile | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [quality, setQuality] = useState<AnswerQuality | null>(null);
+  const [documentType, setDocumentType] = useState<string | null>(null);
+  const [queryIntent, setQueryIntent] = useState<string | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     getDocuments().then(setDocuments).catch(() => setDocuments([]));
   }, []);
 
+  useEffect(() => {
+    const profileId = ++latestProfileId.current;
+    if (!selectedDocumentId) {
+      return;
+    }
+    getDocumentProfile(selectedDocumentId)
+      .then((profile) => {
+        if (profileId === latestProfileId.current) {
+          setSelectedProfile(profile);
+        }
+      })
+      .catch(() => {
+        if (profileId === latestProfileId.current) {
+          setSelectedProfile(null);
+        }
+      })
+      .finally(() => {
+        if (profileId === latestProfileId.current) {
+          setIsProfileLoading(false);
+        }
+      });
+  }, [selectedDocumentId]);
+
   function handleScopeChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextDocumentId = event.target.value;
     latestSearchId.current += 1;
-    setSelectedDocumentId(event.target.value);
+    latestProfileId.current += 1;
+    setSelectedDocumentId(nextDocumentId);
+    setSelectedProfile(null);
+    setIsProfileLoading(Boolean(nextDocumentId));
     setHits([]);
     setAnswer(null);
     setQuality(null);
+    setDocumentType(null);
+    setQueryIntent(null);
     setIsSearching(false);
     setMessage("Enter a question or search phrase.");
   }
 
-  function handleSuggestionSelect(suggestion: string) {
-    latestSearchId.current += 1;
-    setQuery(suggestion);
-    setHits([]);
-    setAnswer(null);
-    setQuality(null);
-    setIsSearching(false);
-    setMessage("Search the suggested question when ready.");
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runSearch(rawQuery: string) {
     const searchId = ++latestSearchId.current;
-    const submittedQuery = query.trim();
+    const submittedQuery = rawQuery.trim();
     if (!submittedQuery) {
       setMessage("Enter a question or search phrase.");
       setIsSearching(false);
@@ -55,6 +79,8 @@ export default function SearchPage() {
     setHits([]);
     setAnswer(null);
     setQuality(null);
+    setDocumentType(null);
+    setQueryIntent(null);
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
@@ -65,6 +91,8 @@ export default function SearchPage() {
       setHits(response.hits);
       setAnswer(response.answer);
       setQuality(response.quality);
+      setDocumentType(response.document_type ?? null);
+      setQueryIntent(response.query_intent ?? null);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
     } catch (error) {
       if (searchId === latestSearchId.current) {
@@ -77,19 +105,29 @@ export default function SearchPage() {
     }
   }
 
+  function handleSuggestionSelect(suggestion: string) {
+    setQuery(suggestion);
+    void runSearch(suggestion);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runSearch(query);
+  }
+
   return (
     <AppShell>
       <section className="mb-6">
         <h1 className="text-2xl font-semibold">Search</h1>
         <p className="mt-2 text-sm text-slate-600">Retrieve cited evidence from local document embeddings.</p>
       </section>
-      <form className="mb-4 flex gap-2" onSubmit={handleSubmit}>
+      <form className="mb-4 flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
         <label className="sr-only" htmlFor="search-scope">
           Search scope
         </label>
         <select
           id="search-scope"
-          className="w-48 rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          className="w-full rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent sm:w-56"
           value={selectedDocumentId}
           onChange={handleScopeChange}
         >
@@ -111,8 +149,20 @@ export default function SearchPage() {
           Search
         </button>
       </form>
+      <DocumentProfilePanel
+        profile={selectedProfile}
+        isLoading={isProfileLoading}
+        onSuggestionSelect={handleSuggestionSelect}
+      />
       {message ? <p className="mb-4 text-sm text-slate-600">{message}</p> : null}
-      <SearchResults hits={hits} answer={answer} quality={quality} onSuggestionSelect={handleSuggestionSelect} />
+      <SearchResults
+        hits={hits}
+        answer={answer}
+        quality={quality}
+        documentType={documentType}
+        queryIntent={queryIntent}
+        onSuggestionSelect={handleSuggestionSelect}
+      />
     </AppShell>
   );
 }

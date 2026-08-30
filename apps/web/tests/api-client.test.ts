@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deleteDocument, getDocument, getDocuments, reindexDocument, searchDocuments } from "@/lib/api";
+import { deleteDocument, getDocument, getDocumentProfile, getDocuments, reindexDocument, searchDocuments } from "@/lib/api";
 
 describe("api client", () => {
   afterEach(() => {
@@ -40,6 +40,31 @@ describe("api client", () => {
     expect(document).toMatchObject({ page_count: 12, chunk_count: 48 });
   });
 
+  it("fetches document intelligence profiles", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        document_id: "doc-1",
+        filename: "paper.pdf",
+        document_type: "research_paper",
+        title: "Language Guided HRI",
+        overview: "ABSTRACT This paper studies HRI.",
+        sections: [],
+        key_dates: [],
+        key_numbers: [],
+        key_entities: [],
+        suggested_questions: ["What is this document about?"],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const profile = await getDocumentProfile("doc-1");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/profile", { cache: "no-store" });
+    expect(profile.document_type).toBe("research_paper");
+    expect(profile.suggested_questions).toEqual(["What is this document about?"]);
+  });
+
   it("deletes a document without attempting to parse the empty response", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
@@ -67,6 +92,8 @@ describe("api client", () => {
       ok: true,
       json: async () => ({
         query: "invoice",
+        document_type: "invoice",
+        query_intent: "amounts",
         hits: [],
         answer: null,
         quality: {
@@ -91,6 +118,8 @@ describe("api client", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(result.query).toBe("invoice");
+    expect(result.document_type).toBe("invoice");
+    expect(result.query_intent).toBe("amounts");
     expect(result.quality.status).toBe("insufficient_evidence");
   });
 
