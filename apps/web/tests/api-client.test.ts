@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deleteDocument, getDocument, getDocumentProfile, getDocuments, reindexDocument, searchDocuments } from "@/lib/api";
+import {
+  deleteDocument,
+  getDocument,
+  getDocumentProfile,
+  getDocuments,
+  getGoldenEval,
+  reindexDocument,
+  searchDocuments,
+} from "@/lib/api";
 
 describe("api client", () => {
   afterEach(() => {
@@ -152,6 +160,31 @@ describe("api client", () => {
       top_k: 5,
       document_id: "doc-1",
     });
+  });
+
+  it("fetches the golden document QA evaluation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        name: "universal-document-qa-golden",
+        summary: {
+          total_cases: 13,
+          passed_cases: 13,
+          failed_cases: 0,
+          pass_rate: 1,
+          answerable_cases: 12,
+          abstention_cases: 1,
+          document_types: { research_paper: 5 },
+        },
+        cases: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getGoldenEval();
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/eval/golden", { cache: "no-store" });
+    expect(result.summary.pass_rate).toBe(1);
   });
 
   it("surfaces JSON detail from failed backend responses", async () => {

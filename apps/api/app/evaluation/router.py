@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import EvalRun, RetrievalResult
 from app.db.session import get_db
+from app.evaluation.golden import GoldenEvalResponse, run_golden_evaluation
 from app.evaluation.service import aggregate_retrieval_metrics
 
 router = APIRouter(prefix="/eval", tags=["evaluation"])
@@ -50,3 +51,8 @@ def create_eval_run(db: Annotated[Session, Depends(get_db)]) -> EvalRun:
 @router.get("/runs", response_model=list[EvalRunRead])
 def list_eval_runs(db: Annotated[Session, Depends(get_db)]) -> list[EvalRun]:
     return list(db.scalars(select(EvalRun).order_by(EvalRun.created_at.desc())))
+
+
+@router.get("/golden", response_model=GoldenEvalResponse)
+def get_golden_eval() -> GoldenEvalResponse:
+    return run_golden_evaluation()

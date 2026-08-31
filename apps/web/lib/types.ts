@@ -52,6 +52,7 @@ export type SearchHit = {
   ranking_signals: Record<string, number>;
   snippet: string;
   section_heading?: string | null;
+  result_role?: "answer_evidence" | "related";
 };
 
 export type AnswerCitation = {
@@ -78,6 +79,18 @@ export type AnswerQuality = {
   suggested_questions: string[];
 };
 
+export type SearchDiagnostics = {
+  document_type?: string | null;
+  query_intent: string;
+  quality_status: "answerable" | "insufficient_evidence";
+  confidence: "strong" | "moderate" | "weak";
+  reason: string;
+  answer_chunk_ids: string[];
+  answer_evidence_count: number;
+  related_result_count: number;
+  top_rejected_reasons: string[];
+};
+
 export type SearchResponse = {
   query: string;
   hits: SearchHit[];
@@ -85,6 +98,7 @@ export type SearchResponse = {
   quality: AnswerQuality;
   document_type?: string | null;
   query_intent: string;
+  diagnostics?: SearchDiagnostics | null;
 };
 
 export type EvalRunSummary = {
@@ -93,4 +107,35 @@ export type EvalRunSummary = {
   model_name: string;
   metrics: Record<string, number>;
   created_at: string;
+};
+
+export type GoldenEvalCaseResult = {
+  case_id: string;
+  document_name: string;
+  document_type: string;
+  question: string;
+  expected_status: "answerable" | "insufficient_evidence";
+  actual_status: "answerable" | "insufficient_evidence";
+  expected_terms: string[];
+  query_intent: string;
+  confidence: "strong" | "moderate" | "weak";
+  citation_count: number;
+  answer_preview?: string | null;
+  quality_reason: string;
+  passed: boolean;
+  failure_reasons: string[];
+};
+
+export type GoldenEvalResponse = {
+  name: string;
+  summary: {
+    total_cases: number;
+    passed_cases: number;
+    failed_cases: number;
+    pass_rate: number;
+    answerable_cases: number;
+    abstention_cases: number;
+    document_types: Record<string, number>;
+  };
+  cases: GoldenEvalCaseResult[];
 };

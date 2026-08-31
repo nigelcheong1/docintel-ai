@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -39,6 +40,19 @@ class SearchHitRead(BaseModel):
     ranking_signals: dict[str, float]
     snippet: str
     section_heading: str | None = None
+    result_role: Literal["answer_evidence", "related"] = "related"
+
+
+class SearchDiagnostics(BaseModel):
+    document_type: str | None
+    query_intent: str
+    quality_status: Literal["answerable", "insufficient_evidence"]
+    confidence: Literal["strong", "moderate", "weak"]
+    reason: str
+    answer_chunk_ids: list[str]
+    answer_evidence_count: int
+    related_result_count: int
+    top_rejected_reasons: list[str]
 
 
 class SearchResponse(BaseModel):
@@ -48,6 +62,7 @@ class SearchResponse(BaseModel):
     quality: AnswerQuality
     document_type: str | None = None
     query_intent: str = "evidence_search"
+    diagnostics: SearchDiagnostics | None = None
 
 
 def build_snippet(text: str, max_chars: int = 260) -> str:
@@ -57,7 +72,8 @@ def build_snippet(text: str, max_chars: int = 260) -> str:
     return collapsed[: max_chars - 3].rstrip() + "..."
 
 
-def format_search_hit(hit: SearchHit) -> SearchHitRead:
+def format_search_hit(hit: SearchHit, answer_chunk_ids: set[str] | None = None) -> SearchHitRead:
+    answer_chunk_ids = answer_chunk_ids or set()
     return SearchHitRead(
         chunk_id=hit.chunk_id,
         document_id=hit.document_id,
@@ -69,6 +85,7 @@ def format_search_hit(hit: SearchHit) -> SearchHitRead:
         ranking_signals=hit.ranking_signals,
         snippet=build_snippet(hit.text),
         section_heading=hit.section_heading,
+        result_role="answer_evidence" if hit.chunk_id in answer_chunk_ids else "related",
     )
 
 

@@ -4,6 +4,7 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.db.session import get_db
 from app.documents.router import get_embedding_provider
 from app.documents.service import index_stored_upload
@@ -14,6 +15,57 @@ from app.retrieval.search import SearchHit
 import app.retrieval.router as retrieval_router
 
 pytestmark = pytest.mark.integration
+
+
+class InMemoryDocumentDb:
+    def __init__(self, document: Document) -> None:
+        self.document = document
+
+    def get(self, model, document_id: str):
+        if model is Document and document_id == self.document.id:
+            return self.document
+        return None
+
+
+def make_in_memory_document(filename: str, chunks: list[tuple[str, str | None, int]]) -> Document:
+    document = Document(
+        id="document-1",
+        filename=filename,
+        stored_filename=filename,
+        mime_type="application/pdf",
+        file_path=f"/tmp/{filename}",
+        status=DocumentStatus.INDEXED,
+    )
+    page_texts: dict[int, list[str]] = {}
+    for text, _heading, page_number in chunks:
+        page_texts.setdefault(page_number, []).append(text)
+    pages = [
+        Page(
+            id=f"page-{page_number}",
+            document_id=document.id,
+            page_number=page_number,
+            text="\n".join(texts),
+            width=612,
+            height=792,
+        )
+        for page_number, texts in sorted(page_texts.items())
+    ]
+    pages_by_number = {page.page_number: page for page in pages}
+    document.pages = pages
+    document.chunks = [
+        Chunk(
+            id=f"chunk-{index}",
+            document_id=document.id,
+            page_id=pages_by_number[page_number].id,
+            page=pages_by_number[page_number],
+            chunk_index=index,
+            text=text,
+            token_estimate=len(text.split()),
+            layout={"section_heading": heading} if heading else {},
+        )
+        for index, (text, heading, page_number) in enumerate(chunks)
+    ]
+    return document
 
 
 def create_sample_pdf(path: Path, text: str) -> bytes:
@@ -138,6 +190,117 @@ def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):
     assert body["hits"][0]["chunk_id"] == "project-12"
     assert body["hits"][0]["source_score"] == 0.84
     assert body["hits"][0]["ranking_signals"] == {"keyword_overlap": 1.0, "section_intent": 1.0}
+
+
+def test_search_endpoint_returns_diagnostics_and_evidence_roles(monkeypatch):
+    candidates = [
+        SearchHit(
+            chunk_id="invoice-total",
+            document_id="document-1",
+            document_filename="invoice.pdf",
+            page_number=1,
+            chunk_index=0,
+            text="PAYMENT SUMMARY Total Due RM 1,272.00",
+            score=0.88,
+            source_score=0.88,
+            section_heading="PAYMENT SUMMARY",
+        ),
+        SearchHit(
+            chunk_id="invoice-vendor",
+            document_id="document-1",
+            document_filename="invoice.pdf",
+            page_number=1,
+            chunk_index=1,
+            text="Vendor DocIntel Labs",
+            score=0.62,
+            source_score=0.62,
+            section_heading="VENDOR",
+        ),
+    ]
+
+    def search_invoice_candidates(_db, _embedding, _top_k, _document_id):
+        return candidates
+
+    monkeypatch.setattr(retrieval_router, "search_chunks", search_invoice_candidates)
+    app = create_app()
+
+    def override_db():
+        yield object()
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post("/search", json={"query": "What total amount is due?", "top_k": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["diagnostics"] == {
+        "document_type": None,
+        "query_intent": "amounts",
+        "quality_status": "answerable",
+        "confidence": "strong",
+        "reason": "Answer built from 1 cited evidence chunk.",
+        "answer_chunk_ids": ["invoice-total"],
+        "answer_evidence_count": 1,
+        "related_result_count": 1,
+        "top_rejected_reasons": ["invoice-vendor: not cited in the answer"],
+    }
+    assert body["hits"][0]["result_role"] == "answer_evidence"
+    assert body["hits"][1]["result_role"] == "related"
+
+
+def test_search_endpoint_includes_document_aware_evidence_when_vector_hit_misses_cited_chunk(monkeypatch):
+    document = make_in_memory_document(
+        "paper.pdf",
+        [
+            (
+                "ABSTRACT This paper introduces H2R Bridge for human-robot collaboration and few-shot intention recognition.",
+                "ABSTRACT",
+                1,
+            ),
+            (
+                "METHOD The system uses a temporal encoder and robot command generation.",
+                "METHOD",
+                2,
+            ),
+        ],
+    )
+    vector_only_hit = SearchHit(
+        chunk_id="chunk-1",
+        document_id=document.id,
+        document_filename=document.filename,
+        page_number=2,
+        chunk_index=1,
+        text="METHOD The system uses a temporal encoder and robot command generation.",
+        score=0.61,
+        source_score=0.61,
+        section_heading="METHOD",
+    )
+
+    def search_method_candidate(_db, _embedding, _top_k, _document_id):
+        return [vector_only_hit]
+
+    monkeypatch.setattr(retrieval_router, "search_chunks", search_method_candidate)
+    app = create_app()
+
+    def override_db():
+        yield InMemoryDocumentDb(document)
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post(
+        "/search",
+        json={"query": "What is this document about?", "top_k": 1, "document_id": document.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"]["citations"][0]["chunk_id"] == "chunk-0"
+    assert [hit["chunk_id"] for hit in body["hits"]] == ["chunk-0", "chunk-1"]
+    assert body["hits"][0]["result_role"] == "answer_evidence"
+    assert body["hits"][1]["result_role"] == "related"
+    assert body["diagnostics"]["answer_chunk_ids"] == ["chunk-0"]
+    assert body["diagnostics"]["answer_evidence_count"] == 1
+    assert body["diagnostics"]["related_result_count"] == 1
 
 
 def test_search_endpoint_abstains_when_retrieved_hits_do_not_answer_question(monkeypatch):
