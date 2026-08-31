@@ -111,6 +111,16 @@ _QUERY_STOPWORDS = {
     "what",
     "which",
 }
+_INVOICE_AMOUNT_QUERY_PATTERNS = {
+    "amount due",
+    "balance due",
+    "invoice amount",
+    "invoice total",
+    "payment due",
+    "subtotal",
+    "total amount",
+    "total due",
+}
 
 
 @dataclass(frozen=True)
@@ -215,7 +225,16 @@ def _research_snippet(text: str, query: str, *, intent: str | None = None, prefe
     if not sentences:
         return ""
     if prefer_first:
-        selected = sentences[0]
+        if intent == "overview":
+            selected_sentences: list[str] = []
+            for sentence in sentences[:3]:
+                candidate = " ".join([*selected_sentences, sentence])
+                if len(candidate) > _MAX_SUMMARY_CHARS and selected_sentences:
+                    break
+                selected_sentences.append(sentence)
+            selected = " ".join(selected_sentences)
+        else:
+            selected = sentences[0]
     else:
         query_words = _words(query).difference(_QUERY_STOPWORDS)
 
@@ -611,6 +630,17 @@ def _date_answer(query: str, document: Document, profile: DocumentProfileRead, r
 
 
 def _amount_answer(query: str, document: Document, profile: DocumentProfileRead, route: QueryRoute) -> DocumentAwareAnswer | None:
+    normalized_query = _normalized(query)
+    if profile.document_type == "research_paper" and any(
+        pattern in normalized_query for pattern in _INVOICE_AMOUNT_QUERY_PATTERNS
+    ):
+        return _no_answer(
+            "This document is classified as a research paper, so invoice totals or payment due amounts are not expected. "
+            "Ask about metrics, datasets, results, methods, or limitations instead.",
+            profile,
+            route,
+        )
+
     money_facts = [fact for fact in profile.key_numbers if fact.kind == "amount"]
     facts = money_facts or profile.key_numbers
     return _answer_from_facts(

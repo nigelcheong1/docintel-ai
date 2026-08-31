@@ -102,6 +102,37 @@ def test_research_overview_answer_cleans_abstract_and_ignores_boilerplate():
     assert "D. D." not in result.answer.summary
 
 
+def test_research_overview_answer_uses_multiple_informative_abstract_sentences():
+    document = make_document(
+        "paper.pdf",
+        "\n".join(
+            [
+                "Title",
+                "Abstract",
+                "Human-robot collaboration enhances efficiency by enabling shared tasks.",
+                "This paper introduces H2R Bridge for few-shot intention meta-perception.",
+                "The framework transfers vision-language models to industrial HRC scenarios.",
+            ]
+        ),
+        [
+            (
+                "ABSTRACT Human-robot collaboration enhances efficiency by enabling shared tasks. "
+                "This paper introduces H2R Bridge for few-shot intention meta-perception. "
+                "The framework transfers vision-language models to industrial HRC scenarios.",
+                "ABSTRACT",
+            ),
+        ],
+    )
+
+    result = answer_for("What is this document about?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Human-robot collaboration enhances efficiency" in result.answer.summary
+    assert "This paper introduces H2R Bridge" in result.answer.summary
+    assert "vision-language models" in result.answer.summary
+
+
 def test_research_methods_answer_prefers_method_section_over_front_matter():
     document = make_document(
         "paper.pdf",
@@ -430,6 +461,24 @@ def test_builds_research_metric_answer_from_table_numbers():
     assert result is not None
     assert result.answer is not None
     assert "30.650" in result.answer.summary
+
+
+def test_research_paper_rejects_invoice_total_due_question():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper studies video action recognition.\nResults\nTOP1 89.266 TOP5 99.011.",
+        [
+            ("ABSTRACT This paper studies video action recognition.", "ABSTRACT"),
+            ("RESULTS TOP1 89.266 TOP5 99.011.", "RESULTS"),
+        ],
+    )
+
+    result = answer_for("What total amount is due?", document)
+
+    assert result is not None
+    assert result.answer is None
+    assert result.quality.status == "insufficient_evidence"
+    assert "invoice" in result.quality.reason.lower()
 
 
 def test_builds_report_recommendation_answer():
