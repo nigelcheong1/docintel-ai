@@ -24,7 +24,17 @@ function uniqueFacts(facts: DocumentFact[], limit: number) {
   return items;
 }
 
-function FactList({ title, icon: Icon, facts }: { title: string; icon: typeof CalendarDays; facts: DocumentFact[] }) {
+function FactList({
+  title,
+  icon: Icon,
+  facts,
+  showFactLabels = false,
+}: {
+  title: string;
+  icon: typeof CalendarDays;
+  facts: DocumentFact[];
+  showFactLabels?: boolean;
+}) {
   const items = uniqueFacts(facts, 4);
   if (items.length === 0) {
     return null;
@@ -38,7 +48,8 @@ function FactList({ title, icon: Icon, facts }: { title: string; icon: typeof Ca
       <ul className="mt-2 flex flex-wrap gap-2">
         {items.map((fact) => (
           <li key={`${fact.kind}-${fact.value}`} className="rounded border border-line bg-white px-2 py-1 text-xs text-slate-700">
-            {fact.value}
+            {showFactLabels ? <span className="mr-1 font-medium text-slate-500">{fact.label}</span> : null}
+            <span>{fact.value}</span>
           </li>
         ))}
       </ul>
@@ -89,6 +100,8 @@ export function DocumentProfilePanel({
     return null;
   }
 
+  const isResearchPaper = profile.document_type === "research_paper";
+
   return (
     <section className="mb-4 rounded border border-line bg-white p-4" aria-labelledby="document-profile-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -109,11 +122,21 @@ export function DocumentProfilePanel({
       <div className="mt-4 grid gap-4 border-t border-line pt-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <SectionList sections={profile.sections} />
-          <FactList title="Entities" icon={Tags} facts={profile.key_entities} />
+          <FactList
+            title={isResearchPaper ? "Research signals" : "Entities"}
+            icon={Tags}
+            facts={profile.key_entities}
+            showFactLabels={isResearchPaper}
+          />
         </div>
         <div className="space-y-4">
           <FactList title="Dates" icon={CalendarDays} facts={profile.key_dates} />
-          <FactList title="Numbers" icon={Hash} facts={profile.key_numbers} />
+          <FactList
+            title={isResearchPaper ? "Metrics" : "Numbers"}
+            icon={Hash}
+            facts={profile.key_numbers}
+            showFactLabels={isResearchPaper}
+          />
         </div>
       </div>
 
