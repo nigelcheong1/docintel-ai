@@ -4,6 +4,16 @@ import re
 from dataclasses import dataclass, field
 
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
+_INVOICE_AMOUNT_QUERY_PATTERNS = {
+    "amount due",
+    "balance due",
+    "invoice amount",
+    "invoice total",
+    "payment due",
+    "subtotal",
+    "total amount",
+    "total due",
+}
 
 
 @dataclass(frozen=True)
@@ -21,13 +31,18 @@ def _has_any(normalized_query: str, terms: set[str]) -> bool:
     return any(term in normalized_query for term in terms)
 
 
-def _mismatch_reason(intent: str, document_type: str | None) -> str | None:
+def _mismatch_reason(intent: str, document_type: str | None, normalized_query: str = "") -> str | None:
     if document_type == "research_paper" and intent == "parties":
         return (
             "This document is classified as a research paper, so contract-style parties are not expected. "
             "Ask about authors, methods, datasets, results, or limitations instead."
         )
-    if document_type == "research_paper" and intent in {"amounts", "payment_due", "payment_terms"}:
+    is_research_invoice_amount_query = intent == "amounts" and any(
+        pattern in normalized_query for pattern in _INVOICE_AMOUNT_QUERY_PATTERNS
+    )
+    if document_type == "research_paper" and (
+        intent in {"payment_due", "payment_terms"} or is_research_invoice_amount_query
+    ):
         return (
             "This document is classified as a research paper, so invoice totals or payment due amounts are not expected. "
             "Ask about metrics, datasets, results, methods, or limitations instead."
@@ -97,7 +112,7 @@ def route_query(query: str, document_type: str | None = None) -> QueryRoute:
             return QueryRoute(
                 intent=intent,
                 preferred_section_intents=section_intents,
-                mismatch_reason=_mismatch_reason(intent, document_type),
+                mismatch_reason=_mismatch_reason(intent, document_type, normalized_query),
             )
 
     return QueryRoute("evidence_search", set())

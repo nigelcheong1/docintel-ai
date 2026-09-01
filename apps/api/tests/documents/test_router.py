@@ -165,7 +165,7 @@ def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_pa
     stored = save_upload_bytes(
         "resume.pdf",
         "application/pdf",
-        create_pdf_bytes(original_pdf, "Reindex endpoint fixture"),
+        create_pdf_bytes(original_pdf, "Reindex endpoint fixture contains searchable PDF text for testing."),
         tmp_path / "storage",
         20,
     )
@@ -192,7 +192,7 @@ def test_reindex_document_endpoint_surfaces_failure_and_preserves_prior_index(db
     stored = save_upload_bytes(
         "resume.pdf",
         "application/pdf",
-        create_pdf_bytes(original_pdf, "Original searchable content"),
+        create_pdf_bytes(original_pdf, "Original searchable content includes enough useful PDF words for reindexing."),
         tmp_path / "storage",
         20,
     )

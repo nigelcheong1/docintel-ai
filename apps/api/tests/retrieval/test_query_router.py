@@ -38,6 +38,13 @@ def test_research_paper_amount_queries_get_type_mismatch():
     assert "research paper" in route.mismatch_reason.lower()
 
 
+def test_research_paper_metric_amount_queries_are_answerable():
+    route = route_query("What amounts or totals are mentioned?", "research_paper")
+
+    assert route.intent == "amounts"
+    assert route.mismatch_reason is None
+
+
 def test_routes_invoice_payment_due_queries():
     route = route_query("When is payment due?", "invoice")
 
