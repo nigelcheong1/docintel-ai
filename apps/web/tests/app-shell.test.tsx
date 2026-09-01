@@ -19,4 +19,11 @@ describe("AppShell", () => {
     expect(screen.getAllByText("DocIntel").length).toBeGreaterThan(0);
     expect(screen.getAllByText("AI").length).toBeGreaterThan(0);
   });
+
+  it("keeps the desktop sidebar above the desktop content layer", () => {
+    const { container } = render(<AppShell>Content</AppShell>);
+
+    expect(container.querySelector("aside")).toHaveClass("z-30");
+    expect(container.querySelector("main")).toHaveClass("z-0");
+  });
 });
