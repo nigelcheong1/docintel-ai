@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 DocumentKind = Literal["pdf", "image"]
 
@@ -15,6 +15,12 @@ class ParseQualityRead(BaseModel):
     low_text_page_ratio: float
     scanned_likelihood: Literal["low", "medium", "high"]
     warnings: list[str]
+    ocr_page_count: int = 0
+    native_text_page_count: int = 0
+    hybrid_page_count: int = 0
+    ocr_confidence_average: float | None = None
+    ocr_duration_ms: int = 0
+    text_source_summary: dict[str, int] = Field(default_factory=dict)
 
 
 class DocumentRead(BaseModel):

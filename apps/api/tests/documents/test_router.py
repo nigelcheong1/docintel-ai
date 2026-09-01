@@ -89,7 +89,9 @@ def test_document_read_endpoints_include_parse_quality(db_session, tmp_path):
     assert list_response.status_code == 200
     assert detail_response.status_code == 200
     assert list_response.json()[0]["parse_quality"]["scanned_likelihood"] == "low"
+    assert "ocr_page_count" in list_response.json()[0]["parse_quality"]
     assert detail_response.json()["parse_quality"]["page_count"] == 1
+    assert "text_source_summary" in detail_response.json()["parse_quality"]
 
 
 @pytest.mark.integration

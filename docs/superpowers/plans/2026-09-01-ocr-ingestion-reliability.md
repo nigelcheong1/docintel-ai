@@ -721,7 +721,7 @@ git commit -m "feat: index documents with local ocr"
 - Produces: OCR-aware parse quality fields in API responses.
 - Produces: scoped search response with insufficient evidence when selected document has no indexed chunks.
 
-- [ ] **Step 1: Write failing parse quality test**
+- [x] **Step 1: Write failing parse quality test**
 
 Add to `apps/api/tests/documents/test_parse_quality.py`:
 
@@ -751,7 +751,7 @@ def test_parse_quality_reports_ocr_metadata():
     assert profile.text_source_summary == {"native": 1, "ocr": 1, "hybrid": 1}
 ```
 
-- [ ] **Step 2: Write failing API/search tests**
+- [x] **Step 2: Write failing API/search tests**
 
 Add assertions to existing document read tests:
 
@@ -783,7 +783,7 @@ def test_scoped_search_on_deferred_ocr_document_returns_insufficient_evidence(db
     assert "OCR" in payload["quality"]["reason"]
 ```
 
-- [ ] **Step 3: Run Task 4 tests to verify red**
+- [x] **Step 3: Run Task 4 tests to verify red**
 
 Run:
 
@@ -793,7 +793,7 @@ pytest apps/api/tests/documents/test_parse_quality.py apps/api/tests/documents/t
 
 Expected: failures mention missing parse quality fields and missing scoped OCR guidance.
 
-- [ ] **Step 4: Extend schemas and parse quality**
+- [x] **Step 4: Extend schemas and parse quality**
 
 In `ParseQualityRead`, add defaults:
 
@@ -808,7 +808,7 @@ In `ParseQualityRead`, add defaults:
 
 Update `build_parse_quality_from_pages()` to read optional attributes with `getattr(page, "text_source", "native")`.
 
-- [ ] **Step 5: Add scoped non-indexed document guard**
+- [x] **Step 5: Add scoped non-indexed document guard**
 
 In `apps/api/app/retrieval/router.py`, before embedding/search when `document_id` is provided and the document exists with no chunks, return a `SearchResponse` with:
 
@@ -819,7 +819,7 @@ In `apps/api/app/retrieval/router.py`, before embedding/search when `document_id
 - `quality.reason` containing OCR guidance when `document.status == DocumentStatus.DEFERRED_OCR`
 - `diagnostics.related_result_count=0`
 
-- [ ] **Step 6: Run Task 4 tests to verify green**
+- [x] **Step 6: Run Task 4 tests to verify green**
 
 Run:
 
@@ -829,7 +829,7 @@ pytest apps/api/tests/documents/test_parse_quality.py apps/api/tests/documents/t
 
 Expected: all selected tests pass.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 Run:
 
