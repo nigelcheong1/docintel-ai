@@ -836,6 +836,19 @@ def build_document_aware_answer(
     if route.intent == "dates":
         result = _date_answer(query, document, profile, route)
         return result or _no_answer("No dates were detected in this document.", profile, route)
+    if route.intent == "payment_due":
+        result = _date_answer(query, document, profile, route)
+        if result is not None:
+            return result
+        return _section_answer(
+            query,
+            document,
+            profile,
+            route,
+            headings={"PAYMENT TERMS", "PAYMENT SUMMARY", "PAYMENT"},
+            terms={"payment due", "due date", "balance due", "total due"},
+            confidence="strong",
+        ) or _no_answer("No payment due date evidence was detected in this document.", profile, route)
     if route.intent == "amounts":
         result = _amount_answer(query, document, profile, route)
         return result or _no_answer("No amounts, totals, or measurable metrics were detected in this document.", profile, route)
