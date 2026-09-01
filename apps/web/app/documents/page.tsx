@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { DocumentList } from "@/components/document-list";
 import { UploadPanel } from "@/components/upload-panel";
+import { Panel } from "@/components/ui/panel";
 import { deleteDocument, getDocument, getDocuments, reindexDocument } from "@/lib/api";
 import type { DocumentDetail } from "@/lib/types";
 
@@ -42,12 +43,19 @@ export default function DocumentsPage() {
   return (
     <AppShell>
       <section className="mb-6">
-        <h1 className="text-2xl font-semibold">Documents</h1>
-        <p className="mt-2 text-sm text-slate-600">Upload local documents and review indexing status.</p>
+        <p className="text-xs font-semibold uppercase tracking-normal text-teal-700">Document intake</p>
+        <h1 className="mt-2 text-3xl font-black tracking-normal">Documents</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          Upload PDFs, inspect indexing health, and spot files that should wait for next phase OCR.
+        </p>
       </section>
       <div className="space-y-4">
         <UploadPanel onUploaded={() => void refreshDocuments()} />
-        {message ? <p className="text-sm text-slate-600">{message}</p> : <DocumentList documents={documents} onDelete={handleDelete} onReindex={handleReindex} />}
+        {message ? (
+          <Panel className="text-sm text-slate-600">{message}</Panel>
+        ) : (
+          <DocumentList documents={documents} onDelete={handleDelete} onReindex={handleReindex} />
+        )}
       </div>
     </AppShell>
   );

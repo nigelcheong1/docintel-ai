@@ -89,6 +89,36 @@ describe("DocumentList", () => {
     }
   });
 
+  it("surfaces parse quality guidance when OCR would help", () => {
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-scan",
+            filename: "scan-heavy.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+            page_count: 4,
+            chunk_count: 2,
+            parse_quality: {
+              page_count: 4,
+              text_page_count: 1,
+              empty_page_count: 3,
+              total_characters: 120,
+              average_characters_per_page: 30,
+              low_text_page_ratio: 0.75,
+              scanned_likelihood: "high",
+              warnings: ["This PDF has very little extractable text and may need OCR."],
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("OCR recommended").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("This PDF has very little extractable text and may need OCR.").length).toBeGreaterThan(0);
+  });
+
   it("locks document actions while a reindex operation is pending", () => {
     let resolveReindex: (() => void) | undefined;
     const onReindex = vi.fn(

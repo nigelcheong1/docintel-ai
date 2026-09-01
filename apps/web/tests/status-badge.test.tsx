@@ -7,12 +7,12 @@ describe("StatusBadge", () => {
   it("renders indexed status text", () => {
     render(<StatusBadge status="indexed" />);
 
-    expect(screen.getByText("Indexed")).toBeInTheDocument();
+    expect(screen.getByText("Indexed")).toHaveClass("bg-emerald-50");
   });
 
   it("renders deferred OCR status text", () => {
     render(<StatusBadge status="deferred_ocr" />);
 
-    expect(screen.getByText("OCR deferred")).toBeInTheDocument();
+    expect(screen.getByText("OCR deferred")).toHaveClass("bg-amber-50");
   });
 });
