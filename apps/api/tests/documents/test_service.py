@@ -2,10 +2,12 @@ from pathlib import Path
 
 import fitz
 import pytest
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page
+from app.documents.ocr import OcrPageResult
 from app.documents.storage import save_upload_bytes
 from app.documents.service import (
     DocumentPersistenceError,
@@ -26,6 +28,20 @@ def create_sample_pdf(path: Path, text: str) -> bytes:
     document.save(path)
     document.close()
     return path.read_bytes()
+
+
+class FakeOcrProvider:
+    engine_name = "fake-ocr"
+
+    def __init__(self, available: bool = True, text: str = "OCR searchable content from scanned document") -> None:
+        self.available = available
+        self.text = text
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def ocr_image(self, image: Image.Image, *, language: str) -> OcrPageResult:
+        return OcrPageResult(text=self.text, confidence=88.0, engine_name=self.engine_name, duration_ms=5)
 
 
 def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
@@ -52,13 +68,46 @@ def test_index_stored_upload_fails_cleanly_when_pdf_has_no_usable_chunks(db_sess
     assert "not enough usable text" in (document.error_message or "").lower()
 
 
-def test_index_stored_upload_defers_image_ocr(db_session, tmp_path):
+def test_index_stored_upload_indexes_image_with_available_ocr(db_session, tmp_path):
+    image_path = tmp_path / "scan.png"
+    Image.new("RGB", (120, 60), "white").save(image_path)
+    stored = save_upload_bytes("scan.png", "image/png", image_path.read_bytes(), tmp_path / "storage", 20)
+
+    document = index_stored_upload(
+        db_session,
+        stored,
+        lambda: FakeEmbeddingProvider(),
+        ocr_provider_factory=lambda: FakeOcrProvider(),
+        ocr_language="eng",
+        ocr_dpi=200,
+        ocr_max_pages=25,
+    )
+
+    assert document.status == DocumentStatus.INDEXED
+    assert document.processing_started_at is not None
+    assert document.processing_completed_at is not None
+    assert document.processing_duration_ms is not None
+    assert document.pages[0].text_source == "ocr"
+    assert document.pages[0].ocr_engine == "fake-ocr"
+    assert document.pages[0].ocr_confidence == 88.0
+    assert "OCR searchable content" in document.chunks[0].text
+
+
+def test_index_stored_upload_defers_image_when_ocr_is_unavailable(db_session, tmp_path):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
 
-    document = index_stored_upload(db_session, stored, None)
+    document = index_stored_upload(
+        db_session,
+        stored,
+        lambda: FakeEmbeddingProvider(),
+        ocr_provider_factory=lambda: FakeOcrProvider(available=False),
+        ocr_language="eng",
+        ocr_dpi=200,
+        ocr_max_pages=25,
+    )
 
     assert document.status == DocumentStatus.DEFERRED_OCR
-    assert document.error_message == "OCR is not enabled in the local-first MVP."
+    assert "Local OCR is not available" in (document.error_message or "")
 
 
 def test_index_stored_upload_persists_malformed_pdf_failure_without_loading_model(db_session, tmp_path):

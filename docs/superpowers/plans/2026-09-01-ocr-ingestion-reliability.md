@@ -521,7 +521,7 @@ git commit -m "feat: add local ocr extraction primitives"
 - Produces: PDF hybrid indexing when sparse pages are OCR candidates.
 - Produces: reindex support for PDFs and images.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Add fake OCR provider to `apps/api/tests/documents/test_service.py`:
 
@@ -588,7 +588,7 @@ def test_index_stored_upload_defers_image_when_ocr_is_unavailable(db_session, tm
     assert "Local OCR is not available" in (document.error_message or "")
 ```
 
-- [ ] **Step 2: Write failing router tests**
+- [x] **Step 2: Write failing router tests**
 
 Update `apps/api/tests/documents/test_router.py` so image upload with a fake OCR provider returns `indexed`, and add a reindex image acceptance test:
 
@@ -614,7 +614,7 @@ def test_reindex_document_endpoint_accepts_images_when_ocr_is_available(db_sessi
     assert response.json()["status"] == "indexed"
 ```
 
-- [ ] **Step 3: Run Task 3 tests to verify red**
+- [x] **Step 3: Run Task 3 tests to verify red**
 
 Run:
 
@@ -624,7 +624,7 @@ pytest apps/api/tests/documents/test_service.py apps/api/tests/documents/test_ro
 
 Expected: failures mention unexpected `index_stored_upload` keyword arguments and missing `get_ocr_provider_factory`.
 
-- [ ] **Step 4: Update service signatures and extraction storage**
+- [x] **Step 4: Update service signatures and extraction storage**
 
 Change `index_stored_upload()` and `reindex_document()` to accept:
 
@@ -653,7 +653,7 @@ Page(
 )
 ```
 
-- [ ] **Step 5: Implement status and duration tracking**
+- [x] **Step 5: Implement status and duration tracking**
 
 Set:
 
@@ -669,7 +669,7 @@ document.processing_completed_at = utc_now()
 document.processing_duration_ms = int((document.processing_completed_at - document.processing_started_at).total_seconds() * 1000)
 ```
 
-- [ ] **Step 6: Update router dependencies**
+- [x] **Step 6: Update router dependencies**
 
 In `apps/api/app/documents/router.py`, add:
 
@@ -684,7 +684,7 @@ def get_ocr_provider_factory(settings: Annotated[Settings, Depends(get_settings)
 
 Pass OCR settings into upload and reindex service calls.
 
-- [ ] **Step 7: Run Task 3 tests to verify green**
+- [x] **Step 7: Run Task 3 tests to verify green**
 
 Run:
 
@@ -694,7 +694,7 @@ pytest apps/api/tests/documents/test_service.py apps/api/tests/documents/test_ro
 
 Expected: all selected tests pass.
 
-- [ ] **Step 8: Commit Task 3**
+- [x] **Step 8: Commit Task 3**
 
 Run:
 
