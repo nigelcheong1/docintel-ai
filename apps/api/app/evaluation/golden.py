@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.documents.intelligence import build_document_profile
+from app.documents.parse_quality import build_parse_quality_from_pages
+from app.documents.parser import ParsedPage
 from app.retrieval.document_answers import build_document_aware_answer
 from app.retrieval.query_router import route_query
 
@@ -33,6 +35,7 @@ class GoldenCaseSpec:
     expected_status: str
     expected_terms: tuple[str, ...]
     expected_intent: str
+    quality_dimension: str = "answer_quality"
 
 
 class GoldenEvalCaseResult(BaseModel):
@@ -48,6 +51,7 @@ class GoldenEvalCaseResult(BaseModel):
     citation_count: int
     answer_preview: str | None
     quality_reason: str
+    quality_dimension: str
     passed: bool
     failure_reasons: list[str]
 
@@ -60,6 +64,7 @@ class GoldenEvalSummary(BaseModel):
     answerable_cases: int
     abstention_cases: int
     document_types: dict[str, int]
+    quality_dimensions: dict[str, int]
 
 
 class GoldenEvalResponse(BaseModel):
@@ -243,6 +248,7 @@ _CASES: tuple[GoldenCaseSpec, ...] = (
         "insufficient_evidence",
         (),
         "amounts",
+        "abstention_safety",
     ),
     GoldenCaseSpec(
         "resume-skills",
@@ -274,7 +280,7 @@ _CASES: tuple[GoldenCaseSpec, ...] = (
         "When is payment due?",
         "answerable",
         ("2026-08-30",),
-        "dates",
+        "payment_due",
     ),
     GoldenCaseSpec(
         "contract-parties",
@@ -298,7 +304,7 @@ _CASES: tuple[GoldenCaseSpec, ...] = (
         "What are the key findings?",
         "answerable",
         ("18%", "booking delays"),
-        "results",
+        "findings",
     ),
     GoldenCaseSpec(
         "report-recommendations",
@@ -411,6 +417,41 @@ def _evaluate_case(case: GoldenCaseSpec, document: Document) -> GoldenEvalCaseRe
         citation_count=citation_count,
         answer_preview=answer_preview,
         quality_reason=quality_reason,
+        quality_dimension=case.quality_dimension,
+        passed=not failure_reasons,
+        failure_reasons=failure_reasons,
+    )
+
+
+def _evaluate_parse_quality_case() -> GoldenEvalCaseResult:
+    profile = build_parse_quality_from_pages(
+        [
+            ParsedPage(page_number=1, text=".", width=612, height=792),
+            ParsedPage(page_number=2, text="", width=612, height=792),
+        ]
+    )
+    expected_warning = "This PDF has very little extractable text and may need OCR."
+    answer_preview = f"OCR recommended: {expected_warning}"
+    failure_reasons: list[str] = []
+    if profile.scanned_likelihood != "high":
+        failure_reasons.append(f"Expected high scanned likelihood, got {profile.scanned_likelihood}.")
+    if expected_warning not in profile.warnings:
+        failure_reasons.append("Expected OCR guidance warning.")
+
+    return GoldenEvalCaseResult(
+        case_id="parse-quality-low-text-guidance",
+        document_name="sparse-text.pdf",
+        document_type="parse_quality",
+        question="Can this PDF be searched locally?",
+        expected_status="insufficient_evidence",
+        actual_status="insufficient_evidence",
+        expected_terms=["OCR"],
+        query_intent="parse_quality",
+        confidence="weak",
+        citation_count=0,
+        answer_preview=answer_preview,
+        quality_reason="Parse quality detected very little extractable text.",
+        quality_dimension="parse_quality",
         passed=not failure_reasons,
         failure_reasons=failure_reasons,
     )
@@ -419,8 +460,10 @@ def _evaluate_case(case: GoldenCaseSpec, document: Document) -> GoldenEvalCaseRe
 def run_golden_evaluation() -> GoldenEvalResponse:
     documents = {spec.key: _make_document(spec) for spec in _DOCUMENTS}
     cases = [_evaluate_case(case, documents[case.document_key]) for case in _CASES]
+    cases.append(_evaluate_parse_quality_case())
     passed_cases = sum(1 for case in cases if case.passed)
     document_types = Counter(case.document_type for case in cases)
+    quality_dimensions = Counter(case.quality_dimension for case in cases)
 
     return GoldenEvalResponse(
         name="universal-document-qa-golden",
@@ -432,6 +475,7 @@ def run_golden_evaluation() -> GoldenEvalResponse:
             answerable_cases=sum(1 for case in cases if case.expected_status == "answerable"),
             abstention_cases=sum(1 for case in cases if case.expected_status == "insufficient_evidence"),
             document_types=dict(sorted(document_types.items())),
+            quality_dimensions=dict(sorted(quality_dimensions.items())),
         ),
         cases=cases,
     )

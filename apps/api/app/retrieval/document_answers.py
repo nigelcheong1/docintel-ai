@@ -923,7 +923,7 @@ def build_document_aware_answer(
             require_heading_for_strong=profile.document_type == "research_paper",
             exclude_table_like=profile.document_type == "research_paper",
         )
-    if route.intent == "results":
+    if route.intent in {"results", "findings"}:
         return _section_answer(
             query,
             document,
