@@ -61,8 +61,9 @@
 - Produces: `Page.text_source`, `ocr_engine`, `ocr_confidence`, `ocr_duration_ms`.
 - Produces: `Document.processing_started_at`, `processing_completed_at`, `processing_duration_ms`.
 - Produces: `sync_local_schema(engine) -> None`, called by `init_db()`.
+- Produces: `document_status_enum_sync_sql() -> str` for additive PostgreSQL enum updates.
 
-- [ ] **Step 1: Write failing config and model tests**
+- [x] **Step 1: Write failing config and model tests**
 
 Add to `apps/api/tests/core/test_config.py`:
 
@@ -108,7 +109,7 @@ Add imports in `apps/api/tests/db/test_models.py`:
 from app.db.models import ChunkEmbedding, Document, DocumentStatus, Page
 ```
 
-- [ ] **Step 2: Write failing schema sync test**
+- [x] **Step 2: Write failing schema sync test**
 
 Create `apps/api/tests/db/test_init_db.py`:
 
@@ -134,7 +135,7 @@ def test_sync_local_schema_adds_missing_ocr_columns(tmp_path):
     assert {"text_source", "ocr_engine", "ocr_confidence", "ocr_duration_ms"} <= page_columns
 ```
 
-- [ ] **Step 3: Run Task 1 tests to verify red**
+- [x] **Step 3: Run Task 1 tests to verify red**
 
 Run:
 
@@ -144,7 +145,7 @@ pytest apps/api/tests/core/test_config.py apps/api/tests/db/test_models.py apps/
 
 Expected: failures mention missing OCR settings, missing `OCR_PROCESSING`, missing metadata columns, and missing `sync_local_schema`.
 
-- [ ] **Step 4: Implement settings and model columns**
+- [x] **Step 4: Implement settings and model columns**
 
 In `apps/api/app/core/config.py`, add:
 
@@ -180,7 +181,7 @@ Add to `Page`:
     ocr_duration_ms: Mapped[int | None] = mapped_column(Integer)
 ```
 
-- [ ] **Step 5: Implement additive schema sync**
+- [x] **Step 5: Implement additive schema sync**
 
 In `apps/api/app/db/init_db.py`, add:
 
@@ -239,7 +240,7 @@ def init_db() -> None:
     sync_local_schema(engine)
 ```
 
-- [ ] **Step 6: Run Task 1 tests to verify green**
+- [x] **Step 6: Run Task 1 tests to verify green**
 
 Run:
 
@@ -249,7 +250,7 @@ pytest apps/api/tests/core/test_config.py apps/api/tests/db/test_models.py apps/
 
 Expected: all selected tests pass.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 Run:
 
