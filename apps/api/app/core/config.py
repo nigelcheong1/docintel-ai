@@ -14,7 +14,14 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
-    backend_cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    backend_cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+        ]
+    )
 
 
 @lru_cache
