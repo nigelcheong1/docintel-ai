@@ -7,10 +7,14 @@ from pydantic import BaseModel
 
 from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.documents.intelligence import build_document_profile
-from app.documents.parse_quality import build_parse_quality_from_pages
+from app.documents.parse_quality import build_parse_quality_from_pages, normalized_text_length
 from app.documents.parser import ParsedPage
 from app.retrieval.document_answers import build_document_aware_answer
 from app.retrieval.query_router import route_query
+
+OCR_UNAVAILABLE_GUIDANCE = (
+    "Local OCR is not available. Install Tesseract OCR or configure DOCINTEL_TESSERACT_CMD, then retry OCR."
+)
 
 
 @dataclass(frozen=True)
@@ -457,10 +461,84 @@ def _evaluate_parse_quality_case() -> GoldenEvalCaseResult:
     )
 
 
+def _evaluate_ocr_image_deferred_case() -> GoldenEvalCaseResult:
+    document = Document(
+        id="golden-ocr-image",
+        filename="scanned-note.png",
+        stored_filename="scanned-note.png",
+        mime_type="image/png",
+        file_path="/golden/scanned-note.png",
+        status=DocumentStatus.DEFERRED_OCR,
+        error_message=OCR_UNAVAILABLE_GUIDANCE,
+    )
+    guidance = document.error_message or ""
+    failure_reasons: list[str] = []
+    if document.status != DocumentStatus.DEFERRED_OCR:
+        failure_reasons.append(f"Expected deferred OCR status, got {document.status.value}.")
+    for term in ("OCR", "Tesseract", "retry"):
+        if term.lower() not in guidance.lower():
+            failure_reasons.append(f"Expected OCR guidance to mention {term}.")
+
+    return GoldenEvalCaseResult(
+        case_id="ocr-image-deferred-guidance",
+        document_name=document.filename,
+        document_type="ocr_readiness",
+        question="Can this scanned image be searched locally?",
+        expected_status="insufficient_evidence",
+        actual_status="insufficient_evidence",
+        expected_terms=["OCR", "Tesseract", "retry"],
+        query_intent="ocr_readiness",
+        confidence="weak",
+        citation_count=0,
+        answer_preview=None,
+        quality_reason=guidance,
+        quality_dimension="ocr_readiness",
+        passed=not failure_reasons,
+        failure_reasons=failure_reasons,
+    )
+
+
+def _evaluate_ocr_sparse_pdf_case() -> GoldenEvalCaseResult:
+    pages = [
+        ParsedPage(page_number=1, text=".", width=612, height=792),
+        ParsedPage(page_number=2, text="", width=612, height=792),
+    ]
+    profile = build_parse_quality_from_pages(pages)
+    candidate_count = sum(1 for page in pages if normalized_text_length(page.text) < 80)
+    expected_warning = "This PDF has very little extractable text and may need OCR."
+    failure_reasons: list[str] = []
+    if candidate_count != 2:
+        failure_reasons.append(f"Expected 2 OCR candidate pages, got {candidate_count}.")
+    if profile.scanned_likelihood != "high":
+        failure_reasons.append(f"Expected high scanned likelihood, got {profile.scanned_likelihood}.")
+    if expected_warning not in profile.warnings:
+        failure_reasons.append("Expected OCR guidance warning.")
+
+    return GoldenEvalCaseResult(
+        case_id="ocr-sparse-pdf-guidance",
+        document_name="sparse-scan.pdf",
+        document_type="ocr_readiness",
+        question="Does this sparse PDF need OCR before reliable search?",
+        expected_status="insufficient_evidence",
+        actual_status="insufficient_evidence",
+        expected_terms=["OCR"],
+        query_intent="ocr_readiness",
+        confidence="weak",
+        citation_count=0,
+        answer_preview=None,
+        quality_reason=f"{candidate_count} sparse pages need OCR review. {expected_warning}",
+        quality_dimension="ocr_readiness",
+        passed=not failure_reasons,
+        failure_reasons=failure_reasons,
+    )
+
+
 def run_golden_evaluation() -> GoldenEvalResponse:
     documents = {spec.key: _make_document(spec) for spec in _DOCUMENTS}
     cases = [_evaluate_case(case, documents[case.document_key]) for case in _CASES]
     cases.append(_evaluate_parse_quality_case())
+    cases.append(_evaluate_ocr_image_deferred_case())
+    cases.append(_evaluate_ocr_sparse_pdf_case())
     passed_cases = sum(1 for case in cases if case.passed)
     document_types = Counter(case.document_type for case in cases)
     quality_dimensions = Counter(case.quality_dimension for case in cases)

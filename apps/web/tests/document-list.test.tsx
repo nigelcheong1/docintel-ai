@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DocumentList } from "@/components/document-list";
+import type { DocumentSummary } from "@/lib/types";
 
 describe("DocumentList", () => {
   afterEach(() => {
@@ -123,6 +124,30 @@ describe("DocumentList", () => {
 
     expect(screen.getAllByText("OCR recommended").length).toBeGreaterThan(0);
     expect(screen.getAllByText("This PDF has very little extractable text and may need OCR.").length).toBeGreaterThan(0);
+  });
+
+  it("keeps rendering legacy parse quality payloads without OCR metadata", () => {
+    const legacyDocument: DocumentSummary = {
+      id: "doc-scan",
+      filename: "legacy-scan.pdf",
+      mime_type: "application/pdf",
+      status: "indexed",
+      parse_quality: {
+        page_count: 4,
+        text_page_count: 1,
+        empty_page_count: 3,
+        total_characters: 120,
+        average_characters_per_page: 30,
+        low_text_page_ratio: 0.75,
+        scanned_likelihood: "high",
+        warnings: ["This PDF has very little extractable text and may need OCR."],
+      } as DocumentSummary["parse_quality"],
+    };
+
+    render(<DocumentList documents={[legacyDocument]} />);
+
+    expect(screen.getAllByText("OCR recommended").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1/4 text pages").length).toBeGreaterThan(0);
   });
 
   it("locks document actions while a reindex operation is pending", () => {

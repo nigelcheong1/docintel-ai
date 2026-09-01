@@ -25,6 +25,7 @@ function formatQualityDimension(name: string) {
   const labels: Record<string, string> = {
     answer_quality: "Answer quality",
     abstention_safety: "Abstention safety",
+    ocr_readiness: "OCR readiness",
     parse_quality: "Parse quality",
   };
 

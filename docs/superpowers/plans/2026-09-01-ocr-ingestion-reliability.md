@@ -970,7 +970,7 @@ npm --prefix apps/web test -- status-badge.test.tsx document-list.test.tsx docum
 
 Expected: all selected tests pass.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 Run:
 
@@ -993,7 +993,7 @@ git commit -m "feat: surface ocr status in web workspace"
 - Consumes: OCR quality/search behavior from Tasks 1-5.
 - Produces: visible OCR cases in the golden evaluation suite.
 
-- [ ] **Step 1: Write failing golden evaluation tests**
+- [x] **Step 1: Write failing golden evaluation tests**
 
 Add assertions in `apps/api/tests/evaluation/test_golden_eval.py`:
 
@@ -1007,7 +1007,7 @@ def test_golden_eval_includes_ocr_quality_cases():
     assert "ocr-sparse-pdf-guidance" in case_ids
 ```
 
-- [ ] **Step 2: Run Task 6 evaluation test to verify red**
+- [x] **Step 2: Run Task 6 evaluation test to verify red**
 
 Run:
 
@@ -1017,7 +1017,7 @@ pytest apps/api/tests/evaluation/test_golden_eval.py -q
 
 Expected: missing OCR case IDs.
 
-- [ ] **Step 3: Add OCR evaluation cases**
+- [x] **Step 3: Add OCR evaluation cases**
 
 In `apps/api/app/evaluation/golden.py`, add two deterministic cases:
 
@@ -1026,7 +1026,7 @@ In `apps/api/app/evaluation/golden.py`, add two deterministic cases:
 
 Both cases should be deterministic and should not require Tesseract.
 
-- [ ] **Step 4: Run full backend and frontend verification**
+- [x] **Step 4: Run full backend and frontend verification**
 
 Run:
 
@@ -1040,7 +1040,7 @@ git diff --check
 
 Expected: every command exits 0.
 
-- [ ] **Step 5: Commit Task 6**
+- [x] **Step 5: Commit Task 6**
 
 Run:
 

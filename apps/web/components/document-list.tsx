@@ -65,7 +65,11 @@ function qualityBadgeFor(document: DocumentSummary | DocumentDetail) {
   return { label: "Text ready", tone: "success" as const };
 }
 
-function formatTextSourceSummary(summary: Record<string, number>) {
+function formatTextSourceSummary(summary?: Record<string, number> | null) {
+  if (!summary) {
+    return "";
+  }
+
   return Object.entries(summary)
     .filter(([, count]) => count > 0)
     .map(([source, count]) => `${source} ${count}`)
@@ -76,6 +80,7 @@ function DocumentQuality({ document }: { document: DocumentSummary | DocumentDet
   const quality = document.parse_quality;
   const badge = qualityBadgeFor(document);
   const textSourceSummary = quality ? formatTextSourceSummary(quality.text_source_summary) : "";
+  const ocrPageCount = quality ? (quality.ocr_page_count ?? 0) + (quality.hybrid_page_count ?? 0) : 0;
 
   return (
     <div className="space-y-2">
@@ -87,9 +92,11 @@ function DocumentQuality({ document }: { document: DocumentSummary | DocumentDet
       ) : null}
       {quality ? (
         <div className="space-y-1 text-xs text-slate-500">
-          <p>OCR pages {quality.ocr_page_count + quality.hybrid_page_count}/{quality.page_count}</p>
+          <p>OCR pages {ocrPageCount}/{quality.page_count}</p>
           {textSourceSummary ? <p>Text source {textSourceSummary}</p> : null}
-          {quality.ocr_confidence_average !== null ? <p>OCR confidence {quality.ocr_confidence_average}%</p> : null}
+          {typeof quality.ocr_confidence_average === "number" ? (
+            <p>OCR confidence {quality.ocr_confidence_average}%</p>
+          ) : null}
         </div>
       ) : null}
       {quality?.warnings.length ? (
