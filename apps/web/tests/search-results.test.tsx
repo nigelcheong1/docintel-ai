@@ -65,6 +65,74 @@ describe("SearchResults", () => {
     expect(screen.getByText("Answer built from 1 cited evidence chunk.")).toBeInTheDocument();
   });
 
+  it("shows diagnostics and separates answer evidence from related results", () => {
+    render(
+      <SearchResults
+        documentType="invoice"
+        queryIntent="amounts"
+        diagnostics={{
+          document_type: "invoice",
+          query_intent: "amounts",
+          quality_status: "answerable",
+          confidence: "strong",
+          reason: "Answer built from 1 cited evidence chunk.",
+          answer_chunk_ids: ["answer-1"],
+          answer_evidence_count: 1,
+          related_result_count: 1,
+          top_rejected_reasons: ["related-1: not cited in the answer"],
+        }}
+        answer={{
+          summary: "Total due: RM 1,272.00.",
+          citations: [
+            {
+              chunk_id: "answer-1",
+              document_filename: "invoice.pdf",
+              page_number: 1,
+              section_heading: "PAYMENT SUMMARY",
+            },
+          ],
+        }}
+        hits={[
+          {
+            chunk_id: "answer-1",
+            document_id: "doc-1",
+            document_filename: "invoice.pdf",
+            page_number: 1,
+            chunk_index: 0,
+            score: 0.91,
+            source_score: 0.87,
+            ranking_signals: {},
+            result_role: "answer_evidence",
+            section_heading: "PAYMENT SUMMARY",
+            snippet: "PAYMENT SUMMARY Total Due RM 1,272.00.",
+          },
+          {
+            chunk_id: "related-1",
+            document_id: "doc-1",
+            document_filename: "invoice.pdf",
+            page_number: 1,
+            chunk_index: 1,
+            score: 0.55,
+            source_score: 0.49,
+            ranking_signals: {},
+            result_role: "related",
+            section_heading: "VENDOR",
+            snippet: "Vendor: DocIntel Labs.",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Search diagnostics")).toBeInTheDocument();
+    expect(screen.getByText("1 answer chunk")).toBeInTheDocument();
+    expect(screen.getByText("1 related result")).toBeInTheDocument();
+    expect(screen.getByText("related-1: not cited in the answer")).toBeInTheDocument();
+
+    const answerEvidence = screen.getByRole("heading", { name: "Answer evidence" });
+    const relatedEvidence = screen.getByRole("heading", { name: "Related evidence" });
+    expect(answerEvidence.compareDocumentPosition(relatedEvidence)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("renders an abstention panel with suggested questions", () => {
     const handleSuggestionSelect = vi.fn();
     render(

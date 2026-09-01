@@ -393,6 +393,48 @@ def test_builds_invoice_amount_answer_from_total_chunk():
     assert result.quality.confidence == "strong"
 
 
+def test_builds_resume_skills_answer_from_full_skills_section():
+    document = make_document(
+        "candidate-resume.pdf",
+        "Resume\nTechnical Skills\nPython, SQL, PyTorch, TensorFlow\nProjects\nTraffic dashboard",
+        [
+            ("TECHNICAL SKILLS Python, SQL, PyTorch, TensorFlow.", "TECHNICAL SKILLS"),
+            ("PROJECTS Traffic dashboard using SQL.", "PROJECTS"),
+        ],
+    )
+
+    result = answer_for("What technical skills are mentioned?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.quality.status == "answerable"
+    assert result.quality.confidence == "strong"
+    assert "Python, SQL, PyTorch, TensorFlow" in result.answer.summary
+    assert "Traffic dashboard" not in result.answer.summary
+
+
+def test_builds_resume_projects_answer_without_losing_later_project_names():
+    document = make_document(
+        "candidate-resume.pdf",
+        "Resume\nProjects\nSkin Lesion Classification and Traffic Accident Prediction are listed.",
+        [
+            (
+                "PROJECTS Skin Lesion Classification and Traffic Accident Prediction are listed as applied ML projects.",
+                "PROJECTS",
+            ),
+            ("TECHNICAL SKILLS Python and PyTorch.", "TECHNICAL SKILLS"),
+        ],
+    )
+
+    result = answer_for("What projects are listed in this document?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "Skin Lesion Classification" in result.answer.summary
+    assert "Traffic Accident Prediction" in result.answer.summary
+    assert "Python and PyTorch" not in result.answer.summary
+
+
 def test_amount_answer_prioritizes_total_due_and_cites_only_present_values():
     document = make_document(
         "invoice.pdf",

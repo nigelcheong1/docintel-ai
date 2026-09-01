@@ -1,12 +1,132 @@
-import type { EvalRunSummary } from "@/lib/types";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
-export function EvaluationSummary({ runs }: { runs: EvalRunSummary[] }) {
-  if (runs.length === 0) {
+import type { EvalRunSummary, GoldenEvalCaseResult, GoldenEvalResponse } from "@/lib/types";
+
+function formatMetricName(name: string) {
+  return name.replaceAll("_", " ");
+}
+
+function formatDocumentType(type: string) {
+  const label = type.replaceAll("_", " ").toLowerCase();
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function statusClassName(passed: boolean) {
+  return passed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
+  return (
+    <tr className="align-top">
+      <td className="border-t border-line py-3 pr-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="break-all text-xs font-semibold text-slate-700">{result.case_id}</span>
+          <span className="break-words text-xs text-slate-500">{result.question}</span>
+        </div>
+      </td>
+      <td className="border-t border-line px-3 py-3 text-xs text-slate-600">{formatDocumentType(result.document_type)}</td>
+      <td className="border-t border-line px-3 py-3 text-xs text-slate-600">{formatDocumentType(result.query_intent)}</td>
+      <td className="border-t border-line px-3 py-3 text-xs text-slate-600">{result.citation_count}</td>
+      <td className="border-t border-line px-3 py-3">
+        <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium ${statusClassName(result.passed)}`}>
+          {result.passed ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />}
+          {result.passed ? "Pass" : "Review"}
+        </span>
+      </td>
+      <td className="border-t border-line py-3 pl-3 text-xs leading-5 text-slate-600">
+        {result.answer_preview ?? result.quality_reason}
+        {result.failure_reasons.length > 0 ? (
+          <ul className="mt-1 space-y-1 text-amber-700">
+            {result.failure_reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
+function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
+  return (
+    <article className="rounded border border-line bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Universal document QA</h2>
+          <p className="mt-1 break-words text-xs text-slate-500">{golden.name}</p>
+        </div>
+        <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium ${statusClassName(golden.summary.failed_cases === 0)}`}>
+          {golden.summary.failed_cases === 0 ? (
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+          {golden.summary.failed_cases === 0 ? "All passing" : `${golden.summary.failed_cases} failing`}
+        </span>
+      </div>
+
+      <dl className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div>
+          <dt className="text-xs uppercase text-slate-500">Pass rate</dt>
+          <dd className="mt-1 text-xl font-semibold">{formatPercent(golden.summary.pass_rate)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-slate-500">Cases</dt>
+          <dd className="mt-1 text-xl font-semibold">{golden.summary.total_cases} cases</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-slate-500">Answerable</dt>
+          <dd className="mt-1 text-xl font-semibold">{golden.summary.answerable_cases}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase text-slate-500">Abstentions</dt>
+          <dd className="mt-1 text-xl font-semibold">{golden.summary.abstention_cases}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {Object.entries(golden.summary.document_types).map(([type, count]) => (
+          <span key={type} className="rounded border border-line bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600">
+            {formatDocumentType(type)} {count}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse">
+          <thead>
+            <tr className="text-left text-xs text-slate-500">
+              <th className="pb-2 pr-3 font-medium">Case</th>
+              <th className="px-3 pb-2 font-medium">Document</th>
+              <th className="px-3 pb-2 font-medium">Intent</th>
+              <th className="px-3 pb-2 font-medium">Citations</th>
+              <th className="px-3 pb-2 font-medium">Status</th>
+              <th className="pb-2 pl-3 font-medium">Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {golden.cases.map((result) => (
+              <GoldenCaseRow key={result.case_id} result={result} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  );
+}
+
+export function EvaluationSummary({ runs, golden }: { runs: EvalRunSummary[]; golden?: GoldenEvalResponse | null }) {
+  if (runs.length === 0 && !golden) {
     return <p className="rounded border border-line bg-white p-4 text-sm text-slate-600">No evaluation runs recorded.</p>;
   }
 
   return (
     <div className="space-y-3">
+      {golden ? <GoldenEvaluationPanel golden={golden} /> : null}
       {runs.map((run) => (
         <article key={run.id} className="rounded border border-line bg-white p-4">
           <h2 className="break-words text-sm font-semibold">{run.name}</h2>
@@ -14,7 +134,7 @@ export function EvaluationSummary({ runs }: { runs: EvalRunSummary[] }) {
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
             {Object.entries(run.metrics).map(([key, value]) => (
               <div key={key}>
-                <dt className="break-words text-xs uppercase text-slate-500">{key.replaceAll("_", " ")}</dt>
+                <dt className="break-words text-xs uppercase text-slate-500">{formatMetricName(key)}</dt>
                 <dd className="mt-1 text-xl font-semibold">
                   {key === "evaluated_questions" ? value.toFixed(0) : value.toFixed(2)}
                 </dd>

@@ -7,7 +7,7 @@ import { AppShell } from "@/components/app-shell";
 import { DocumentProfilePanel } from "@/components/document-profile-panel";
 import { SearchResults } from "@/components/search-results";
 import { getDocumentProfile, getDocuments, searchDocuments } from "@/lib/api";
-import type { AnswerQuality, DocumentProfile, DocumentSummary, SearchAnswer, SearchHit } from "@/lib/types";
+import type { AnswerQuality, DocumentProfile, DocumentSummary, SearchAnswer, SearchDiagnostics, SearchHit } from "@/lib/types";
 
 export default function SearchPage() {
   const latestSearchId = useRef(0);
@@ -21,6 +21,7 @@ export default function SearchPage() {
   const [quality, setQuality] = useState<AnswerQuality | null>(null);
   const [documentType, setDocumentType] = useState<string | null>(null);
   const [queryIntent, setQueryIntent] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<SearchDiagnostics | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -64,6 +65,7 @@ export default function SearchPage() {
     setQuality(null);
     setDocumentType(null);
     setQueryIntent(null);
+    setDiagnostics(null);
     setIsSearching(false);
     setMessage("Enter a question or search phrase.");
   }
@@ -81,6 +83,7 @@ export default function SearchPage() {
     setQuality(null);
     setDocumentType(null);
     setQueryIntent(null);
+    setDiagnostics(null);
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
@@ -93,6 +96,7 @@ export default function SearchPage() {
       setQuality(response.quality);
       setDocumentType(response.document_type ?? null);
       setQueryIntent(response.query_intent ?? null);
+      setDiagnostics(response.diagnostics ?? null);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
     } catch (error) {
       if (searchId === latestSearchId.current) {
@@ -161,6 +165,7 @@ export default function SearchPage() {
         quality={quality}
         documentType={documentType}
         queryIntent={queryIntent}
+        diagnostics={diagnostics}
         onSuggestionSelect={handleSuggestionSelect}
       />
     </AppShell>

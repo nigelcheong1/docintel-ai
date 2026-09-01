@@ -1,4 +1,11 @@
-import type { DocumentDetail, DocumentProfile, DocumentSummary, EvalRunSummary, SearchResponse } from "@/lib/types";
+import type {
+  DocumentDetail,
+  DocumentProfile,
+  DocumentSummary,
+  EvalRunSummary,
+  GoldenEvalResponse,
+  SearchResponse,
+} from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -69,6 +76,11 @@ export async function searchDocuments(query: string, topK = 5, documentId?: stri
 export async function getEvalRuns(): Promise<EvalRunSummary[]> {
   const response = await fetch(`${API_BASE_URL}/eval/runs`, { cache: "no-store" });
   return parseJsonResponse<EvalRunSummary[]>(response);
+}
+
+export async function getGoldenEval(): Promise<GoldenEvalResponse> {
+  const response = await fetch(`${API_BASE_URL}/eval/golden`, { cache: "no-store" });
+  return parseJsonResponse<GoldenEvalResponse>(response);
 }
 
 export async function createEvalRun(): Promise<EvalRunSummary> {

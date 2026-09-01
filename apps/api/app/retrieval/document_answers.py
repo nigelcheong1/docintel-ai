@@ -725,6 +725,103 @@ def _section_answer(
     )
 
 
+def _build_section_body_answer(
+    *,
+    query: str,
+    chunks: list[Chunk],
+    profile: DocumentProfileRead,
+    route: QueryRoute,
+    confidence: Literal["strong", "moderate", "weak"],
+    reason: str,
+) -> DocumentAwareAnswer | None:
+    selected_chunks = chunks[:_MAX_ANSWER_CHUNKS]
+    snippets: list[str] = []
+    citations: list[AnswerCitation] = []
+    seen_chunk_ids: set[str] = set()
+    for chunk in selected_chunks:
+        if chunk.id in seen_chunk_ids:
+            continue
+        seen_chunk_ids.add(chunk.id)
+        body = clean_text(_answer_text_for_chunk(chunk, profile, route))
+        if not body:
+            continue
+        snippet = body if len(body) <= _MAX_SUMMARY_CHARS else body[: _MAX_SUMMARY_CHARS - 3].rstrip() + "..."
+        snippets.append(snippet)
+        citations.append(_citation(chunk))
+
+    if not snippets:
+        return None
+    return DocumentAwareAnswer(
+        answer=ExtractiveAnswer(summary=" ".join(snippets), citations=citations),
+        quality=_quality(
+            status="answerable",
+            confidence=confidence,
+            reason=reason,
+            evidence_count=len(citations),
+            suggested_questions=profile.suggested_questions,
+        ),
+        query_intent=route.intent,
+        document_type=profile.document_type,
+    )
+
+
+def _resume_section_answer(
+    query: str,
+    document: Document,
+    profile: DocumentProfileRead,
+    route: QueryRoute,
+) -> DocumentAwareAnswer | None:
+    section_map: dict[str, tuple[set[str], set[str]]] = {
+        "skills": (
+            {"TECHNICAL SKILLS", "CORE SKILLS", "SKILLS", "PROGRAMMING LANGUAGES", "FRAMEWORKS", "TOOLS"},
+            {"skill", "skills", "python", "sql", "machine learning", "framework", "tool"},
+        ),
+        "programming_language": (
+            {"PROGRAMMING LANGUAGES", "TECHNICAL SKILLS", "CORE SKILLS", "SKILLS"},
+            {"programming language", "python", "javascript", "sql", "c++", "java"},
+        ),
+        "frameworks": (
+            {"FRAMEWORKS", "LIBRARIES", "TECHNICAL SKILLS", "CORE SKILLS", "SKILLS"},
+            {"framework", "frameworks", "library", "libraries", "pytorch", "tensorflow", "react"},
+        ),
+        "tools": (
+            {"TOOLS", "PLATFORMS", "TECHNICAL SKILLS", "CORE SKILLS", "SKILLS"},
+            {"tool", "tools", "platform", "git", "docker", "figma"},
+        ),
+        "projects": (
+            {"PROJECTS", "SELECTED PROJECTS", "RESEARCH PROJECTS", "ACADEMIC PROJECTS"},
+            {"project", "projects", "dashboard", "classification", "prediction", "system"},
+        ),
+        "education": (
+            {"EDUCATION", "ACADEMIC BACKGROUND", "QUALIFICATIONS"},
+            {"education", "degree", "university", "college", "cgpa"},
+        ),
+        "experience": (
+            {"EXPERIENCE", "WORK EXPERIENCE", "EMPLOYMENT", "PROFESSIONAL EXPERIENCE"},
+            {"experience", "work history", "employment", "internship", "tutor"},
+        ),
+    }
+    section_config = section_map.get(route.intent)
+    if section_config is None:
+        return None
+
+    headings, terms = section_config
+    chunks = _chunks_by_heading_or_terms(
+        document,
+        headings=headings,
+        terms=terms,
+        prefer_heading_matches=True,
+    )
+    return _build_section_body_answer(
+        query=query,
+        chunks=chunks,
+        profile=profile,
+        route=route,
+        confidence="strong" if any(chunk_heading(chunk) in headings for chunk in chunks[:1]) else "moderate",
+        reason=f"Document-aware {route.intent} answer built from resume sections.",
+    )
+
+
 def build_document_aware_answer(
     query: str,
     document: Document,
@@ -755,6 +852,17 @@ def build_document_aware_answer(
     if route.intent == "parties":
         result = _party_answer(query, document, profile, route)
         return result or _no_answer("No party, vendor, client, or bill-to evidence was detected in this document.", profile, route)
+    if profile.document_type == "resume" and route.intent in {
+        "skills",
+        "programming_language",
+        "frameworks",
+        "tools",
+        "projects",
+        "education",
+        "experience",
+    }:
+        result = _resume_section_answer(query, document, profile, route)
+        return result or _no_answer("No matching resume section evidence was detected in this document.", profile, route)
     if route.intent == "datasets":
         dataset_facts = [fact for fact in profile.key_entities if fact.kind == "dataset"]
         result = _dataset_answer(
