@@ -13,6 +13,17 @@ from app.main import create_app
 from app.retrieval.embeddings import FakeEmbeddingProvider
 
 
+def create_pdf_bytes(path: Path, text: str) -> bytes:
+    import fitz
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_text((72, 72), text)
+    pdf.save(path)
+    pdf.close()
+    return path.read_bytes()
+
+
 def test_embedding_provider_is_cached_by_model_settings(monkeypatch):
     created = []
 
@@ -31,6 +42,33 @@ def test_embedding_provider_is_cached_by_model_settings(monkeypatch):
 
     assert first is second
     assert created == [("BAAI/bge-small-en-v1.5", 384)]
+
+
+@pytest.mark.integration
+def test_document_read_endpoints_include_parse_quality(db_session, tmp_path):
+    stored = save_upload_bytes(
+        "invoice.pdf",
+        "application/pdf",
+        create_pdf_bytes(tmp_path / "invoice.pdf", "Invoice total due is RM 1,200.00 " * 20),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+
+    list_response = client.get("/documents")
+    detail_response = client.get(f"/documents/{document.id}")
+
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert list_response.json()[0]["parse_quality"]["scanned_likelihood"] == "low"
+    assert detail_response.json()["parse_quality"]["page_count"] == 1
 
 
 @pytest.mark.integration
@@ -123,15 +161,14 @@ def test_delete_document_endpoint_surfaces_file_removal_failure(db_session, tmp_
 
 @pytest.mark.integration
 def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_path):
-    import fitz
-
     original_pdf = tmp_path / "original.pdf"
-    pdf = fitz.open()
-    page = pdf.new_page()
-    page.insert_text((72, 72), "Reindex endpoint fixture")
-    pdf.save(original_pdf)
-    pdf.close()
-    stored = save_upload_bytes("resume.pdf", "application/pdf", original_pdf.read_bytes(), tmp_path / "storage", 20)
+    stored = save_upload_bytes(
+        "resume.pdf",
+        "application/pdf",
+        create_pdf_bytes(original_pdf, "Reindex endpoint fixture"),
+        tmp_path / "storage",
+        20,
+    )
     document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
     app = create_app()
 
@@ -151,15 +188,14 @@ def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_pa
 
 @pytest.mark.integration
 def test_reindex_document_endpoint_surfaces_failure_and_preserves_prior_index(db_session, tmp_path):
-    import fitz
-
     original_pdf = tmp_path / "original.pdf"
-    pdf = fitz.open()
-    page = pdf.new_page()
-    page.insert_text((72, 72), "Original searchable content")
-    pdf.save(original_pdf)
-    pdf.close()
-    stored = save_upload_bytes("resume.pdf", "application/pdf", original_pdf.read_bytes(), tmp_path / "storage", 20)
+    stored = save_upload_bytes(
+        "resume.pdf",
+        "application/pdf",
+        create_pdf_bytes(original_pdf, "Original searchable content"),
+        tmp_path / "storage",
+        20,
+    )
     document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
     old_chunk_ids = [chunk.id for chunk in document.chunks]
     app = create_app()

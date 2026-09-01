@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.db.models import Chunk
+from app.db.models import Chunk, Document
+from app.documents.parse_quality import build_parse_quality_for_document
 from app.db.session import get_db
 from app.documents.intelligence import build_document_profile
 from app.documents.schemas import ChunkRead, DocumentDetail, DocumentProfileRead, DocumentRead
@@ -40,6 +41,34 @@ def get_embedding_provider_factory(
     return lambda: get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
 
 
+def document_read(document: Document) -> DocumentRead:
+    return DocumentRead(
+        id=document.id,
+        filename=document.filename,
+        mime_type=document.mime_type,
+        status=document.status.value,
+        error_message=document.error_message,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+        parse_quality=build_parse_quality_for_document(document),
+    )
+
+
+def document_detail_read(document: Document) -> DocumentDetail:
+    return DocumentDetail(
+        id=document.id,
+        filename=document.filename,
+        mime_type=document.mime_type,
+        status=document.status.value,
+        error_message=document.error_message,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+        parse_quality=build_parse_quality_for_document(document),
+        page_count=len(document.pages),
+        chunk_count=len(document.chunks),
+    )
+
+
 @router.post("", response_model=DocumentRead)
 async def upload_document(
     file: Annotated[UploadFile, File()],
@@ -61,30 +90,20 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        return index_stored_upload(db, stored, embedder_factory if stored.kind == "pdf" else None)
+        return document_read(index_stored_upload(db, stored, embedder_factory if stored.kind == "pdf" else None))
     except DocumentPersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("", response_model=list[DocumentRead])
 def documents(db: Annotated[Session, Depends(get_db)]) -> list[DocumentRead]:
-    return list_documents(db)
+    return [document_read(document) for document in list_documents(db)]
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
 def document_detail(document_id: str, db: Annotated[Session, Depends(get_db)]) -> DocumentDetail:
     document = get_document_or_404(db, document_id)
-    return DocumentDetail(
-        id=document.id,
-        filename=document.filename,
-        mime_type=document.mime_type,
-        status=document.status.value,
-        error_message=document.error_message,
-        created_at=document.created_at,
-        updated_at=document.updated_at,
-        page_count=len(document.pages),
-        chunk_count=len(document.chunks),
-    )
+    return document_detail_read(document)
 
 
 @router.get("/{document_id}/profile", response_model=DocumentProfileRead)
@@ -127,7 +146,7 @@ def reindex_document_route(
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
 ) -> DocumentRead:
     try:
-        return reindex_document(db, document_id, embedder_factory)
+        return document_read(reindex_document(db, document_id, embedder_factory))
     except DocumentReindexError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except DocumentPersistenceError as exc:
