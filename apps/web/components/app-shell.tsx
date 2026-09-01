@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-panel text-ink">
       <CursorSpotlight />
-      <aside className="fixed inset-y-0 left-0 z-10 hidden w-72 border-r border-white/10 bg-ink p-5 text-white shadow-xl shadow-teal-950/10 md:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-white/10 bg-ink p-5 text-white shadow-xl shadow-teal-950/10 md:block">
         <Link
           href="/"
           aria-label="DocIntel AI home"
@@ -64,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
       </header>
-      <main className="relative z-10 min-h-screen md:pl-72">
+      <main className="relative z-0 min-h-screen md:pl-72">
         <div className="mx-auto max-w-7xl p-4 md:p-8">{children}</div>
       </main>
     </div>
