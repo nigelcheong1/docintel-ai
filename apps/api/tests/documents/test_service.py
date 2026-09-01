@@ -41,6 +41,17 @@ def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
     assert document.chunks[0].embedding is not None
 
 
+def test_index_stored_upload_fails_cleanly_when_pdf_has_no_usable_chunks(db_session, tmp_path):
+    pdf_path = tmp_path / "sparse.pdf"
+    content = create_sample_pdf(pdf_path, ".")
+    stored = save_upload_bytes("sparse.pdf", "application/pdf", content, tmp_path / "storage", 20)
+
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+
+    assert document.status == DocumentStatus.FAILED
+    assert "not enough usable text" in (document.error_message or "").lower()
+
+
 def test_index_stored_upload_defers_image_ocr(db_session, tmp_path):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
 
@@ -72,7 +83,7 @@ def test_index_stored_upload_persists_malformed_pdf_failure_without_loading_mode
 
 def test_index_stored_upload_persists_embedding_provider_failure(db_session, tmp_path):
     pdf_path = tmp_path / "sample.pdf"
-    content = create_sample_pdf(pdf_path, "Embedding failure fixture")
+    content = create_sample_pdf(pdf_path, "Embedding failure fixture with enough searchable document words")
     stored = save_upload_bytes("sample.pdf", "application/pdf", content, tmp_path / "storage", 20)
 
     def failing_embedder():
@@ -187,7 +198,7 @@ def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session,
     stored = save_upload_bytes(
         "resume.pdf",
         "application/pdf",
-        create_sample_pdf(original_pdf_path, "Original document content"),
+        create_sample_pdf(original_pdf_path, "Original document content with enough searchable words"),
         storage_dir,
         20,
     )
@@ -197,7 +208,10 @@ def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session,
     old_embedding_ids = [chunk.embedding.id for chunk in document.chunks if chunk.embedding is not None]
 
     replacement = fitz.open()
-    for text in ("Replacement first page", "Replacement second page"):
+    for text in (
+        "Replacement first page with enough searchable content",
+        "Replacement second page with enough searchable content",
+    ):
         page = replacement.new_page()
         page.insert_text((72, 72), text)
     replacement.save(stored.file_path)
@@ -207,7 +221,8 @@ def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session,
 
     assert reindexed.status == DocumentStatus.INDEXED
     assert len(reindexed.pages) == 2
-    assert {chunk.text for chunk in reindexed.chunks} >= {"Replacement first page", "Replacement second page"}
+    assert any("Replacement first page" in chunk.text for chunk in reindexed.chunks)
+    assert any("Replacement second page" in chunk.text for chunk in reindexed.chunks)
     assert db_session.scalars(select(Page).where(Page.id.in_(old_page_ids))).all() == []
     assert db_session.scalars(select(Chunk).where(Chunk.id.in_(old_chunk_ids))).all() == []
     assert db_session.scalars(select(ChunkEmbedding).where(ChunkEmbedding.id.in_(old_embedding_ids))).all() == []
@@ -218,7 +233,7 @@ def test_reindex_document_preserves_prior_index_when_embedding_fails(db_session,
     stored = save_upload_bytes(
         "resume.pdf",
         "application/pdf",
-        create_sample_pdf(original_pdf_path, "Original searchable content"),
+        create_sample_pdf(original_pdf_path, "Original searchable content with enough words"),
         tmp_path / "storage",
         20,
     )
