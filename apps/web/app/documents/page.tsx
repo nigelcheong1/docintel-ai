@@ -46,7 +46,7 @@ export default function DocumentsPage() {
         <p className="text-xs font-semibold uppercase tracking-normal text-teal-700">Document intake</p>
         <h1 className="mt-2 text-3xl font-black tracking-normal">Documents</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Upload PDFs, inspect indexing health, and spot files that should wait for next phase OCR.
+          Upload PDFs and images, inspect indexing health, and retry OCR when documents need another pass.
         </p>
       </section>
       <div className="space-y-4">

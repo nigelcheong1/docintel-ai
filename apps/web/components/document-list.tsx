@@ -65,9 +65,17 @@ function qualityBadgeFor(document: DocumentSummary | DocumentDetail) {
   return { label: "Text ready", tone: "success" as const };
 }
 
+function formatTextSourceSummary(summary: Record<string, number>) {
+  return Object.entries(summary)
+    .filter(([, count]) => count > 0)
+    .map(([source, count]) => `${source} ${count}`)
+    .join(", ");
+}
+
 function DocumentQuality({ document }: { document: DocumentSummary | DocumentDetail }) {
   const quality = document.parse_quality;
   const badge = qualityBadgeFor(document);
+  const textSourceSummary = quality ? formatTextSourceSummary(quality.text_source_summary) : "";
 
   return (
     <div className="space-y-2">
@@ -76,6 +84,13 @@ function DocumentQuality({ document }: { document: DocumentSummary | DocumentDet
         <p className="text-xs text-slate-500">
           {quality.text_page_count}/{quality.page_count} text pages
         </p>
+      ) : null}
+      {quality ? (
+        <div className="space-y-1 text-xs text-slate-500">
+          <p>OCR pages {quality.ocr_page_count + quality.hybrid_page_count}/{quality.page_count}</p>
+          {textSourceSummary ? <p>Text source {textSourceSummary}</p> : null}
+          {quality.ocr_confidence_average !== null ? <p>OCR confidence {quality.ocr_confidence_average}%</p> : null}
+        </div>
       ) : null}
       {quality?.warnings.length ? (
         <div className="space-y-1">
@@ -105,7 +120,10 @@ function DocumentActions({
   const isLocked = pendingAction !== null;
   const isReindexing = pendingAction?.documentId === document.id && pendingAction.type === "reindex";
   const isDeleting = pendingAction?.documentId === document.id && pendingAction.type === "delete";
-  const canReindex = document.mime_type === "application/pdf" && onReindex;
+  const isImage = document.mime_type.startsWith("image/");
+  const reindexLabel = isImage || document.status === "deferred_ocr" ? "Retry OCR" : "Reindex";
+  const isRetryingOcr = reindexLabel === "Retry OCR";
+  const canReindex = Boolean(onReindex) && (document.mime_type === "application/pdf" || isImage);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -114,13 +132,13 @@ function DocumentActions({
           type="button"
           variant="secondary"
           className="min-h-9 px-3 py-1.5"
-          aria-label={`Reindex ${document.filename}`}
+          aria-label={`${reindexLabel} ${document.filename}`}
           leftIcon={<RotateCw className="h-4 w-4" aria-hidden="true" />}
-          onClick={() => onReindex(document.id)}
+          onClick={() => onReindex?.(document.id)}
           disabled={isLocked}
           isLoading={isReindexing}
         >
-          {isReindexing ? "Reindexing..." : "Reindex"}
+          {isReindexing ? (isRetryingOcr ? "Retrying OCR..." : "Reindexing...") : reindexLabel}
         </Button>
       ) : null}
       {onDelete ? (
@@ -147,7 +165,11 @@ function DocumentActions({
 export function DocumentList({ documents, onDelete, onReindex }: DocumentListProps) {
   const [pendingAction, setPendingAction] = useState<PendingDocumentAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const hasActions = Boolean(onDelete || (onReindex && documents.some((document) => document.mime_type === "application/pdf")));
+  const hasActions = Boolean(
+    onDelete ||
+      (onReindex &&
+        documents.some((document) => document.mime_type === "application/pdf" || document.mime_type.startsWith("image/"))),
+  );
 
   async function runAction(
     documentId: string,

@@ -857,7 +857,7 @@ git commit -m "feat: report ocr quality in document search"
 - Consumes: OCR-aware `parse_quality` fields from Task 4.
 - Produces: visible OCR status, quality report, and retry/reindex controls for PDFs and images.
 
-- [ ] **Step 1: Write failing frontend tests**
+- [x] **Step 1: Write failing frontend tests**
 
 Add to `apps/web/tests/status-badge.test.tsx`:
 
@@ -908,7 +908,7 @@ it("shows OCR quality details and retry action for image documents", () => {
 });
 ```
 
-- [ ] **Step 2: Run Task 5 tests to verify red**
+- [x] **Step 2: Run Task 5 tests to verify red**
 
 Run:
 
@@ -918,7 +918,7 @@ npm --prefix apps/web test -- status-badge.test.tsx document-list.test.tsx docum
 
 Expected: failures mention missing `ocr_processing`, missing OCR fields in types, and image retry button absence.
 
-- [ ] **Step 3: Extend frontend types and status badge**
+- [x] **Step 3: Extend frontend types and status badge**
 
 In `apps/web/lib/types.ts`, add OCR fields to `ParseQuality`.
 
@@ -930,7 +930,7 @@ ocr_processing: "OCR running"
 
 with teal styling.
 
-- [ ] **Step 4: Update document actions and quality display**
+- [x] **Step 4: Update document actions and quality display**
 
 In `DocumentActions`, change reindex label:
 
@@ -954,13 +954,13 @@ Show OCR quality rows:
 - Text source: join `Object.entries(quality.text_source_summary)` as `native 1, ocr 2`
 - OCR confidence: `${quality.ocr_confidence_average}%` when present
 
-- [ ] **Step 5: Update documents page and search guidance**
+- [x] **Step 5: Update documents page and search guidance**
 
 Keep `reindexDocument()` as the action name in `apps/web/app/documents/page.tsx`, but let it call the same endpoint for images.
 
 In `apps/web/app/search/page.tsx`, when a selected document status is `deferred_ocr`, `ocr_processing`, or `failed`, display a compact warning above search results using the document `error_message` when present.
 
-- [ ] **Step 6: Run Task 5 tests to verify green**
+- [x] **Step 6: Run Task 5 tests to verify green**
 
 Run:
 

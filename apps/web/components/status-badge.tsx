@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 const LABELS: Record<string, string> = {
   uploaded: "Uploaded",
   processing: "Processing",
+  ocr_processing: "OCR running",
   indexed: "Indexed",
   deferred_ocr: "OCR deferred",
   failed: "Failed",
@@ -11,6 +12,7 @@ const LABELS: Record<string, string> = {
 const TONES: Record<string, "neutral" | "teal" | "amber" | "success" | "danger"> = {
   uploaded: "neutral",
   processing: "teal",
+  ocr_processing: "teal",
   indexed: "success",
   deferred_ocr: "amber",
   failed: "danger",

@@ -121,11 +121,12 @@ describe("SearchPage", () => {
     );
   });
 
-  it("only offers indexed documents as search scope options", async () => {
+  it("shows document status in search scope options", async () => {
     apiMocks.getDocuments.mockResolvedValue([
       { id: "doc-1", filename: "resume.pdf", mime_type: "application/pdf", status: "indexed" },
       { id: "doc-2", filename: "uploading.pdf", mime_type: "application/pdf", status: "processing" },
       { id: "doc-3", filename: "failed.pdf", mime_type: "application/pdf", status: "failed" },
+      { id: "doc-4", filename: "scan.png", mime_type: "image/png", status: "deferred_ocr" },
     ]);
 
     render(<SearchPage />);
@@ -133,9 +134,31 @@ describe("SearchPage", () => {
     const scope = await screen.findByRole("combobox", { name: "Search scope" });
 
     expect(screen.getByRole("option", { name: "resume.pdf" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "uploading.pdf" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "failed.pdf" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "uploading.pdf (Processing)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "failed.pdf (Failed)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "scan.png (OCR deferred)" })).toBeInTheDocument();
     expect(scope).toHaveValue("");
+  });
+
+  it("shows OCR guidance when the selected document is not indexed", async () => {
+    apiMocks.getDocuments.mockResolvedValue([
+      {
+        id: "doc-scan",
+        filename: "scan.png",
+        mime_type: "image/png",
+        status: "deferred_ocr",
+        error_message: "Local OCR is not available. Install Tesseract OCR, then retry OCR.",
+      },
+    ]);
+
+    render(<SearchPage />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Search scope" }), {
+      target: { value: "doc-scan" },
+    });
+
+    expect(await screen.findByText("scan.png (OCR deferred)")).toBeInTheDocument();
+    expect(screen.getByText("Local OCR is not available. Install Tesseract OCR, then retry OCR.")).toBeInTheDocument();
   });
 
   it("clears visible results when the search scope changes", async () => {

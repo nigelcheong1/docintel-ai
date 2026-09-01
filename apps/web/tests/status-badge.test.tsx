@@ -15,4 +15,10 @@ describe("StatusBadge", () => {
 
     expect(screen.getByText("OCR deferred")).toHaveClass("bg-amber-50");
   });
+
+  it("renders OCR processing status text", () => {
+    render(<StatusBadge status="ocr_processing" />);
+
+    expect(screen.getByText("OCR running")).toHaveClass("bg-teal-50");
+  });
 });

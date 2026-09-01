@@ -109,6 +109,12 @@ describe("DocumentList", () => {
               low_text_page_ratio: 0.75,
               scanned_likelihood: "high",
               warnings: ["This PDF has very little extractable text and may need OCR."],
+              ocr_page_count: 0,
+              native_text_page_count: 1,
+              hybrid_page_count: 0,
+              ocr_confidence_average: null,
+              ocr_duration_ms: 0,
+              text_source_summary: { native: 4 },
             },
           },
         ]}
@@ -228,7 +234,7 @@ describe("DocumentList", () => {
     resolveDelete?.();
   });
 
-  it("does not offer reindex for image documents", () => {
+  it("shows OCR quality details and retry action for image documents", () => {
     render(
       <DocumentList
         documents={[
@@ -237,6 +243,22 @@ describe("DocumentList", () => {
             filename: "scan.png",
             mime_type: "image/png",
             status: "deferred_ocr",
+            parse_quality: {
+              page_count: 1,
+              text_page_count: 0,
+              empty_page_count: 1,
+              total_characters: 0,
+              average_characters_per_page: 0,
+              low_text_page_ratio: 1,
+              scanned_likelihood: "high",
+              warnings: ["Local OCR is not available."],
+              ocr_page_count: 0,
+              native_text_page_count: 0,
+              hybrid_page_count: 0,
+              ocr_confidence_average: null,
+              ocr_duration_ms: 0,
+              text_source_summary: {},
+            },
           },
         ]}
         onDelete={vi.fn().mockResolvedValue(undefined)}
@@ -244,7 +266,9 @@ describe("DocumentList", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Reindex scan.png" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("OCR recommended").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("OCR pages 0/1").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Retry OCR scan.png" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Delete scan.png" })).toHaveLength(2);
   });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { AlertTriangle, Search } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { DocumentProfilePanel } from "@/components/document-profile-panel";
@@ -10,6 +10,37 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { getDocumentProfile, getDocuments, searchDocuments } from "@/lib/api";
 import type { AnswerQuality, DocumentProfile, DocumentSummary, SearchAnswer, SearchDiagnostics, SearchHit } from "@/lib/types";
+
+const DOCUMENT_STATUS_LABELS: Record<string, string> = {
+  processing: "Processing",
+  ocr_processing: "OCR running",
+  deferred_ocr: "OCR deferred",
+  failed: "Failed",
+};
+
+const WARNING_STATUSES = new Set(["deferred_ocr", "ocr_processing", "failed"]);
+
+function documentScopeLabel(document: DocumentSummary) {
+  const statusLabel = DOCUMENT_STATUS_LABELS[document.status];
+  return statusLabel ? `${document.filename} (${statusLabel})` : document.filename;
+}
+
+function selectedDocumentGuidance(document: DocumentSummary | undefined) {
+  if (!document || !WARNING_STATUSES.has(document.status)) {
+    return null;
+  }
+
+  if (document.error_message) {
+    return document.error_message;
+  }
+  if (document.status === "ocr_processing") {
+    return "OCR is still running for this document. Try again after processing completes.";
+  }
+  if (document.status === "failed") {
+    return "This document failed indexing. Reindex it before searching.";
+  }
+  return "This document needs OCR before cited search can use its contents.";
+}
 
 export default function SearchPage() {
   const latestSearchId = useRef(0);
@@ -27,6 +58,8 @@ export default function SearchPage() {
   const [message, setMessage] = useState("Enter a question or search phrase.");
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const selectedDocument = documents.find((document) => document.id === selectedDocumentId);
+  const documentGuidance = selectedDocumentGuidance(selectedDocument);
 
   useEffect(() => {
     getDocuments().then(setDocuments).catch(() => setDocuments([]));
@@ -142,9 +175,9 @@ export default function SearchPage() {
             onChange={handleScopeChange}
           >
             <option value="">All documents</option>
-            {documents.filter((document) => document.status === "indexed").map((document) => (
+            {documents.map((document) => (
               <option key={document.id} value={document.id}>
-                {document.filename}
+                {documentScopeLabel(document)}
               </option>
             ))}
           </select>
@@ -160,6 +193,14 @@ export default function SearchPage() {
           </Button>
         </form>
       </Panel>
+      {documentGuidance ? (
+        <Panel className="mb-4 border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+            <p>{documentGuidance}</p>
+          </div>
+        </Panel>
+      ) : null}
       <DocumentProfilePanel
         profile={selectedProfile}
         isLoading={isProfileLoading}
