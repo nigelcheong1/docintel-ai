@@ -11,4 +11,12 @@ describe("AppShell", () => {
     expect(navigation).toHaveClass("md:hidden");
     expect(screen.getAllByRole("link", { name: /Documents/ }).length).toBeGreaterThan(1);
   });
+
+  it("renders the DocIntel AI logo as a home link", () => {
+    render(<AppShell>Content</AppShell>);
+
+    expect(screen.getAllByLabelText("DocIntel AI home").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("DocIntel").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("AI").length).toBeGreaterThan(0);
+  });
 });
