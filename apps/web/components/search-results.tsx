@@ -1,5 +1,8 @@
 import { AlertTriangle, CheckCircle2, Info, Lightbulb } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
 import type { AnswerQuality, SearchAnswer, SearchDiagnostics, SearchHit } from "@/lib/types";
 
 function formatSignalName(signal: string) {
@@ -21,22 +24,16 @@ function formatConfidence(confidence: AnswerQuality["confidence"]) {
 }
 
 function confidenceClassName(confidence: AnswerQuality["confidence"]) {
-  if (confidence === "strong") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-  if (confidence === "moderate") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return confidence === "strong" ? "success" : confidence === "moderate" ? "amber" : "neutral";
 }
 
 function ConfidenceBadge({ confidence }: { confidence: AnswerQuality["confidence"] }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium ${confidenceClassName(confidence)}`}>
+    <Badge tone={confidenceClassName(confidence)}>
       {confidence === "strong" ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : null}
       {confidence === "weak" ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : null}
       {formatConfidence(confidence)}
-    </span>
+    </Badge>
   );
 }
 
@@ -48,9 +45,7 @@ function MetadataBadges({ documentType, queryIntent }: { documentType?: string |
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {items.map((item) => (
-        <span key={item} className="rounded border border-line bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
-          {formatMetadataValue(item)}
-        </span>
+        <Badge key={item} tone={item === documentType ? "teal" : "neutral"}>{formatMetadataValue(item)}</Badge>
       ))}
     </div>
   );
@@ -60,9 +55,17 @@ function formatCount(value: number, singular: string, plural: string) {
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
+function formatRejectedReason(reason: string) {
+  if (/^[a-z0-9-]+:\s+not cited in the answer$/i.test(reason)) {
+    return "Related evidence was not cited because it ranked below the selected answer evidence.";
+  }
+
+  return reason;
+}
+
 function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostics }) {
   return (
-    <section className="rounded border border-line bg-white p-4" aria-labelledby="search-diagnostics-heading">
+    <Panel className="p-5" aria-labelledby="search-diagnostics-heading">
       <div className="flex items-center gap-2">
         <Info className="h-4 w-4 text-accent" aria-hidden="true" />
         <h2 id="search-diagnostics-heading" className="text-sm font-semibold">
@@ -96,28 +99,31 @@ function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostic
         <ul className="mt-2 space-y-1 text-xs text-slate-500">
           {diagnostics.top_rejected_reasons.map((reason) => (
             <li key={reason} className="break-words">
-              {reason}
+              {formatRejectedReason(reason)}
             </li>
           ))}
         </ul>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
 function EvidenceCard({ hit }: { hit: SearchHit }) {
+  const isAnswerEvidence = hit.result_role === "answer_evidence";
+
   return (
-    <article className="min-w-0 rounded border border-line bg-white p-4">
+    <article
+      className={[
+        "min-w-0 rounded-lg border bg-white p-4 shadow-sm transition hover:-translate-y-0.5",
+        isAnswerEvidence ? "border-teal-200 shadow-teal-900/10" : "border-line shadow-teal-950/5",
+      ].join(" ")}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 className="break-all text-sm font-semibold">{hit.document_filename}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>Page {hit.page_number}</span>
-            {hit.section_heading ? (
-              <span className="rounded border border-line px-2 py-0.5 font-medium text-slate-600">
-                {hit.section_heading}
-              </span>
-            ) : null}
+            {hit.section_heading ? <Badge tone={isAnswerEvidence ? "teal" : "neutral"}>{hit.section_heading}</Badge> : null}
           </div>
         </div>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-right text-xs">
@@ -190,7 +196,7 @@ export function SearchResults({
   return (
     <div className="space-y-3">
       {answer ? (
-        <section className="border-l-2 border-accent bg-white px-4 py-4" aria-labelledby="answer-heading">
+        <Panel tone="accent" className="border-l-4 border-l-accent p-5" aria-labelledby="answer-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <h2 id="answer-heading" className="text-sm font-semibold">
@@ -200,9 +206,9 @@ export function SearchResults({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {quality ? <ConfidenceBadge confidence={quality.confidence} /> : null}
-              <span className="text-xs font-medium text-slate-500">
+              <Badge tone="neutral">
                 {answer.citations.length} {answer.citations.length === 1 ? "citation" : "citations"}
-              </span>
+              </Badge>
             </div>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-700">{answer.summary}</p>
@@ -217,10 +223,10 @@ export function SearchResults({
               ))}
             </ul>
           ) : null}
-        </section>
+        </Panel>
       ) : null}
       {!answer && quality?.status === "insufficient_evidence" ? (
-        <section className="border-l-2 border-amber-500 bg-white px-4 py-4" aria-labelledby="abstention-heading">
+        <Panel className="border-l-4 border-l-amber-500 p-5" aria-labelledby="abstention-heading">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden="true" />
@@ -243,24 +249,23 @@ export function SearchResults({
               <div className="mt-2 flex flex-wrap gap-2">
                 {quality.suggested_questions.map((question) =>
                   onSuggestionSelect ? (
-                    <button
+                    <Button
                       key={question}
                       type="button"
-                      className="rounded border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-accent hover:text-accent"
+                      variant="secondary"
+                      className="min-h-8 px-2.5 py-1.5 text-xs"
                       onClick={() => onSuggestionSelect(question)}
                     >
                       {question}
-                    </button>
+                    </Button>
                   ) : (
-                    <span key={question} className="rounded border border-line px-2.5 py-1.5 text-xs text-slate-600">
-                      {question}
-                    </span>
+                    <Badge key={question} tone="neutral">{question}</Badge>
                   ),
                 )}
               </div>
             </div>
           ) : null}
-        </section>
+        </Panel>
       ) : null}
       {diagnostics ? <SearchDiagnosticsPanel diagnostics={diagnostics} /> : null}
       <EvidenceGroup title="Answer evidence" hits={answerEvidence} />

@@ -27,6 +27,11 @@ const goldenEvaluation = {
       research_paper: 5,
       resume: 2,
     },
+    quality_dimensions: {
+      answer_quality: 12,
+      abstention_safety: 1,
+      parse_quality: 1,
+    },
   },
   cases: [
     {
@@ -93,6 +98,8 @@ describe("EvaluationPage", () => {
     render(<EvaluationPage />);
 
     expect(await screen.findByRole("heading", { name: "Universal document QA" })).toBeInTheDocument();
+    expect(screen.getByText("Quality coverage")).toBeInTheDocument();
+    expect(screen.getByText("Abstention safety")).toBeInTheDocument();
     expect(screen.getByText("13 cases")).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeInTheDocument();
     expect(screen.getByText("Research paper 5")).toBeInTheDocument();

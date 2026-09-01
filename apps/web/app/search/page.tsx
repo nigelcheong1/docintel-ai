@@ -6,6 +6,8 @@ import { Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { DocumentProfilePanel } from "@/components/document-profile-panel";
 import { SearchResults } from "@/components/search-results";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
 import { getDocumentProfile, getDocuments, searchDocuments } from "@/lib/api";
 import type { AnswerQuality, DocumentProfile, DocumentSummary, SearchAnswer, SearchDiagnostics, SearchHit } from "@/lib/types";
 
@@ -122,37 +124,42 @@ export default function SearchPage() {
   return (
     <AppShell>
       <section className="mb-6">
-        <h1 className="text-2xl font-semibold">Search</h1>
-        <p className="mt-2 text-sm text-slate-600">Retrieve cited evidence from local document embeddings.</p>
+        <p className="text-xs font-semibold uppercase tracking-normal text-teal-700">Evidence search</p>
+        <h1 className="mt-2 text-3xl font-black tracking-normal">Ask your documents</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          Ask natural-language questions and separate cited answer evidence from related context.
+        </p>
       </section>
-      <form className="mb-4 flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
-        <label className="sr-only" htmlFor="search-scope">
-          Search scope
-        </label>
-        <select
-          id="search-scope"
-          className="w-full rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent sm:w-56"
-          value={selectedDocumentId}
-          onChange={handleScopeChange}
-        >
-          <option value="">All documents</option>
-          {documents.filter((document) => document.status === "indexed").map((document) => (
-            <option key={document.id} value={document.id}>
-              {document.filename}
-            </option>
-          ))}
-        </select>
-        <input
-          className="min-w-0 flex-1 rounded border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search query"
-        />
-        <button className="inline-flex items-center gap-2 rounded bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60" disabled={isSearching}>
-          <Search className="h-4 w-4" aria-hidden="true" />
-          Search
-        </button>
-      </form>
+      <Panel className="mb-4 p-4">
+        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
+          <label className="sr-only" htmlFor="search-scope">
+            Search scope
+          </label>
+          <select
+            id="search-scope"
+            className="w-full rounded-md border border-line bg-white px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-teal-100 sm:w-64"
+            value={selectedDocumentId}
+            onChange={handleScopeChange}
+          >
+            <option value="">All documents</option>
+            {documents.filter((document) => document.status === "indexed").map((document) => (
+              <option key={document.id} value={document.id}>
+                {document.filename}
+              </option>
+            ))}
+          </select>
+          <input
+            className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-teal-100"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search query"
+            placeholder="Ask about totals, methods, datasets, results, or limitations"
+          />
+          <Button leftIcon={<Search className="h-4 w-4" aria-hidden="true" />} disabled={isSearching} isLoading={isSearching}>
+            Search
+          </Button>
+        </form>
+      </Panel>
       <DocumentProfilePanel
         profile={selectedProfile}
         isLoading={isProfileLoading}

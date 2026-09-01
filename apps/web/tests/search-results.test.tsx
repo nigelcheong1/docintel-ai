@@ -126,7 +126,8 @@ describe("SearchResults", () => {
     expect(screen.getByText("Search diagnostics")).toBeInTheDocument();
     expect(screen.getByText("1 answer chunk")).toBeInTheDocument();
     expect(screen.getByText("1 related result")).toBeInTheDocument();
-    expect(screen.getByText("related-1: not cited in the answer")).toBeInTheDocument();
+    expect(screen.queryByText(/related-1:/)).not.toBeInTheDocument();
+    expect(screen.getByText(/ranked below the selected answer evidence/)).toBeInTheDocument();
 
     const answerEvidence = screen.getByRole("heading", { name: "Answer evidence" });
     const relatedEvidence = screen.getByRole("heading", { name: "Related evidence" });
