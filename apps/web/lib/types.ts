@@ -1,3 +1,14 @@
+export type ParseQuality = {
+  page_count: number;
+  text_page_count: number;
+  empty_page_count: number;
+  total_characters: number;
+  average_characters_per_page: number;
+  low_text_page_ratio: number;
+  scanned_likelihood: "low" | "medium" | "high";
+  warnings: string[];
+};
+
 export type DocumentSummary = {
   id: string;
   filename: string;
@@ -6,6 +17,7 @@ export type DocumentSummary = {
   error_message?: string | null;
   created_at?: string;
   updated_at?: string;
+  parse_quality?: ParseQuality | null;
 };
 
 export type DocumentDetail = DocumentSummary & {
@@ -136,6 +148,7 @@ export type GoldenEvalResponse = {
     answerable_cases: number;
     abstention_cases: number;
     document_types: Record<string, number>;
+    quality_dimensions: Record<string, number>;
   };
   cases: GoldenEvalCaseResult[];
 };

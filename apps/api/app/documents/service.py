@@ -80,24 +80,28 @@ def _add_pdf_index_records(
     embedder_factory: EmbeddingProviderFactory,
 ) -> None:
     parsed_pages = parse_pdf(Path(document.file_path))
-    embedder = embedder_factory()
-    page_models: dict[int, Page] = {}
-    for parsed_page in parsed_pages:
-        page = Page(
+    pages = [
+        Page(
             document_id=document.id,
             page_number=parsed_page.page_number,
             text=parsed_page.text,
             width=parsed_page.width,
             height=parsed_page.height,
         )
-        db.add(page)
-        db.flush()
-        page_models[parsed_page.page_number] = page
+        for parsed_page in parsed_pages
+    ]
+    db.add_all(pages)
+    db.flush()
+    page_models = {page.page_number: page for page in pages}
 
     text_chunks = chunk_pages(parsed_pages)
+    if not text_chunks:
+        raise DocumentParseError("There is not enough usable text in this PDF for local search. It may need OCR.")
+
+    embedder = embedder_factory()
     vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
-    for text_chunk, vector in zip(text_chunks, vectors, strict=True):
-        chunk = Chunk(
+    chunks = [
+        Chunk(
             document_id=document.id,
             page_id=page_models[text_chunk.page_number].id,
             chunk_index=text_chunk.chunk_index,
@@ -105,9 +109,16 @@ def _add_pdf_index_records(
             token_estimate=text_chunk.token_estimate,
             layout=text_chunk.layout,
         )
-        db.add(chunk)
-        db.flush()
-        db.add(ChunkEmbedding(chunk_id=chunk.id, model_name=embedder.model_name, embedding=vector))
+        for text_chunk in text_chunks
+    ]
+    db.add_all(chunks)
+    db.flush()
+    db.add_all(
+        [
+            ChunkEmbedding(chunk_id=chunk.id, model_name=embedder.model_name, embedding=vector)
+            for chunk, vector in zip(chunks, vectors, strict=True)
+        ]
+    )
 
 
 def index_stored_upload(

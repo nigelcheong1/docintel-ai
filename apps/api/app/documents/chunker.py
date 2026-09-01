@@ -159,6 +159,8 @@ _ACADEMIC_LIMITATION_TERMS = {
     "limitation",
     "limitations",
 }
+_WORD_PATTERN = re.compile(r"[A-Za-z0-9]+")
+_ALPHA_PATTERN = re.compile(r"[A-Za-z]")
 
 
 @dataclass(frozen=True)
@@ -182,6 +184,20 @@ def _normalize_text(text: str) -> str:
     for pattern, heading in _SPACED_HEADING_REPLACEMENTS:
         normalized = pattern.sub(heading, normalized)
     return " ".join(normalized.split())
+
+
+def is_usable_chunk_text(text: str) -> bool:
+    words = _WORD_PATTERN.findall(text)
+    alpha_count = len(_ALPHA_PATTERN.findall(text))
+    return len(words) >= 4 and alpha_count >= 16
+
+
+def _text_density(text: str) -> float:
+    non_space_count = len(re.sub(r"\s+", "", text))
+    if non_space_count == 0:
+        return 0.0
+    alpha_count = len(_ALPHA_PATTERN.findall(text))
+    return round(alpha_count / non_space_count, 4)
 
 
 def _canonical_heading(value: str) -> str:
@@ -392,6 +408,9 @@ def chunk_pages(
                 window = words[start : start + chunk_size]
                 if not window:
                     continue
+                chunk_text = " ".join(window)
+                if not is_usable_chunk_text(chunk_text):
+                    continue
                 word_start = section.word_start + start
                 layout: dict[str, object] = {
                     "source": "pymupdf",
@@ -399,6 +418,9 @@ def chunk_pages(
                     "page_height": page.height,
                     "word_start": word_start,
                     "word_end": word_start + len(window),
+                    "text_density": _text_density(chunk_text),
+                    "quality": "usable",
+                    "heading_confidence": "explicit" if section.heading else "none",
                 }
                 if section.heading:
                     layout["section_heading"] = section.heading
@@ -406,7 +428,7 @@ def chunk_pages(
                     TextChunk(
                         page_number=page.page_number,
                         chunk_index=chunk_index,
-                        text=" ".join(window),
+                        text=chunk_text,
                         token_estimate=len(window),
                         layout=layout,
                     )

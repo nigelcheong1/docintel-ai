@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type ChangeEvent } from "react";
-import { UploadCloud } from "lucide-react";
+import { FileUp, UploadCloud } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { uploadDocument } from "@/lib/api";
 import type { DocumentSummary } from "@/lib/types";
 
@@ -30,15 +31,29 @@ export function UploadPanel({ onUploaded }: { onUploaded?: (document: DocumentSu
   }
 
   return (
-    <label className="block rounded border border-dashed border-accent bg-white p-6">
-      <div className="flex items-center gap-3">
-        <UploadCloud className="h-5 w-5 text-accent" aria-hidden="true" />
-        <div>
-          <p className="text-sm font-semibold">Upload document</p>
-          <p className="mt-1 text-xs text-slate-500">{message}</p>
+    <label className="group block rounded-lg border border-dashed border-teal-300 bg-white/90 p-6 shadow-sm shadow-teal-950/5 transition hover:-translate-y-0.5 hover:border-teal-600 hover:bg-teal-50/60">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-lg bg-teal-700 text-white shadow-sm shadow-teal-950/15 transition group-hover:scale-105">
+            <UploadCloud className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Upload document</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{message}</p>
+          </div>
         </div>
+        <Badge tone={isUploading ? "amber" : "teal"}>
+          <FileUp className="h-3.5 w-3.5" aria-hidden="true" />
+          {isUploading ? "Indexing" : "PDF, PNG, JPG"}
+        </Badge>
       </div>
-      <input className="mt-4 block w-full text-sm" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} disabled={isUploading} />
+      <input
+        className="mt-5 block w-full cursor-pointer rounded-md border border-line bg-white text-sm file:mr-4 file:border-0 file:bg-teal-700 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+        type="file"
+        accept=".pdf,.png,.jpg,.jpeg"
+        onChange={handleFileChange}
+        disabled={isUploading}
+      />
     </label>
   );
 }

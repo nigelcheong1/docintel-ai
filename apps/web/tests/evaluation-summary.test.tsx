@@ -33,4 +33,30 @@ describe("EvaluationSummary", () => {
     expect(screen.getByText("mean reciprocal rank")).toBeInTheDocument();
     expect(screen.getByText("0.33")).toBeInTheDocument();
   });
+
+  it("renders golden QA quality coverage dimensions", () => {
+    render(
+      <EvaluationSummary
+        runs={[]}
+        golden={{
+          name: "universal-document-qa-golden",
+          summary: {
+            total_cases: 14,
+            passed_cases: 14,
+            failed_cases: 0,
+            pass_rate: 1,
+            answerable_cases: 12,
+            abstention_cases: 1,
+            document_types: { research_paper: 5, parse_quality: 1 },
+            quality_dimensions: { answer_quality: 12, abstention_safety: 1, parse_quality: 1 },
+          },
+          cases: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Quality coverage")).toBeInTheDocument();
+    expect(screen.getByText("Abstention safety")).toBeInTheDocument();
+    expect(screen.getByText("All passing")).toBeInTheDocument();
+  });
 });

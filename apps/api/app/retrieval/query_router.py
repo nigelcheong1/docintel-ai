@@ -4,6 +4,16 @@ import re
 from dataclasses import dataclass, field
 
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
+_INVOICE_AMOUNT_QUERY_PATTERNS = {
+    "amount due",
+    "balance due",
+    "invoice amount",
+    "invoice total",
+    "payment due",
+    "subtotal",
+    "total amount",
+    "total due",
+}
 
 
 @dataclass(frozen=True)
@@ -21,11 +31,21 @@ def _has_any(normalized_query: str, terms: set[str]) -> bool:
     return any(term in normalized_query for term in terms)
 
 
-def _mismatch_reason(intent: str, document_type: str | None) -> str | None:
+def _mismatch_reason(intent: str, document_type: str | None, normalized_query: str = "") -> str | None:
     if document_type == "research_paper" and intent == "parties":
         return (
             "This document is classified as a research paper, so contract-style parties are not expected. "
             "Ask about authors, methods, datasets, results, or limitations instead."
+        )
+    is_research_invoice_amount_query = intent == "amounts" and any(
+        pattern in normalized_query for pattern in _INVOICE_AMOUNT_QUERY_PATTERNS
+    )
+    if document_type == "research_paper" and (
+        intent in {"payment_due", "payment_terms"} or is_research_invoice_amount_query
+    ):
+        return (
+            "This document is classified as a research paper, so invoice totals or payment due amounts are not expected. "
+            "Ask about metrics, datasets, results, methods, or limitations instead."
         )
     if document_type == "invoice" and intent in {"methods", "datasets", "results", "limitations"}:
         return (
@@ -60,13 +80,21 @@ def route_query(query: str, document_type: str | None = None) -> QueryRoute:
         return QueryRoute("overview", {"overview", "background", "summary"})
 
     intent_rules: list[tuple[str, set[str], set[str]]] = [
+        ("authors", {"author", "authors", "who wrote", "written by"}, {"overview"}),
+        (
+            "contributions",
+            {"contribution", "contributions", "main contribution", "novel", "propose", "proposed", "introduce", "introduced"},
+            {"overview", "method"},
+        ),
         ("datasets", {"dataset", "datasets", "benchmark", "benchmarks", "corpus", "data used"}, {"dataset", "evaluation"}),
         ("methods", {"method", "methods", "methodology", "approach", "model", "architecture", "technique"}, {"method"}),
-        ("results", {"result", "results", "finding", "findings", "accuracy", "performance", "f1", "top1", "top5"}, {"result"}),
+        ("results", {"result", "results", "accuracy", "performance", "f1", "top1", "top5"}, {"result"}),
+        ("findings", {"finding", "findings", "insight", "insights"}, {"result"}),
         ("limitations", {"limitation", "limitations", "future work", "challenge", "challenges", "drawback"}, {"limitation", "risk"}),
-        ("recommendations", {"recommendation", "recommendations", "recommended"}, {"recommendation", "result"}),
+        ("recommendations", {"recommendation", "recommendations", "recommended", "next steps"}, {"recommendation", "result"}),
         ("risks", {"risk", "risks", "issue", "issues", "termination terms"}, {"risk", "limitation"}),
         ("obligations", {"obligation", "obligations", "responsibility", "responsibilities", "shall", "must", "duties"}, {"obligation"}),
+        ("payment_due", {"payment due", "when is payment due", "when payment due"}, {"date", "payment"}),
         ("dates", {"date", "dates", "deadline", "deadlines", "when", "due date", "effective date"}, {"date"}),
         ("payment_terms", {"payment terms", "payment term", "terms of payment"}, {"payment", "date", "amount"}),
         ("amounts", {"amount", "amounts", "total", "totals", "subtotal", "balance", "price", "cost", "fee", "tax"}, {"amount", "payment"}),
@@ -84,7 +112,7 @@ def route_query(query: str, document_type: str | None = None) -> QueryRoute:
             return QueryRoute(
                 intent=intent,
                 preferred_section_intents=section_intents,
-                mismatch_reason=_mismatch_reason(intent, document_type),
+                mismatch_reason=_mismatch_reason(intent, document_type, normalized_query),
             )
 
     return QueryRoute("evidence_search", set())

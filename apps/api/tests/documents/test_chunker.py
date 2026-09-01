@@ -1,4 +1,4 @@
-from app.documents.chunker import chunk_pages
+from app.documents.chunker import chunk_pages, is_usable_chunk_text
 from app.documents.parser import ParsedPage
 
 
@@ -20,6 +20,37 @@ def test_chunk_pages_skips_blank_pages():
     pages = [ParsedPage(page_number=1, text="   ", width=100, height=100)]
 
     assert chunk_pages(pages) == []
+
+
+def test_is_usable_chunk_text_rejects_sparse_junk():
+    assert not is_usable_chunk_text("1 2 3 . -")
+    assert is_usable_chunk_text("Valid invoice payment terms include useful words.")
+
+
+def test_chunk_pages_skips_junk_text_windows():
+    text = " ".join(["99"] * 40) + " Valid invoice payment terms include enough useful alphabetic words."
+    chunks = chunk_pages([ParsedPage(page_number=1, text=text, width=300, height=200)], chunk_size=20, overlap=0)
+
+    assert all(is_usable_chunk_text(chunk.text) for chunk in chunks)
+    assert any("Valid invoice payment terms" in chunk.text for chunk in chunks)
+    assert not any(chunk.text.startswith("99 99") for chunk in chunks)
+
+
+def test_chunk_layout_includes_quality_metadata():
+    chunk = chunk_pages(
+        [
+            ParsedPage(
+                page_number=1,
+                text="METHOD\nThis section describes the model architecture and encoder.",
+                width=300,
+                height=200,
+            )
+        ]
+    )[0]
+
+    assert chunk.layout["quality"] == "usable"
+    assert chunk.layout["text_density"] > 0
+    assert chunk.layout["heading_confidence"] in {"explicit", "inferred", "none"}
 
 
 def test_chunk_pages_splits_compact_resume_by_section_headings():

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, FileSearch, Gauge, UploadCloud } from "lucide-react";
+import { ArrowRight, FileSearch, Gauge, ShieldCheck, UploadCloud } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { DocumentList } from "@/components/document-list";
+import { Badge } from "@/components/ui/badge";
+import { Panel } from "@/components/ui/panel";
 import { getDocuments, getEvalRuns } from "@/lib/api";
 import type { DocumentSummary } from "@/lib/types";
 
@@ -28,26 +30,46 @@ export default function DashboardPage() {
   }, []);
 
   const indexedCount = documents.filter((document) => document.status === "indexed").length;
+  const warningCount = documents.reduce((total, document) => total + (document.parse_quality?.warnings.length ?? 0), 0);
 
   return (
     <AppShell>
-      <section className="mb-6">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-2 text-sm text-slate-600">Upload PDFs, index local embeddings, and search with cited evidence.</p>
+      <section className="mb-6 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div>
+          <Badge tone="teal">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Ready for cited search
+          </Badge>
+          <h1 className="mt-3 text-3xl font-black tracking-normal">Workspace intelligence</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Monitor local indexing, parse quality, and answer evaluation from one focused DocIntel AI workspace.
+          </p>
+        </div>
+        <Link
+          href="/search"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-teal-900/10 transition hover:bg-teal-800 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+        >
+          Ask documents
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
       </section>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div data-testid="document-count" className="rounded border border-line bg-white p-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Panel data-testid="document-count" className="p-4">
           <p className="text-sm text-slate-500">Documents</p>
           <p className="mt-3 text-3xl font-semibold">{documents.length}</p>
-        </div>
-        <div className="rounded border border-line bg-white p-4">
+        </Panel>
+        <Panel className="p-4">
           <p className="text-sm text-slate-500">Indexed documents</p>
           <p className="mt-3 text-3xl font-semibold">{indexedCount}</p>
-        </div>
-        <div data-testid="evaluation-count" className="rounded border border-line bg-white p-4">
+        </Panel>
+        <Panel data-testid="quality-warning-count" className="p-4">
+          <p className="text-sm text-slate-500">Quality warnings</p>
+          <p className="mt-3 text-3xl font-semibold">{warningCount}</p>
+        </Panel>
+        <Panel data-testid="evaluation-count" className="p-4">
           <p className="text-sm text-slate-500">Evaluation runs</p>
           <p className="mt-3 text-3xl font-semibold">{evaluationCount}</p>
-        </div>
+        </Panel>
       </div>
       <section className="mt-8">
         <h2 className="text-lg font-semibold">Continue working</h2>
@@ -60,7 +82,7 @@ export default function DashboardPage() {
             <Link
               key={action.href}
               href={action.href}
-              className="flex items-center gap-3 border-b border-line bg-white px-4 py-3 text-sm font-medium hover:bg-panel"
+              className="flex items-center gap-3 rounded-lg border border-line bg-white px-4 py-3 text-sm font-medium shadow-sm shadow-teal-950/5 transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50/70"
             >
               <action.icon className="h-4 w-4 text-accent" aria-hidden="true" />
               <span className="min-w-0 flex-1">{action.label}</span>
@@ -76,7 +98,7 @@ export default function DashboardPage() {
             View all
           </Link>
         </div>
-        {message ? <p className="text-sm text-slate-600">{message}</p> : <DocumentList documents={documents.slice(0, 5)} />}
+        {message ? <Panel className="text-sm text-slate-600">{message}</Panel> : <DocumentList documents={documents.slice(0, 5)} />}
       </section>
     </AppShell>
   );

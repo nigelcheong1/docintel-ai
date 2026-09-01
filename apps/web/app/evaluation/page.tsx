@@ -5,6 +5,8 @@ import { Play, RefreshCw } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { EvaluationSummary } from "@/components/evaluation-summary";
+import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
 import { createEvalRun, getEvalRuns, getGoldenEval } from "@/lib/api";
 import type { EvalRunSummary, GoldenEvalResponse } from "@/lib/types";
 
@@ -71,31 +73,35 @@ export default function EvaluationPage() {
     <AppShell>
       <section className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Evaluation</h1>
-          <p className="mt-2 text-sm text-slate-600">Track golden QA quality and local retrieval metrics.</p>
+          <p className="text-xs font-semibold uppercase tracking-normal text-teal-700">Quality workbench</p>
+          <h1 className="mt-2 text-3xl font-black tracking-normal">Evaluation</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Track golden QA safety, parse-quality coverage, and local retrieval metrics before shipping changes.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             type="button"
             onClick={() => void handleRefreshGolden()}
             disabled={isRefreshingGolden}
-            className="inline-flex items-center gap-2 rounded border border-line bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-accent hover:text-accent disabled:opacity-60"
+            variant="secondary"
+            leftIcon={<RefreshCw className="h-4 w-4" aria-hidden="true" />}
+            isLoading={isRefreshingGolden}
           >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
             {isRefreshingGolden ? "Running..." : "Refresh golden QA"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => void handleCreateRun()}
             disabled={isCreating}
-            className="inline-flex items-center gap-2 rounded bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            leftIcon={<Play className="h-4 w-4" aria-hidden="true" />}
+            isLoading={isCreating}
           >
-            <Play className="h-4 w-4" aria-hidden="true" />
             {isCreating ? "Running..." : "Run evaluation"}
-          </button>
+          </Button>
         </div>
       </section>
-      {message ? <p className="mb-4 text-sm text-slate-600">{message}</p> : null}
+      {message ? <Panel className="mb-4 text-sm text-slate-600">{message}</Panel> : null}
       <EvaluationSummary runs={runs} golden={golden} />
     </AppShell>
   );

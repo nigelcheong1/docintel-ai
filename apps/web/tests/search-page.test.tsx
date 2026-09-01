@@ -83,6 +83,13 @@ describe("SearchPage", () => {
     await waitFor(() => expect(apiMocks.searchDocuments).toHaveBeenCalledWith("technical skills", 5, "doc-1"));
   });
 
+  it("uses an interactive search action", async () => {
+    render(<SearchPage />);
+
+    expect(await screen.findByRole("button", { name: "Search" })).toHaveClass("transition");
+    expect(screen.getByRole("button", { name: "Search" })).toHaveClass("active:translate-y-px");
+  });
+
   it("loads a selected document profile and lets profile suggestions fill the query", async () => {
     apiMocks.getDocuments.mockResolvedValue([
       { id: "doc-1", filename: "paper.pdf", mime_type: "application/pdf", status: "indexed" },

@@ -242,8 +242,11 @@ def test_search_endpoint_returns_diagnostics_and_evidence_roles(monkeypatch):
         "answer_chunk_ids": ["invoice-total"],
         "answer_evidence_count": 1,
         "related_result_count": 1,
-        "top_rejected_reasons": ["invoice-vendor: not cited in the answer"],
+        "top_rejected_reasons": [
+            "Related evidence was not cited because it ranked below the selected answer evidence."
+        ],
     }
+    assert all("invoice-vendor" not in reason for reason in body["diagnostics"]["top_rejected_reasons"])
     assert body["hits"][0]["result_role"] == "answer_evidence"
     assert body["hits"][1]["result_role"] == "related"
 

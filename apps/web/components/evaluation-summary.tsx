@@ -1,5 +1,7 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Panel } from "@/components/ui/panel";
 import type { EvalRunSummary, GoldenEvalCaseResult, GoldenEvalResponse } from "@/lib/types";
 
 function formatMetricName(name: string) {
@@ -16,7 +18,17 @@ function formatPercent(value: number) {
 }
 
 function statusClassName(passed: boolean) {
-  return passed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700";
+  return passed ? "success" : "amber";
+}
+
+function formatQualityDimension(name: string) {
+  const labels: Record<string, string> = {
+    answer_quality: "Answer quality",
+    abstention_safety: "Abstention safety",
+    parse_quality: "Parse quality",
+  };
+
+  return labels[name] ?? formatMetricName(name);
 }
 
 function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
@@ -32,10 +44,10 @@ function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
       <td className="border-t border-line px-3 py-3 text-xs text-slate-600">{formatDocumentType(result.query_intent)}</td>
       <td className="border-t border-line px-3 py-3 text-xs text-slate-600">{result.citation_count}</td>
       <td className="border-t border-line px-3 py-3">
-        <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium ${statusClassName(result.passed)}`}>
+        <Badge tone={statusClassName(result.passed)}>
           {result.passed ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />}
           {result.passed ? "Pass" : "Review"}
-        </span>
+        </Badge>
       </td>
       <td className="border-t border-line py-3 pl-3 text-xs leading-5 text-slate-600">
         {result.answer_preview ?? result.quality_reason}
@@ -52,47 +64,63 @@ function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
 }
 
 function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
+  const qualityDimensions = golden.summary.quality_dimensions ?? {};
+
   return (
-    <article className="rounded border border-line bg-white p-4">
+    <Panel tone="accent" className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">Universal document QA</h2>
           <p className="mt-1 break-words text-xs text-slate-500">{golden.name}</p>
         </div>
-        <span className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium ${statusClassName(golden.summary.failed_cases === 0)}`}>
+        <Badge tone={statusClassName(golden.summary.failed_cases === 0)}>
           {golden.summary.failed_cases === 0 ? (
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           ) : (
             <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
           )}
           {golden.summary.failed_cases === 0 ? "All passing" : `${golden.summary.failed_cases} failing`}
-        </span>
+        </Badge>
       </div>
 
-      <dl className="mt-4 grid gap-3 sm:grid-cols-4">
-        <div>
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-lg border border-line bg-teal-50/40 p-3">
           <dt className="text-xs uppercase text-slate-500">Pass rate</dt>
           <dd className="mt-1 text-xl font-semibold">{formatPercent(golden.summary.pass_rate)}</dd>
         </div>
-        <div>
+        <div className="rounded-lg border border-line bg-white p-3">
           <dt className="text-xs uppercase text-slate-500">Cases</dt>
           <dd className="mt-1 text-xl font-semibold">{golden.summary.total_cases} cases</dd>
         </div>
-        <div>
+        <div className="rounded-lg border border-line bg-white p-3">
           <dt className="text-xs uppercase text-slate-500">Answerable</dt>
           <dd className="mt-1 text-xl font-semibold">{golden.summary.answerable_cases}</dd>
         </div>
-        <div>
+        <div className="rounded-lg border border-line bg-white p-3">
           <dt className="text-xs uppercase text-slate-500">Abstentions</dt>
           <dd className="mt-1 text-xl font-semibold">{golden.summary.abstention_cases}</dd>
         </div>
       </dl>
 
+      {Object.keys(qualityDimensions).length > 0 ? (
+        <section className="mt-5" aria-labelledby="quality-coverage-heading">
+          <h3 id="quality-coverage-heading" className="text-sm font-semibold">
+            Quality coverage
+          </h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {Object.entries(qualityDimensions).map(([dimension, count]) => (
+              <Badge key={dimension} tone={dimension === "abstention_safety" ? "amber" : "teal"}>
+                <span>{formatQualityDimension(dimension)}</span>
+                <span>{count}</span>
+              </Badge>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <div className="mt-4 flex flex-wrap gap-2">
         {Object.entries(golden.summary.document_types).map(([type, count]) => (
-          <span key={type} className="rounded border border-line bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600">
-            {formatDocumentType(type)} {count}
-          </span>
+          <Badge key={type} tone="neutral">{formatDocumentType(type)} {count}</Badge>
         ))}
       </div>
 
@@ -115,20 +143,20 @@ function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
           </tbody>
         </table>
       </div>
-    </article>
+    </Panel>
   );
 }
 
 export function EvaluationSummary({ runs, golden }: { runs: EvalRunSummary[]; golden?: GoldenEvalResponse | null }) {
   if (runs.length === 0 && !golden) {
-    return <p className="rounded border border-line bg-white p-4 text-sm text-slate-600">No evaluation runs recorded.</p>;
+    return <Panel className="text-sm text-slate-600">No evaluation runs recorded.</Panel>;
   }
 
   return (
     <div className="space-y-3">
       {golden ? <GoldenEvaluationPanel golden={golden} /> : null}
       {runs.map((run) => (
-        <article key={run.id} className="rounded border border-line bg-white p-4">
+        <Panel key={run.id} className="p-5">
           <h2 className="break-words text-sm font-semibold">{run.name}</h2>
           <p className="mt-1 break-all text-xs text-slate-500">{run.model_name}</p>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -141,7 +169,7 @@ export function EvaluationSummary({ runs, golden }: { runs: EvalRunSummary[]; go
               </div>
             ))}
           </dl>
-        </article>
+        </Panel>
       ))}
     </div>
   );

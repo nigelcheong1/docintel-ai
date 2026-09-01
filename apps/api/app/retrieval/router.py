@@ -29,7 +29,11 @@ def _build_search_diagnostics(
 ) -> SearchDiagnostics:
     answer_chunk_id_set = set(answer_chunk_ids)
     related_hits = [hit for hit in hits if hit.chunk_id not in answer_chunk_id_set]
-    rejected_reasons = [f"{hit.chunk_id}: not cited in the answer" for hit in related_hits[:3]]
+    rejected_reasons = [
+        "Related evidence was not cited because it ranked below the selected answer evidence.",
+        "Related evidence matched the broader topic but not the requested answer intent.",
+        "Related evidence was kept for context only.",
+    ][: len(related_hits[:3])]
     if quality_status == "insufficient_evidence" and not rejected_reasons:
         rejected_reasons = ["No indexed evidence passed the answerability checks"]
 

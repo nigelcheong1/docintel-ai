@@ -6,6 +6,17 @@ from pydantic import BaseModel
 DocumentKind = Literal["pdf", "image"]
 
 
+class ParseQualityRead(BaseModel):
+    page_count: int
+    text_page_count: int
+    empty_page_count: int
+    total_characters: int
+    average_characters_per_page: float
+    low_text_page_ratio: float
+    scanned_likelihood: Literal["low", "medium", "high"]
+    warnings: list[str]
+
+
 class DocumentRead(BaseModel):
     id: str
     filename: str
@@ -14,6 +25,7 @@ class DocumentRead(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+    parse_quality: ParseQualityRead | None = None
 
     model_config = {"from_attributes": True}
 

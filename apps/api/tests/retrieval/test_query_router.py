@@ -16,6 +16,43 @@ def test_routes_invoice_amount_queries():
     assert "amount" in route.preferred_section_intents
 
 
+def test_routes_research_contribution_queries():
+    route = route_query("What are the main contributions?", "research_paper")
+
+    assert route.intent == "contributions"
+    assert {"overview", "method"}.intersection(route.preferred_section_intents)
+
+
+def test_routes_research_author_queries():
+    route = route_query("Who wrote this paper?", "research_paper")
+
+    assert route.intent == "authors"
+    assert "overview" in route.preferred_section_intents
+
+
+def test_research_paper_amount_queries_get_type_mismatch():
+    route = route_query("What total amount is due?", "research_paper")
+
+    assert route.intent == "amounts"
+    assert route.mismatch_reason is not None
+    assert "research paper" in route.mismatch_reason.lower()
+
+
+def test_research_paper_metric_amount_queries_are_answerable():
+    route = route_query("What amounts or totals are mentioned?", "research_paper")
+
+    assert route.intent == "amounts"
+    assert route.mismatch_reason is None
+
+
+def test_routes_invoice_payment_due_queries():
+    route = route_query("When is payment due?", "invoice")
+
+    assert route.intent == "payment_due"
+    assert "payment" in route.preferred_section_intents
+    assert "date" in route.preferred_section_intents
+
+
 def test_listed_resume_project_question_stays_project_scoped():
     route = route_query("What projects are listed in this document?", "resume")
 

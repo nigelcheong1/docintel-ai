@@ -18,7 +18,24 @@ describe("api client", () => {
   it("fetches documents from the configured backend", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [{ id: "doc-1", filename: "sample.pdf", mime_type: "application/pdf", status: "indexed" }],
+      json: async () => [
+        {
+          id: "doc-1",
+          filename: "sample.pdf",
+          mime_type: "application/pdf",
+          status: "indexed",
+          parse_quality: {
+            page_count: 2,
+            text_page_count: 2,
+            empty_page_count: 0,
+            total_characters: 2400,
+            average_characters_per_page: 1200,
+            low_text_page_ratio: 0,
+            scanned_likelihood: "low",
+            warnings: [],
+          },
+        },
+      ],
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -26,6 +43,8 @@ describe("api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents", { cache: "no-store" });
     expect(documents[0].filename).toBe("sample.pdf");
+    expect(documents[0].parse_quality?.scanned_likelihood).toBe("low");
+    expect(documents[0].parse_quality?.warnings).toEqual([]);
   });
 
   it("fetches document metadata from the document detail endpoint", async () => {
@@ -175,6 +194,7 @@ describe("api client", () => {
           answerable_cases: 12,
           abstention_cases: 1,
           document_types: { research_paper: 5 },
+          quality_dimensions: { answer_quality: 12, abstention_safety: 1, parse_quality: 1 },
         },
         cases: [],
       }),
@@ -185,6 +205,8 @@ describe("api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/eval/golden", { cache: "no-store" });
     expect(result.summary.pass_rate).toBe(1);
+    expect(result.summary.quality_dimensions.answer_quality).toBe(12);
+    expect(result.summary.quality_dimensions.abstention_safety).toBe(1);
   });
 
   it("surfaces JSON detail from failed backend responses", async () => {
