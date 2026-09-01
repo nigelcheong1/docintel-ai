@@ -34,7 +34,4 @@ def parse_pdf(file_path: Path) -> list[ParsedPage]:
     except Exception as exc:
         raise DocumentParseError(f"Could not read PDF: {exc}") from exc
 
-    if not any(page.text for page in pages):
-        raise DocumentParseError("No extractable text found in this PDF.")
-
     return pages

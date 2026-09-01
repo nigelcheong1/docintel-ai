@@ -278,7 +278,7 @@ git commit -m "feat: add ocr ingestion schema foundation"
 - Produces: `OcrPageResult`, `OcrUnavailableError`, `OcrProvider`, `TesseractOcrProvider`.
 - Produces: `ExtractedPage`, `ExtractionResult`, `extract_pdf_pages()`, `extract_image_pages()`.
 
-- [ ] **Step 1: Write failing parser test for empty scanned PDFs**
+- [x] **Step 1: Write failing parser test for empty scanned PDFs**
 
 Change `test_parse_pdf_rejects_empty_pdf` in `apps/api/tests/documents/test_parser.py` to:
 
@@ -299,7 +299,7 @@ def test_parse_pdf_returns_empty_text_pages_for_scanned_pdf(tmp_path):
     assert pages[0].height == 200
 ```
 
-- [ ] **Step 2: Write failing OCR provider tests**
+- [x] **Step 2: Write failing OCR provider tests**
 
 Create `apps/api/tests/documents/test_ocr.py`:
 
@@ -332,7 +332,7 @@ def test_tesseract_provider_does_not_run_when_unavailable():
     assert result.engine_name == "tesseract-unavailable"
 ```
 
-- [ ] **Step 3: Write failing extraction tests**
+- [x] **Step 3: Write failing extraction tests**
 
 Create `apps/api/tests/documents/test_extraction.py`:
 
@@ -400,7 +400,7 @@ def test_extract_image_pages_uses_ocr_as_page_one(tmp_path):
     assert result.pages[0].text_source == "ocr"
 ```
 
-- [ ] **Step 4: Run Task 2 tests to verify red**
+- [x] **Step 4: Run Task 2 tests to verify red**
 
 Run:
 
@@ -410,7 +410,7 @@ pytest apps/api/tests/documents/test_parser.py apps/api/tests/documents/test_ocr
 
 Expected: failures mention missing OCR/extraction modules and parser still raising on empty PDFs.
 
-- [ ] **Step 5: Implement parser relaxation**
+- [x] **Step 5: Implement parser relaxation**
 
 Remove this block from `parse_pdf()`:
 
@@ -421,7 +421,7 @@ Remove this block from `parse_pdf()`:
 
 Keep malformed PDF wrapping unchanged.
 
-- [ ] **Step 6: Implement OCR provider**
+- [x] **Step 6: Implement OCR provider**
 
 Add `Pillow==12.1.0` to `apps/api/requirements.txt`.
 
@@ -434,7 +434,7 @@ Create `apps/api/app/documents/ocr.py` with a Tesseract CLI provider that:
 - runs `tesseract <image> stdout -l <language> --psm 6 tsv`;
 - parses TSV rows into text and average confidence for non-empty words.
 
-- [ ] **Step 7: Implement extraction coordinator**
+- [x] **Step 7: Implement extraction coordinator**
 
 Create `apps/api/app/documents/extraction.py` with:
 
@@ -486,7 +486,7 @@ def normalized_text_length(text: str) -> int:
     return len(" ".join(text.split()))
 ```
 
-- [ ] **Step 8: Run Task 2 tests to verify green**
+- [x] **Step 8: Run Task 2 tests to verify green**
 
 Run:
 
@@ -496,7 +496,7 @@ pytest apps/api/tests/documents/test_parser.py apps/api/tests/documents/test_ocr
 
 Expected: all selected tests pass.
 
-- [ ] **Step 9: Commit Task 2**
+- [x] **Step 9: Commit Task 2**
 
 Run:
 

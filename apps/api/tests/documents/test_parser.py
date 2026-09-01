@@ -27,15 +27,20 @@ def test_parse_pdf_extracts_page_text(tmp_path):
     assert pages[0].height == 200
 
 
-def test_parse_pdf_rejects_empty_pdf(tmp_path):
+def test_parse_pdf_returns_empty_text_pages_for_scanned_pdf(tmp_path):
     pdf_path = tmp_path / "empty.pdf"
     document = fitz.open()
-    document.new_page()
+    document.new_page(width=300, height=200)
     document.save(pdf_path)
     document.close()
 
-    with pytest.raises(DocumentParseError, match="No extractable text"):
-        parse_pdf(pdf_path)
+    pages = parse_pdf(pdf_path)
+
+    assert len(pages) == 1
+    assert pages[0].page_number == 1
+    assert pages[0].text == ""
+    assert pages[0].width == 300
+    assert pages[0].height == 200
 
 
 def test_parse_pdf_wraps_malformed_pdf_errors(tmp_path):

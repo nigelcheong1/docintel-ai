@@ -16,8 +16,12 @@ class PageText(Protocol):
     text: str
 
 
+def normalized_text_length(text: str) -> int:
+    return len(" ".join(text.split()))
+
+
 def _text_length(page: PageText) -> int:
-    return len(" ".join(page.text.split()))
+    return normalized_text_length(page.text)
 
 
 def _scan_likelihood(page_count: int, low_text_page_ratio: float) -> ScanLikelihood:
