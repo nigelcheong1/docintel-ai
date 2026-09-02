@@ -7,6 +7,12 @@ export type ParseQuality = {
   low_text_page_ratio: number;
   scanned_likelihood: "low" | "medium" | "high";
   warnings: string[];
+  ocr_page_count: number;
+  native_text_page_count: number;
+  hybrid_page_count: number;
+  ocr_confidence_average: number | null;
+  ocr_duration_ms: number;
+  text_source_summary: Record<string, number>;
 };
 
 export type DocumentSummary = {

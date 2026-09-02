@@ -27,6 +27,14 @@ class InMemoryDocumentDb:
         return None
 
 
+class FakeOcrProvider:
+    def __init__(self, available: bool) -> None:
+        self.available = available
+
+    def is_available(self) -> bool:
+        return self.available
+
+
 def make_in_memory_document(filename: str, chunks: list[tuple[str, str | None, int]]) -> Document:
     document = Document(
         id="document-1",
@@ -137,6 +145,35 @@ def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["hits"][0]["section_heading"] == "KEY PROJECTS"
+
+
+def test_scoped_search_on_deferred_ocr_document_returns_insufficient_evidence(db_session, tmp_path):
+    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
+    document = index_stored_upload(
+        db_session,
+        stored,
+        lambda: FakeEmbeddingProvider(),
+        ocr_provider_factory=lambda: FakeOcrProvider(available=False),
+    )
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    client = TestClient(app)
+
+    response = client.post("/search", json={"query": "What is in this scan?", "document_id": document.id})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["hits"] == []
+    assert payload["answer"] is None
+    assert payload["quality"]["status"] == "insufficient_evidence"
+    assert payload["quality"]["confidence"] == "weak"
+    assert "OCR" in payload["quality"]["reason"]
+    assert payload["diagnostics"]["related_result_count"] == 0
 
 
 def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
+    ocr_enabled: bool = True
+    ocr_language: str = "eng"
+    ocr_dpi: int = 200
+    ocr_max_pages: int = 25
+    ocr_page_timeout_seconds: int = 20
+    tesseract_cmd: str | None = None
     backend_cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",

@@ -6,9 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page
+from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page, utc_now
 from app.documents.chunker import chunk_pages
-from app.documents.parser import DocumentParseError, parse_pdf
+from app.documents.extraction import ExtractedPage, extract_image_pages, extract_pdf_pages
+from app.documents.ocr import OcrProvider
+from app.documents.parser import DocumentParseError
 from app.documents.storage import StoredUpload
 from app.retrieval.embeddings import EmbeddingProvider
 
@@ -22,6 +24,10 @@ class DocumentReindexError(ValueError):
 
 
 EmbeddingProviderFactory = Callable[[], EmbeddingProvider]
+OcrProviderFactory = Callable[[], OcrProvider]
+OCR_UNAVAILABLE_MESSAGE = (
+    "Local OCR is not available. Install Tesseract OCR or configure DOCINTEL_TESSERACT_CMD, then retry OCR."
+)
 
 
 @dataclass(frozen=True)
@@ -74,29 +80,62 @@ def _persist_failed_status(db: Session, document_id: str, error_message: str) ->
         raise DocumentPersistenceError("Could not persist the document indexing failure.") from exc
 
 
-def _add_pdf_index_records(
+def _persist_deferred_ocr_status(db: Session, document: Document, document_id: str, error_message: str) -> Document:
+    try:
+        document.status = DocumentStatus.DEFERRED_OCR
+        document.error_message = error_message
+        db.commit()
+        return document
+    except SQLAlchemyError:
+        return _persist_failed_status(db, document_id, "Could not persist the deferred OCR status.")
+
+
+def _start_ocr_processing(db: Session, document: Document) -> None:
+    document.status = DocumentStatus.OCR_PROCESSING
+    document.error_message = None
+    document.processing_started_at = utc_now()
+    document.processing_completed_at = None
+    document.processing_duration_ms = None
+    db.commit()
+
+
+def _complete_ocr_processing(document: Document) -> None:
+    if document.processing_started_at is None:
+        return
+    document.processing_completed_at = utc_now()
+    document.processing_duration_ms = max(
+        0,
+        int((document.processing_completed_at - document.processing_started_at).total_seconds() * 1000),
+    )
+
+
+def _add_index_records_from_pages(
     db: Session,
     document: Document,
+    extracted_pages: list[ExtractedPage],
     embedder_factory: EmbeddingProviderFactory,
 ) -> None:
-    parsed_pages = parse_pdf(Path(document.file_path))
     pages = [
         Page(
             document_id=document.id,
-            page_number=parsed_page.page_number,
-            text=parsed_page.text,
-            width=parsed_page.width,
-            height=parsed_page.height,
+            page_number=extracted_page.page_number,
+            text=extracted_page.text,
+            width=extracted_page.width,
+            height=extracted_page.height,
+            text_source=extracted_page.text_source,
+            ocr_engine=extracted_page.ocr_engine,
+            ocr_confidence=extracted_page.ocr_confidence,
+            ocr_duration_ms=extracted_page.ocr_duration_ms,
         )
-        for parsed_page in parsed_pages
+        for extracted_page in extracted_pages
     ]
     db.add_all(pages)
     db.flush()
     page_models = {page.page_number: page for page in pages}
 
-    text_chunks = chunk_pages(parsed_pages)
+    text_chunks = chunk_pages(extracted_pages)
     if not text_chunks:
-        raise DocumentParseError("There is not enough usable text in this PDF for local search. It may need OCR.")
+        raise DocumentParseError("There is not enough usable text in this document for local search. It may need OCR.")
 
     embedder = embedder_factory()
     vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
@@ -125,25 +164,48 @@ def index_stored_upload(
     db: Session,
     stored: StoredUpload,
     embedder_factory: EmbeddingProviderFactory | None,
+    *,
+    ocr_provider_factory: OcrProviderFactory | None = None,
+    ocr_language: str = "eng",
+    ocr_dpi: int = 200,
+    ocr_max_pages: int = 25,
 ) -> Document:
     persisted_document = _persist_new_document(db, stored)
     document = persisted_document.model
     document_id = persisted_document.document_id
 
-    if stored.kind == "image":
-        try:
-            document.status = DocumentStatus.DEFERRED_OCR
-            document.error_message = "OCR is not enabled in the local-first MVP."
-            db.commit()
-            return document
-        except SQLAlchemyError as exc:
-            return _persist_failed_status(db, document_id, "Could not persist the deferred OCR status.")
-
     try:
-        if embedder_factory is None:
-            raise RuntimeError("No embedding provider is configured for PDF indexing.")
-        _add_pdf_index_records(db, document, embedder_factory)
+        ocr_provider = ocr_provider_factory() if ocr_provider_factory is not None else None
+        if stored.kind == "image":
+            if ocr_provider is None or not ocr_provider.is_available():
+                return _persist_deferred_ocr_status(db, document, document_id, OCR_UNAVAILABLE_MESSAGE)
+            if embedder_factory is None:
+                raise RuntimeError("No embedding provider is configured for document indexing.")
+
+            _start_ocr_processing(db, document)
+            extraction_result = extract_image_pages(Path(document.file_path), ocr_provider=ocr_provider, language=ocr_language)
+            if not extraction_result.pages:
+                raise DocumentParseError("OCR completed, but no searchable text was found in this image.")
+        else:
+            if embedder_factory is None:
+                raise RuntimeError("No embedding provider is configured for document indexing.")
+            if ocr_provider is not None and ocr_provider.is_available() and ocr_max_pages > 0:
+                _start_ocr_processing(db, document)
+            extraction_result = extract_pdf_pages(
+                Path(document.file_path),
+                ocr_provider=ocr_provider,
+                language=ocr_language,
+                dpi=ocr_dpi,
+                max_ocr_pages=ocr_max_pages,
+            )
+
+        _add_index_records_from_pages(db, document, extraction_result.pages, embedder_factory)
+        if extraction_result.ocr_page_count:
+            _complete_ocr_processing(document)
+        elif document.status == DocumentStatus.OCR_PROCESSING:
+            document.processing_started_at = None
         document.status = DocumentStatus.INDEXED
+        document.error_message = None
         db.commit()
         return document
     except Exception as exc:
@@ -203,10 +265,14 @@ def reindex_document(
     db: Session,
     document_id: str,
     embedder_factory: EmbeddingProviderFactory,
+    *,
+    ocr_provider_factory: OcrProviderFactory | None = None,
+    ocr_language: str = "eng",
+    ocr_dpi: int = 200,
+    ocr_max_pages: int = 25,
 ) -> Document:
     document = get_document_or_404(db, document_id)
-    if Path(document.stored_filename).suffix.lower() != ".pdf":
-        raise DocumentReindexError("Only PDF documents can be reindexed.")
+    document_kind = "image" if document.mime_type.startswith("image/") else "pdf"
 
     try:
         document.status = DocumentStatus.PROCESSING
@@ -214,7 +280,30 @@ def reindex_document(
         for page in list(document.pages):
             db.delete(page)
         db.flush()
-        _add_pdf_index_records(db, document, embedder_factory)
+
+        ocr_provider = ocr_provider_factory() if ocr_provider_factory is not None else None
+        if document_kind == "image":
+            if ocr_provider is None or not ocr_provider.is_available():
+                raise DocumentReindexError(OCR_UNAVAILABLE_MESSAGE)
+            document.status = DocumentStatus.OCR_PROCESSING
+            document.processing_started_at = utc_now()
+            document.processing_completed_at = None
+            document.processing_duration_ms = None
+            extraction_result = extract_image_pages(Path(document.file_path), ocr_provider=ocr_provider, language=ocr_language)
+            if not extraction_result.pages:
+                raise DocumentParseError("OCR completed, but no searchable text was found in this image.")
+        else:
+            extraction_result = extract_pdf_pages(
+                Path(document.file_path),
+                ocr_provider=ocr_provider,
+                language=ocr_language,
+                dpi=ocr_dpi,
+                max_ocr_pages=ocr_max_pages,
+            )
+
+        _add_index_records_from_pages(db, document, extraction_result.pages, embedder_factory)
+        if extraction_result.ocr_page_count:
+            _complete_ocr_processing(document)
         document.status = DocumentStatus.INDEXED
         db.commit()
         db.expire(document, ["pages", "chunks"])

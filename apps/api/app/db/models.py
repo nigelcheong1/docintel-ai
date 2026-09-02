@@ -4,7 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -20,6 +20,7 @@ class Base(DeclarativeBase):
 class DocumentStatus(StrEnum):
     UPLOADED = "uploaded"
     PROCESSING = "processing"
+    OCR_PROCESSING = "ocr_processing"
     INDEXED = "indexed"
     DEFERRED_OCR = "deferred_ocr"
     FAILED = "failed"
@@ -39,6 +40,9 @@ class Document(Base):
         default=DocumentStatus.UPLOADED,
     )
     error_message: Mapped[str | None] = mapped_column(Text)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processing_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processing_duration_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -55,6 +59,10 @@ class Page(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     width: Mapped[float | None]
     height: Mapped[float | None]
+    text_source: Mapped[str] = mapped_column(String(20), nullable=False, default="native")
+    ocr_engine: Mapped[str | None] = mapped_column(String(100))
+    ocr_confidence: Mapped[float | None] = mapped_column(Float)
+    ocr_duration_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     document: Mapped[Document] = relationship(back_populates="pages")

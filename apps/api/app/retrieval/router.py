@@ -3,11 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.db.models import Chunk, Document
+from app.db.models import Chunk, Document, DocumentStatus
 from app.db.session import get_db
 from app.documents.intelligence import build_document_profile
 from app.documents.router import get_embedding_provider
-from app.retrieval.answers import build_grounded_answer
+from app.retrieval.answers import AnswerQuality, build_grounded_answer
 from app.retrieval.document_answers import build_document_aware_answer
 from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.query_router import route_query
@@ -101,18 +101,62 @@ def _augment_hits_with_answer_evidence(
     return merged_hits
 
 
+def _selected_document_no_chunks_reason(document: Document) -> str:
+    if document.status == DocumentStatus.DEFERRED_OCR:
+        return document.error_message or "This selected document needs OCR before it can be searched."
+    if document.status == DocumentStatus.OCR_PROCESSING:
+        return "OCR is still running for this selected document. Try again after processing completes."
+    if document.status == DocumentStatus.FAILED:
+        detail = document.error_message or "Document indexing failed."
+        return f"{detail} Reindex the document before searching it."
+    return "This selected document does not have indexed searchable evidence yet."
+
+
+def _empty_scoped_document_response(
+    *,
+    request: SearchRequest,
+    document: Document,
+    document_type: str | None,
+    query_intent: str,
+) -> SearchResponse:
+    reason = _selected_document_no_chunks_reason(document)
+    quality = AnswerQuality(
+        status="insufficient_evidence",
+        confidence="weak",
+        reason=reason,
+        evidence_count=0,
+        best_score=0.0,
+        best_source_score=0.0,
+        best_keyword_overlap=0.0,
+        best_section_intent=0.0,
+        suggested_questions=[],
+    )
+    diagnostics = _build_search_diagnostics(
+        hits=[],
+        answer_chunk_ids=[],
+        quality_status=quality.status,
+        confidence=quality.confidence,
+        reason=quality.reason,
+        document_type=document_type,
+        query_intent=query_intent,
+    )
+    return SearchResponse(
+        query=request.query,
+        hits=[],
+        answer=None,
+        quality=quality,
+        document_type=document_type,
+        query_intent=query_intent,
+        diagnostics=diagnostics,
+    )
+
+
 @router.post("/search", response_model=SearchResponse)
 def search(
     request: SearchRequest,
     db: Annotated[Session, Depends(get_db)],
     embedder: Annotated[EmbeddingProvider, Depends(get_embedding_provider)],
 ) -> SearchResponse:
-    query_embedding = embedder.embed_texts([request.query])[0]
-    candidate_limit = min(50, max(request.top_k * 4, request.top_k + 10))
-    hits = rerank_hits(
-        request.query,
-        search_chunks(db, query_embedding, candidate_limit, request.document_id),
-    )[: request.top_k]
     document = None
     profile = None
     route = route_query(request.query)
@@ -121,6 +165,20 @@ def search(
         if document is not None:
             profile = build_document_profile(document)
             route = route_query(request.query, profile.document_type)
+            if not document.chunks:
+                return _empty_scoped_document_response(
+                    request=request,
+                    document=document,
+                    document_type=profile.document_type,
+                    query_intent=route.intent,
+                )
+
+    query_embedding = embedder.embed_texts([request.query])[0]
+    candidate_limit = min(50, max(request.top_k * 4, request.top_k + 10))
+    hits = rerank_hits(
+        request.query,
+        search_chunks(db, query_embedding, candidate_limit, request.document_id),
+    )[: request.top_k]
 
     typed_answer = (
         build_document_aware_answer(request.query, document, profile, route)

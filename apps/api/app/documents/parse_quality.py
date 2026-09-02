@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from typing import Literal, Protocol
 
@@ -16,8 +17,12 @@ class PageText(Protocol):
     text: str
 
 
+def normalized_text_length(text: str) -> int:
+    return len(" ".join(text.split()))
+
+
 def _text_length(page: PageText) -> int:
-    return len(" ".join(page.text.split()))
+    return normalized_text_length(page.text)
 
 
 def _scan_likelihood(page_count: int, low_text_page_ratio: float) -> ScanLikelihood:
@@ -39,6 +44,13 @@ def _warnings(likelihood: ScanLikelihood) -> list[str]:
 def build_parse_quality_from_pages(pages: Sequence[PageText]) -> ParseQualityRead:
     page_count = len(pages)
     text_lengths = [_text_length(page) for page in pages]
+    text_sources = [getattr(page, "text_source", "native") or "native" for page in pages]
+    text_source_summary = dict(Counter(text_sources))
+    ocr_confidences = [
+        float(confidence)
+        for page in pages
+        if (confidence := getattr(page, "ocr_confidence", None)) is not None
+    ]
     total_characters = sum(text_lengths)
     text_page_count = sum(1 for length in text_lengths if length >= _TEXT_PAGE_MIN_CHARS)
     empty_page_count = sum(1 for length in text_lengths if length == 0)
@@ -56,6 +68,12 @@ def build_parse_quality_from_pages(pages: Sequence[PageText]) -> ParseQualityRea
         low_text_page_ratio=round(low_text_page_ratio, 4),
         scanned_likelihood=likelihood,
         warnings=_warnings(likelihood),
+        ocr_page_count=text_source_summary.get("ocr", 0),
+        native_text_page_count=text_source_summary.get("native", 0),
+        hybrid_page_count=text_source_summary.get("hybrid", 0),
+        ocr_confidence_average=round(sum(ocr_confidences) / len(ocr_confidences), 2) if ocr_confidences else None,
+        ocr_duration_ms=sum(int(getattr(page, "ocr_duration_ms", 0) or 0) for page in pages),
+        text_source_summary=text_source_summary,
     )
 
 

@@ -9,11 +9,13 @@ from app.db.models import Chunk, Document
 from app.documents.parse_quality import build_parse_quality_for_document
 from app.db.session import get_db
 from app.documents.intelligence import build_document_profile
+from app.documents.ocr import TesseractOcrProvider
 from app.documents.schemas import ChunkRead, DocumentDetail, DocumentProfileRead, DocumentRead
 from app.documents.service import (
     DocumentPersistenceError,
     DocumentReindexError,
     EmbeddingProviderFactory,
+    OcrProviderFactory,
     delete_document,
     get_document_or_404,
     index_stored_upload,
@@ -39,6 +41,14 @@ def get_embedding_provider_factory(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> EmbeddingProviderFactory:
     return lambda: get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
+
+
+def get_ocr_provider_factory(settings: Annotated[Settings, Depends(get_settings)]) -> OcrProviderFactory:
+    return lambda: TesseractOcrProvider(
+        enabled=settings.ocr_enabled,
+        tesseract_cmd=settings.tesseract_cmd,
+        timeout_seconds=settings.ocr_page_timeout_seconds,
+    )
 
 
 def document_read(document: Document) -> DocumentRead:
@@ -75,6 +85,7 @@ async def upload_document(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
+    ocr_provider_factory: Annotated[OcrProviderFactory, Depends(get_ocr_provider_factory)],
 ) -> DocumentRead:
     try:
         stored = await save_upload_stream(
@@ -90,7 +101,17 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        return document_read(index_stored_upload(db, stored, embedder_factory if stored.kind == "pdf" else None))
+        return document_read(
+            index_stored_upload(
+                db,
+                stored,
+                embedder_factory,
+                ocr_provider_factory=ocr_provider_factory,
+                ocr_language=settings.ocr_language,
+                ocr_dpi=settings.ocr_dpi,
+                ocr_max_pages=settings.ocr_max_pages,
+            )
+        )
     except DocumentPersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -143,10 +164,22 @@ def delete_document_route(document_id: str, db: Annotated[Session, Depends(get_d
 def reindex_document_route(
     document_id: str,
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
+    ocr_provider_factory: Annotated[OcrProviderFactory, Depends(get_ocr_provider_factory)],
 ) -> DocumentRead:
     try:
-        return document_read(reindex_document(db, document_id, embedder_factory))
+        return document_read(
+            reindex_document(
+                db,
+                document_id,
+                embedder_factory,
+                ocr_provider_factory=ocr_provider_factory,
+                ocr_language=settings.ocr_language,
+                ocr_dpi=settings.ocr_dpi,
+                ocr_max_pages=settings.ocr_max_pages,
+            )
+        )
     except DocumentReindexError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except DocumentPersistenceError as exc:

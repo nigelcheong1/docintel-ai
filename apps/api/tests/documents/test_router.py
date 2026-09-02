@@ -2,11 +2,13 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.core.config import Settings, get_settings
 from app.db.models import Document, DocumentStatus
 from app.db.session import get_db
 from app.documents import router
+from app.documents.ocr import OcrPageResult
 from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
@@ -22,6 +24,25 @@ def create_pdf_bytes(path: Path, text: str) -> bytes:
     pdf.save(path)
     pdf.close()
     return path.read_bytes()
+
+
+def create_image_bytes(path: Path) -> bytes:
+    Image.new("RGB", (120, 60), "white").save(path)
+    return path.read_bytes()
+
+
+class FakeOcrProvider:
+    engine_name = "fake-ocr"
+
+    def __init__(self, available: bool = True, text: str = "OCR searchable content from scanned document") -> None:
+        self.available = available
+        self.text = text
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def ocr_image(self, image: Image.Image, *, language: str) -> OcrPageResult:
+        return OcrPageResult(text=self.text, confidence=88.0, engine_name=self.engine_name, duration_ms=5)
 
 
 def test_embedding_provider_is_cached_by_model_settings(monkeypatch):
@@ -68,7 +89,31 @@ def test_document_read_endpoints_include_parse_quality(db_session, tmp_path):
     assert list_response.status_code == 200
     assert detail_response.status_code == 200
     assert list_response.json()[0]["parse_quality"]["scanned_likelihood"] == "low"
+    assert "ocr_page_count" in list_response.json()[0]["parse_quality"]
     assert detail_response.json()["parse_quality"]["page_count"] == 1
+    assert "text_source_summary" in detail_response.json()["parse_quality"]
+
+
+@pytest.mark.integration
+def test_image_upload_indexes_image_when_ocr_is_available(db_session, tmp_path):
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_settings] = lambda: Settings(storage_dir=tmp_path / "storage")
+    app.dependency_overrides[router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[router.get_ocr_provider_factory] = lambda: lambda: FakeOcrProvider()
+    client = TestClient(app)
+
+    response = client.post(
+        "/documents",
+        files={"file": ("scan.png", create_image_bytes(tmp_path / "scan.png"), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "indexed"
 
 
 @pytest.mark.integration
@@ -87,6 +132,7 @@ def test_image_upload_defers_ocr_without_initializing_embedding_provider(db_sess
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_settings] = lambda: Settings(storage_dir=tmp_path / "storage")
     app.dependency_overrides[router.get_embedding_provider_factory] = unexpected_provider_factory
+    app.dependency_overrides[router.get_ocr_provider_factory] = lambda: lambda: FakeOcrProvider(available=False)
     client = TestClient(app)
 
     response = client.post("/documents", files={"file": ("scan.png", b"image-bytes", "image/png")})
@@ -222,9 +268,20 @@ def test_reindex_document_endpoint_surfaces_failure_and_preserves_prior_index(db
 
 
 @pytest.mark.integration
-def test_reindex_document_endpoint_rejects_images(db_session, tmp_path):
-    stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
-    document = index_stored_upload(db_session, stored, None)
+def test_reindex_document_endpoint_accepts_images_when_ocr_is_available(db_session, tmp_path):
+    stored = save_upload_bytes(
+        "scan.png",
+        "image/png",
+        create_image_bytes(tmp_path / "scan.png"),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(
+        db_session,
+        stored,
+        lambda: FakeEmbeddingProvider(),
+        ocr_provider_factory=lambda: FakeOcrProvider(available=False),
+    )
     app = create_app()
 
     def override_db():
@@ -232,12 +289,13 @@ def test_reindex_document_endpoint_rejects_images(db_session, tmp_path):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
-    client = TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides[router.get_ocr_provider_factory] = lambda: lambda: FakeOcrProvider()
+    client = TestClient(app)
 
     response = client.post(f"/documents/{document.id}/reindex")
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Only PDF documents can be reindexed."
+    assert response.status_code == 200
+    assert response.json()["status"] == DocumentStatus.INDEXED.value
 
 
 @pytest.mark.integration
