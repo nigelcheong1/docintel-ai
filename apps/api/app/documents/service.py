@@ -14,6 +14,8 @@ from app.documents.parser import DocumentParseError
 from app.documents.storage import StoredUpload
 from app.retrieval.embeddings import EmbeddingProvider
 
+API_ROOT = Path(__file__).resolve().parents[2]
+
 
 class DocumentPersistenceError(RuntimeError):
     pass
@@ -28,12 +30,45 @@ OcrProviderFactory = Callable[[], OcrProvider]
 OCR_UNAVAILABLE_MESSAGE = (
     "Local OCR is not available. Install Tesseract OCR or configure DOCINTEL_TESSERACT_CMD, then retry OCR."
 )
+INSUFFICIENT_TEXT_MESSAGE = "There is not enough usable text in this document for local search. It may need OCR."
+SPARSE_IMAGE_OCR_MESSAGE = "OCR ran, but this image does not contain enough readable document text for local search."
 
 
 @dataclass(frozen=True)
 class PersistedDocument:
     model: Document
     document_id: str
+
+
+def _resolve_storage_dir(storage_dir: Path | None) -> Path:
+    if storage_dir is None:
+        return API_ROOT / "storage"
+    expanded = storage_dir.expanduser()
+    if expanded.is_absolute():
+        return expanded
+    return (API_ROOT / expanded).resolve()
+
+
+def _resolve_document_file_path(document: Document, storage_dir: Path | None) -> Path:
+    file_path = Path(document.file_path)
+    if file_path.is_absolute() or file_path.exists():
+        return file_path
+
+    resolved_storage_dir = _resolve_storage_dir(storage_dir)
+    candidates: list[Path] = []
+
+    if file_path.parts and file_path.parts[0].lower() == "storage":
+        candidates.append(resolved_storage_dir.joinpath(*file_path.parts[1:]))
+
+    if document.stored_filename:
+        candidates.append(resolved_storage_dir / document.stored_filename)
+
+    candidates.extend([resolved_storage_dir / file_path, API_ROOT / file_path])
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else file_path
 
 
 def _persist_new_document(db: Session, stored: StoredUpload) -> PersistedDocument:
@@ -114,6 +149,8 @@ def _add_index_records_from_pages(
     document: Document,
     extracted_pages: list[ExtractedPage],
     embedder_factory: EmbeddingProviderFactory,
+    *,
+    insufficient_text_message: str = INSUFFICIENT_TEXT_MESSAGE,
 ) -> None:
     pages = [
         Page(
@@ -135,7 +172,7 @@ def _add_index_records_from_pages(
 
     text_chunks = chunk_pages(extracted_pages)
     if not text_chunks:
-        raise DocumentParseError("There is not enough usable text in this document for local search. It may need OCR.")
+        raise DocumentParseError(insufficient_text_message)
 
     embedder = embedder_factory()
     vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
@@ -185,7 +222,7 @@ def index_stored_upload(
             _start_ocr_processing(db, document)
             extraction_result = extract_image_pages(Path(document.file_path), ocr_provider=ocr_provider, language=ocr_language)
             if not extraction_result.pages:
-                raise DocumentParseError("OCR completed, but no searchable text was found in this image.")
+                raise DocumentParseError(SPARSE_IMAGE_OCR_MESSAGE)
         else:
             if embedder_factory is None:
                 raise RuntimeError("No embedding provider is configured for document indexing.")
@@ -199,7 +236,14 @@ def index_stored_upload(
                 max_ocr_pages=ocr_max_pages,
             )
 
-        _add_index_records_from_pages(db, document, extraction_result.pages, embedder_factory)
+        insufficient_text_message = SPARSE_IMAGE_OCR_MESSAGE if stored.kind == "image" else INSUFFICIENT_TEXT_MESSAGE
+        _add_index_records_from_pages(
+            db,
+            document,
+            extraction_result.pages,
+            embedder_factory,
+            insufficient_text_message=insufficient_text_message,
+        )
         if extraction_result.ocr_page_count:
             _complete_ocr_processing(document)
         elif document.status == DocumentStatus.OCR_PROCESSING:
@@ -225,9 +269,9 @@ def get_document_or_404(db: Session, document_id: str) -> Document:
     return document
 
 
-def delete_document(db: Session, document_id: str) -> None:
+def delete_document(db: Session, document_id: str, *, storage_dir: Path | None = None) -> None:
     document = get_document_or_404(db, document_id)
-    file_path = Path(document.file_path)
+    file_path = _resolve_document_file_path(document, storage_dir)
     file_contents: bytes | None = None
     if file_path.exists():
         try:
@@ -266,6 +310,7 @@ def reindex_document(
     document_id: str,
     embedder_factory: EmbeddingProviderFactory,
     *,
+    storage_dir: Path | None = None,
     ocr_provider_factory: OcrProviderFactory | None = None,
     ocr_language: str = "eng",
     ocr_dpi: int = 200,
@@ -273,6 +318,7 @@ def reindex_document(
 ) -> Document:
     document = get_document_or_404(db, document_id)
     document_kind = "image" if document.mime_type.startswith("image/") else "pdf"
+    file_path = _resolve_document_file_path(document, storage_dir)
 
     try:
         document.status = DocumentStatus.PROCESSING
@@ -289,19 +335,26 @@ def reindex_document(
             document.processing_started_at = utc_now()
             document.processing_completed_at = None
             document.processing_duration_ms = None
-            extraction_result = extract_image_pages(Path(document.file_path), ocr_provider=ocr_provider, language=ocr_language)
+            extraction_result = extract_image_pages(file_path, ocr_provider=ocr_provider, language=ocr_language)
             if not extraction_result.pages:
-                raise DocumentParseError("OCR completed, but no searchable text was found in this image.")
+                raise DocumentParseError(SPARSE_IMAGE_OCR_MESSAGE)
         else:
             extraction_result = extract_pdf_pages(
-                Path(document.file_path),
+                file_path,
                 ocr_provider=ocr_provider,
                 language=ocr_language,
                 dpi=ocr_dpi,
                 max_ocr_pages=ocr_max_pages,
             )
 
-        _add_index_records_from_pages(db, document, extraction_result.pages, embedder_factory)
+        insufficient_text_message = SPARSE_IMAGE_OCR_MESSAGE if document_kind == "image" else INSUFFICIENT_TEXT_MESSAGE
+        _add_index_records_from_pages(
+            db,
+            document,
+            extraction_result.pages,
+            embedder_factory,
+            insufficient_text_message=insufficient_text_message,
+        )
         if extraction_result.ocr_page_count:
             _complete_ocr_processing(document)
         document.status = DocumentStatus.INDEXED

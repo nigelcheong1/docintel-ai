@@ -49,7 +49,10 @@ def _parse_confidence(value: str | None) -> float | None:
     return confidence if confidence >= 0 else None
 
 
-def _parse_tesseract_tsv(output: str) -> tuple[str, float | None]:
+def _parse_tesseract_tsv(output: str | None) -> tuple[str, float | None]:
+    if not output:
+        return "", None
+
     words: list[str] = []
     confidences: list[float] = []
     reader = csv.DictReader(output.splitlines(), delimiter="\t")
@@ -101,6 +104,8 @@ class TesseractOcrProvider:
                     [command, str(image_path), "stdout", "-l", language, "--psm", "6", "tsv"],
                     capture_output=True,
                     check=False,
+                    encoding="utf-8",
+                    errors="replace",
                     text=True,
                     timeout=self.timeout_seconds,
                 )

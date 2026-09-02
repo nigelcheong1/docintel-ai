@@ -93,6 +93,26 @@ def test_index_stored_upload_indexes_image_with_available_ocr(db_session, tmp_pa
     assert "OCR searchable content" in document.chunks[0].text
 
 
+def test_index_stored_upload_reports_sparse_image_ocr_failure(db_session, tmp_path):
+    image_path = tmp_path / "portrait.png"
+    Image.new("RGB", (120, 60), "white").save(image_path)
+    stored = save_upload_bytes("portrait.png", "image/png", image_path.read_bytes(), tmp_path / "storage", 20)
+
+    document = index_stored_upload(
+        db_session,
+        stored,
+        lambda: FakeEmbeddingProvider(),
+        ocr_provider_factory=lambda: FakeOcrProvider(text="WG | ow"),
+        ocr_language="eng",
+        ocr_dpi=200,
+        ocr_max_pages=25,
+    )
+
+    assert document.status == DocumentStatus.FAILED
+    assert "OCR ran" in (document.error_message or "")
+    assert "readable document text" in (document.error_message or "")
+
+
 def test_index_stored_upload_defers_image_when_ocr_is_unavailable(db_session, tmp_path):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
 
@@ -208,6 +228,30 @@ def test_delete_document_removes_database_records_and_stored_file(db_session, tm
     assert not stored.file_path.exists()
 
 
+def test_delete_document_resolves_legacy_relative_storage_path(db_session, tmp_path, monkeypatch):
+    storage_dir = tmp_path / "api" / "storage"
+    storage_dir.mkdir(parents=True)
+    stored_file = storage_dir / "legacy.png"
+    stored_file.write_bytes(b"image-bytes")
+    document = Document(
+        filename="legacy.png",
+        stored_filename=stored_file.name,
+        mime_type="image/png",
+        file_path=str(Path("storage") / stored_file.name),
+        status=DocumentStatus.DEFERRED_OCR,
+    )
+    db_session.add(document)
+    db_session.commit()
+    outside_cwd = tmp_path / "outside"
+    outside_cwd.mkdir()
+    monkeypatch.chdir(outside_cwd)
+
+    delete_document(db_session, document.id, storage_dir=storage_dir)
+
+    assert db_session.get(Document, document.id) is None
+    assert not stored_file.exists()
+
+
 def test_delete_document_keeps_database_record_when_file_removal_fails(db_session, tmp_path, monkeypatch):
     stored = save_upload_bytes("scan.png", "image/png", b"image-bytes", tmp_path / "storage", 20)
     document = index_stored_upload(db_session, stored, None)
@@ -275,6 +319,36 @@ def test_reindex_document_replaces_prior_pages_chunks_and_embeddings(db_session,
     assert db_session.scalars(select(Page).where(Page.id.in_(old_page_ids))).all() == []
     assert db_session.scalars(select(Chunk).where(Chunk.id.in_(old_chunk_ids))).all() == []
     assert db_session.scalars(select(ChunkEmbedding).where(ChunkEmbedding.id.in_(old_embedding_ids))).all() == []
+
+
+def test_reindex_document_resolves_legacy_relative_storage_path(db_session, tmp_path, monkeypatch):
+    storage_dir = tmp_path / "api" / "storage"
+    storage_dir.mkdir(parents=True)
+    stored_file = storage_dir / "legacy.png"
+    Image.new("RGB", (120, 60), "white").save(stored_file)
+    document = Document(
+        filename="legacy.png",
+        stored_filename=stored_file.name,
+        mime_type="image/png",
+        file_path=str(Path("storage") / stored_file.name),
+        status=DocumentStatus.DEFERRED_OCR,
+    )
+    db_session.add(document)
+    db_session.commit()
+    outside_cwd = tmp_path / "outside"
+    outside_cwd.mkdir()
+    monkeypatch.chdir(outside_cwd)
+
+    reindexed = reindex_document(
+        db_session,
+        document.id,
+        lambda: FakeEmbeddingProvider(),
+        storage_dir=storage_dir,
+        ocr_provider_factory=lambda: FakeOcrProvider(),
+    )
+
+    assert reindexed.status == DocumentStatus.INDEXED
+    assert reindexed.pages[0].text_source == "ocr"
 
 
 def test_reindex_document_preserves_prior_index_when_embedding_fails(db_session, tmp_path):
