@@ -152,9 +152,13 @@ def document_chunks(document_id: str, db: Annotated[Session, Depends(get_db)]) -
 
 
 @router.delete("/{document_id}", status_code=204)
-def delete_document_route(document_id: str, db: Annotated[Session, Depends(get_db)]) -> Response:
+def delete_document_route(
+    document_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
     try:
-        delete_document(db, document_id)
+        delete_document(db, document_id, storage_dir=settings.storage_dir)
     except DocumentPersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(status_code=204)
@@ -174,6 +178,7 @@ def reindex_document_route(
                 db,
                 document_id,
                 embedder_factory,
+                storage_dir=settings.storage_dir,
                 ocr_provider_factory=ocr_provider_factory,
                 ocr_language=settings.ocr_language,
                 ocr_dpi=settings.ocr_dpi,

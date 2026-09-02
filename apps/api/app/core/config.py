@@ -1,8 +1,10 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+API_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -10,7 +12,7 @@ class Settings(BaseSettings):
 
     app_name: str = "DocIntel AI API"
     database_url: str = "postgresql+psycopg://docintel:docintel@localhost:5432/docintel"
-    storage_dir: Path = Path("storage")
+    storage_dir: Path = Field(default_factory=lambda: API_ROOT / "storage")
     max_upload_mb: int = 20
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
@@ -28,6 +30,14 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3001",
         ]
     )
+
+    @field_validator("storage_dir", mode="after")
+    @classmethod
+    def resolve_storage_dir(cls, value: Path) -> Path:
+        expanded = value.expanduser()
+        if expanded.is_absolute():
+            return expanded
+        return (API_ROOT / expanded).resolve()
 
 
 @lru_cache
