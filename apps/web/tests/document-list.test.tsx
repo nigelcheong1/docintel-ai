@@ -34,6 +34,28 @@ describe("DocumentList", () => {
     expect(within(mobileList).getByText("Type")).toBeInTheDocument();
   });
 
+  it("links document names to the evidence workbench", () => {
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "indexed",
+          },
+        ]}
+      />,
+    );
+
+    const workbenchLinks = screen.getAllByRole("link", { name: "quarterly-report.pdf" });
+
+    expect(workbenchLinks).toHaveLength(2);
+    for (const link of workbenchLinks) {
+      expect(link).toHaveAttribute("href", "/documents/doc-1");
+    }
+  });
+
   it("omits document action controls when action handlers are unavailable", () => {
     render(
       <DocumentList

@@ -1,5 +1,7 @@
 import type {
+  DocumentChunk,
   DocumentDetail,
+  DocumentPage,
   DocumentProfile,
   DocumentSummary,
   EvalRunSummary,
@@ -34,6 +36,16 @@ export async function getDocuments(): Promise<DocumentSummary[]> {
 export async function getDocument(documentId: string): Promise<DocumentDetail> {
   const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, { cache: "no-store" });
   return parseJsonResponse<DocumentDetail>(response);
+}
+
+export async function getDocumentPages(documentId: string): Promise<DocumentPage[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/pages`, { cache: "no-store" });
+  return parseJsonResponse<DocumentPage[]>(response);
+}
+
+export async function getDocumentChunks(documentId: string): Promise<DocumentChunk[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/chunks`, { cache: "no-store" });
+  return parseJsonResponse<DocumentChunk[]>(response);
 }
 
 export async function getDocumentProfile(documentId: string): Promise<DocumentProfile> {

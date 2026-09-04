@@ -31,6 +31,28 @@ export type DocumentDetail = DocumentSummary & {
   chunk_count: number;
 };
 
+export type DocumentPage = {
+  document_id: string;
+  page_number: number;
+  text_source: string;
+  text_preview: string;
+  character_count: number;
+  chunk_count: number;
+  token_estimate: number;
+  ocr_engine?: string | null;
+  ocr_confidence?: number | null;
+  ocr_duration_ms?: number | null;
+};
+
+export type DocumentChunk = {
+  id: string;
+  document_id: string;
+  page_number: number;
+  chunk_index: number;
+  text: string;
+  token_estimate: number;
+};
+
 export type DocumentSection = {
   heading: string;
   page_number: number;

@@ -277,6 +277,7 @@ describe("SearchResults", () => {
     expect(screen.getByText("Page 2")).toBeInTheDocument();
     expect(screen.getByText("KEY PROJECTS")).toBeInTheDocument();
     expect(screen.getByText("87%")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open page" })).toHaveAttribute("href", "/documents/doc-1?page=2");
   });
 
   it("allows long filenames and snippets to wrap inside result cards", () => {

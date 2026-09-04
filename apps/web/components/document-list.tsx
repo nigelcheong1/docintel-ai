@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { AlertTriangle, FileText, RotateCw, Trash2 } from "lucide-react";
 
@@ -113,6 +114,28 @@ function DocumentQuality({ document }: { document: DocumentSummary | DocumentDet
   );
 }
 
+function DocumentNameLink({
+  document,
+  className,
+}: {
+  document: DocumentSummary | DocumentDetail;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={`/documents/${document.id}`}
+      className={[
+        "min-w-0 text-ink underline-offset-4 transition hover:text-teal-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {document.filename}
+    </Link>
+  );
+}
+
 function DocumentActions({
   document,
   pendingAction,
@@ -220,7 +243,9 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
               <div className="grid h-9 w-9 flex-none place-items-center rounded-md bg-teal-50 text-teal-700">
                 <FileText className="h-4 w-4" aria-hidden="true" />
               </div>
-              <h2 className="min-w-0 break-words text-sm font-semibold text-ink">{document.filename}</h2>
+              <h2 className="min-w-0 break-words text-sm font-semibold">
+                <DocumentNameLink document={document} className="break-words" />
+              </h2>
             </div>
             <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-sm">
               <dt className="text-slate-500">Status</dt>
@@ -267,7 +292,7 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
                     <div className="grid h-9 w-9 flex-none place-items-center rounded-md bg-teal-50 text-teal-700">
                       <FileText className="h-4 w-4" aria-hidden="true" />
                     </div>
-                    <span className="truncate font-semibold">{document.filename}</span>
+                    <DocumentNameLink document={document} className="truncate font-semibold" />
                   </div>
                 </td>
                 <td className="px-4 py-4">

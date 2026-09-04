@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.core.config import Settings, get_settings
-from app.db.models import Document, DocumentStatus
+from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.db.session import get_db
 from app.documents import router
 from app.documents.ocr import OcrPageResult
@@ -92,6 +92,89 @@ def test_document_read_endpoints_include_parse_quality(db_session, tmp_path):
     assert "ocr_page_count" in list_response.json()[0]["parse_quality"]
     assert detail_response.json()["parse_quality"]["page_count"] == 1
     assert "text_source_summary" in detail_response.json()["parse_quality"]
+
+
+@pytest.mark.integration
+def test_document_pages_endpoint_returns_page_diagnostics(db_session):
+    document = Document(
+        filename="workbench.pdf",
+        stored_filename="workbench.pdf",
+        mime_type="application/pdf",
+        file_path="storage/workbench.pdf",
+        status=DocumentStatus.INDEXED,
+    )
+    page_two = Page(
+        document=document,
+        page_number=2,
+        text="Second OCR page contains extracted text from a scanned image.",
+        width=900,
+        height=1200,
+        text_source="ocr",
+        ocr_engine="fake-ocr",
+        ocr_confidence=88.5,
+        ocr_duration_ms=15,
+    )
+    page_one = Page(
+        document=document,
+        page_number=1,
+        text="First native page contains searchable text.",
+        width=900,
+        height=1200,
+        text_source="native",
+    )
+    db_session.add_all(
+        [
+            document,
+            page_two,
+            page_one,
+            Chunk(
+                document=document,
+                page=page_one,
+                chunk_index=0,
+                text="First page evidence chunk.",
+                token_estimate=6,
+                layout={},
+            ),
+            Chunk(
+                document=document,
+                page=page_one,
+                chunk_index=1,
+                text="Another first page evidence chunk.",
+                token_estimate=7,
+                layout={},
+            ),
+            Chunk(
+                document=document,
+                page=page_two,
+                chunk_index=2,
+                text="OCR page evidence chunk.",
+                token_estimate=8,
+                layout={},
+            ),
+        ]
+    )
+    db_session.commit()
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+
+    response = client.get(f"/documents/{document.id}/pages")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [page["page_number"] for page in payload] == [1, 2]
+    assert payload[0]["text_source"] == "native"
+    assert payload[0]["chunk_count"] == 2
+    assert payload[0]["token_estimate"] == 13
+    assert payload[0]["text_preview"] == "First native page contains searchable text."
+    assert payload[1]["text_source"] == "ocr"
+    assert payload[1]["ocr_engine"] == "fake-ocr"
+    assert payload[1]["ocr_confidence"] == 88.5
+    assert payload[1]["ocr_duration_ms"] == 15
 
 
 @pytest.mark.integration
