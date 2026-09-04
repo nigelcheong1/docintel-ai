@@ -2,7 +2,17 @@ import subprocess
 
 from PIL import Image
 
-from app.documents.ocr import TesseractOcrProvider
+from app.documents.ocr import TesseractOcrProvider, prepare_image_for_ocr
+
+
+def test_prepare_image_for_ocr_normalizes_small_color_scan():
+    image = Image.new("RGB", (320, 120), (235, 235, 235))
+
+    prepared = prepare_image_for_ocr(image)
+
+    assert prepared.mode == "L"
+    assert prepared.width >= 1200
+    assert prepared.height > image.height
 
 
 def test_tesseract_provider_reports_unavailable_when_disabled():

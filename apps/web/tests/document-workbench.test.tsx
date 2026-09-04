@@ -70,20 +70,28 @@ const pages: DocumentPage[] = [
   {
     document_id: "doc-1",
     page_number: 1,
+    image_url: "/documents/doc-1/pages/1/image",
     text_source: "native",
     text_preview: "Abstract introduces human robot collaboration.",
     character_count: 800,
     chunk_count: 1,
     token_estimate: 120,
+    text_density: 0.84,
+    ocr_quality: "native",
+    needs_review: false,
   },
   {
     document_id: "doc-1",
     page_number: 2,
+    image_url: "/documents/doc-1/pages/2/image",
     text_source: "ocr",
     text_preview: "Table 1 compares HRI30 and InHARD.",
     character_count: 1000,
     chunk_count: 2,
     token_estimate: 180,
+    text_density: 0.7,
+    ocr_quality: "strong",
+    needs_review: false,
     ocr_engine: "tesseract",
     ocr_confidence: 88.5,
     ocr_duration_ms: 245,
@@ -137,6 +145,9 @@ describe("DocumentWorkbench", () => {
     expect(screen.getByText("OCR confidence is lower on page 2.")).toBeInTheDocument();
 
     const pageEvidence = screen.getByRole("region", { name: "Page evidence" });
+    const pagePreview = screen.getByRole("img", { name: "Page 2 source preview" });
+
+    expect(pagePreview).toHaveAttribute("src", "/documents/doc-1/pages/2/image");
     expect(within(pageEvidence).getByText("Table 1 compares HRI30 and InHARD.")).toBeInTheDocument();
     expect(within(pageEvidence).queryByText("Abstract introduces human robot collaboration.")).not.toBeInTheDocument();
 
@@ -181,5 +192,37 @@ describe("DocumentWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: /Page 2/ }));
 
     expect(within(screen.getByRole("region", { name: "Page evidence" })).getByText("Table 1 compares HRI30 and InHARD.")).toBeInTheDocument();
+  });
+
+  it("lets reviewers zoom the selected page preview", () => {
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} initialPageNumber={2} />);
+
+    expect(screen.getByText("100%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in page preview" }));
+
+    expect(screen.getByText("125%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset page preview zoom" }));
+
+    expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("marks weak OCR pages as needing review", () => {
+    const reviewPages = pages.map((page) =>
+      page.page_number === 2
+        ? {
+            ...page,
+            ocr_quality: "weak" as const,
+            needs_review: true,
+          }
+        : page,
+    );
+
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={reviewPages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Page 2/ }));
+
+    expect(screen.getAllByText("Review needed").length).toBeGreaterThan(0);
   });
 });

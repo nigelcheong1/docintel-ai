@@ -21,7 +21,9 @@ def test_relative_storage_dir_is_api_root_relative():
     assert settings.storage_dir == expected_storage_dir
 
 
-def test_ocr_settings_have_local_defaults():
+def test_ocr_settings_have_local_defaults(monkeypatch):
+    monkeypatch.delenv("DOCINTEL_TESSERACT_CMD", raising=False)
+
     settings = Settings()
 
     assert settings.ocr_enabled is True

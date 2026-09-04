@@ -49,7 +49,7 @@ def _resolve_storage_dir(storage_dir: Path | None) -> Path:
     return (API_ROOT / expanded).resolve()
 
 
-def _resolve_document_file_path(document: Document, storage_dir: Path | None) -> Path:
+def resolve_document_file_path(document: Document, storage_dir: Path | None) -> Path:
     file_path = Path(document.file_path)
     if file_path.is_absolute() or file_path.exists():
         return file_path
@@ -271,7 +271,7 @@ def get_document_or_404(db: Session, document_id: str) -> Document:
 
 def delete_document(db: Session, document_id: str, *, storage_dir: Path | None = None) -> None:
     document = get_document_or_404(db, document_id)
-    file_path = _resolve_document_file_path(document, storage_dir)
+    file_path = resolve_document_file_path(document, storage_dir)
     file_contents: bytes | None = None
     if file_path.exists():
         try:
@@ -318,7 +318,7 @@ def reindex_document(
 ) -> Document:
     document = get_document_or_404(db, document_id)
     document_kind = "image" if document.mime_type.startswith("image/") else "pdf"
-    file_path = _resolve_document_file_path(document, storage_dir)
+    file_path = resolve_document_file_path(document, storage_dir)
 
     try:
         document.status = DocumentStatus.PROCESSING

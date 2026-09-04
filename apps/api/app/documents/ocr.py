@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 
 
 class OcrUnavailableError(RuntimeError):
@@ -69,6 +69,22 @@ def _parse_tesseract_tsv(output: str | None) -> tuple[str, float | None]:
     return _normalize_words(words), average_confidence
 
 
+def prepare_image_for_ocr(image: Image.Image) -> Image.Image:
+    prepared = ImageOps.grayscale(image)
+    prepared = ImageOps.autocontrast(prepared)
+
+    target_min_width = 1200
+    max_width = 3000
+    if 0 < prepared.width < target_min_width:
+        scale = min(target_min_width / prepared.width, max_width / prepared.width)
+        prepared = prepared.resize(
+            (int(prepared.width * scale), int(prepared.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
+
+    return prepared.filter(ImageFilter.SHARPEN)
+
+
 class TesseractOcrProvider:
     engine_name = "tesseract"
 
@@ -99,7 +115,7 @@ class TesseractOcrProvider:
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 image_path = Path(temp_dir) / "page.png"
-                image.save(image_path)
+                prepare_image_for_ocr(image).save(image_path)
                 completed = subprocess.run(
                     [command, str(image_path), "stdout", "-l", language, "--psm", "6", "tsv"],
                     capture_output=True,
