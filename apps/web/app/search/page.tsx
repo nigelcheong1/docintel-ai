@@ -42,12 +42,25 @@ function selectedDocumentGuidance(document: DocumentSummary | undefined) {
   return "This document needs OCR before cited search can use its contents.";
 }
 
+function initialSearchContext() {
+  if (typeof window === "undefined") {
+    return { documentId: "", query: "" };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return {
+    documentId: params.get("documentId") ?? "",
+    query: params.get("query") ?? "",
+  };
+}
+
 export default function SearchPage() {
+  const [initialContext] = useState(initialSearchContext);
   const latestSearchId = useRef(0);
   const latestProfileId = useRef(0);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialContext.query);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [selectedDocumentId, setSelectedDocumentId] = useState(initialContext.documentId);
   const [selectedProfile, setSelectedProfile] = useState<DocumentProfile | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
@@ -56,7 +69,7 @@ export default function SearchPage() {
   const [queryIntent, setQueryIntent] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<SearchDiagnostics | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
-  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(Boolean(initialContext.documentId));
   const [isSearching, setIsSearching] = useState(false);
   const selectedDocument = documents.find((document) => document.id === selectedDocumentId);
   const documentGuidance = selectedDocumentGuidance(selectedDocument);

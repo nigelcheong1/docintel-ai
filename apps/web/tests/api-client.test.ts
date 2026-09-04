@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deleteDocument,
   getDocument,
+  getDocumentChunks,
+  getDocumentPages,
   getDocumentProfile,
   getDocuments,
   getGoldenEval,
@@ -90,6 +92,55 @@ describe("api client", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/profile", { cache: "no-store" });
     expect(profile.document_type).toBe("research_paper");
     expect(profile.suggested_questions).toEqual(["What is this document about?"]);
+  });
+
+  it("fetches document page diagnostics", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          document_id: "doc-1",
+          page_number: 1,
+          text_source: "ocr",
+          text_preview: "OCR text preview",
+          character_count: 1600,
+          chunk_count: 3,
+          token_estimate: 260,
+          ocr_engine: "tesseract",
+          ocr_confidence: 88.5,
+          ocr_duration_ms: 45,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pages = await getDocumentPages("doc-1");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/pages", { cache: "no-store" });
+    expect(pages[0]).toMatchObject({ page_number: 1, text_source: "ocr", chunk_count: 3 });
+    expect(pages[0].ocr_confidence).toBe(88.5);
+  });
+
+  it("fetches document chunks for evidence review", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: "chunk-1",
+          document_id: "doc-1",
+          page_number: 2,
+          chunk_index: 0,
+          text: "The document states the total due.",
+          token_estimate: 8,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const chunks = await getDocumentChunks("doc-1");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/chunks", { cache: "no-store" });
+    expect(chunks[0]).toMatchObject({ id: "chunk-1", page_number: 2, token_estimate: 8 });
   });
 
   it("deletes a document without attempting to parse the empty response", async () => {

@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, Info, Lightbulb } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, ExternalLink, Info, Lightbulb } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -134,6 +135,15 @@ function EvidenceCard({ hit }: { hit: SearchHit }) {
         </dl>
       </div>
       <p className="mt-3 break-words text-sm leading-6 text-slate-700">{hit.snippet}</p>
+      <div className="mt-3">
+        <Link
+          href={`/documents/${hit.document_id}?page=${hit.page_number}`}
+          className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-600 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+        >
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          Open page
+        </Link>
+      </div>
       {Object.keys(hit.ranking_signals).length > 0 ? (
         <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-xs">
           {Object.entries(hit.ranking_signals).map(([signal, value]) => (

@@ -10,7 +10,7 @@ from app.documents.parse_quality import build_parse_quality_for_document
 from app.db.session import get_db
 from app.documents.intelligence import build_document_profile
 from app.documents.ocr import TesseractOcrProvider
-from app.documents.schemas import ChunkRead, DocumentDetail, DocumentProfileRead, DocumentRead
+from app.documents.schemas import ChunkRead, DocumentDetail, DocumentPageRead, DocumentProfileRead, DocumentRead
 from app.documents.service import (
     DocumentPersistenceError,
     DocumentReindexError,
@@ -79,6 +79,31 @@ def document_detail_read(document: Document) -> DocumentDetail:
     )
 
 
+def _text_preview(text: str, limit: int = 240) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 1].rstrip()}..."
+
+
+def document_page_read(document: Document) -> list[DocumentPageRead]:
+    return [
+        DocumentPageRead(
+            document_id=document.id,
+            page_number=page.page_number,
+            text_source=page.text_source,
+            text_preview=_text_preview(page.text),
+            character_count=len(page.text),
+            chunk_count=len(page.chunks),
+            token_estimate=sum(chunk.token_estimate for chunk in page.chunks),
+            ocr_engine=page.ocr_engine,
+            ocr_confidence=page.ocr_confidence,
+            ocr_duration_ms=page.ocr_duration_ms,
+        )
+        for page in sorted(document.pages, key=lambda item: item.page_number)
+    ]
+
+
 @router.post("", response_model=DocumentRead)
 async def upload_document(
     file: Annotated[UploadFile, File()],
@@ -125,6 +150,12 @@ def documents(db: Annotated[Session, Depends(get_db)]) -> list[DocumentRead]:
 def document_detail(document_id: str, db: Annotated[Session, Depends(get_db)]) -> DocumentDetail:
     document = get_document_or_404(db, document_id)
     return document_detail_read(document)
+
+
+@router.get("/{document_id}/pages", response_model=list[DocumentPageRead])
+def document_pages(document_id: str, db: Annotated[Session, Depends(get_db)]) -> list[DocumentPageRead]:
+    document = get_document_or_404(db, document_id)
+    return document_page_read(document)
 
 
 @router.get("/{document_id}/profile", response_model=DocumentProfileRead)

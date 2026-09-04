@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import SearchPage from "@/app/search/page";
 
@@ -66,6 +66,35 @@ describe("SearchPage", () => {
     vi.clearAllMocks();
     apiMocks.getDocuments.mockResolvedValue([]);
     apiMocks.getDocumentProfile.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    window.history.pushState({}, "", "/");
+  });
+
+  it("uses document and query URL parameters as the initial search context", async () => {
+    window.history.pushState({}, "", "/search?documentId=doc-1&query=What%20results%20are%20reported%3F");
+    apiMocks.getDocuments.mockResolvedValue([
+      { id: "doc-1", filename: "paper.pdf", mime_type: "application/pdf", status: "indexed" },
+    ]);
+    apiMocks.getDocumentProfile.mockResolvedValue({
+      document_id: "doc-1",
+      filename: "paper.pdf",
+      document_type: "research_paper",
+      title: "Language Guided HRI",
+      overview: "ABSTRACT This paper studies human robot interaction.",
+      sections: [],
+      key_dates: [],
+      key_numbers: [],
+      key_entities: [],
+      suggested_questions: [],
+    });
+
+    render(<SearchPage />);
+
+    expect(await screen.findByRole("combobox", { name: "Search scope" })).toHaveValue("doc-1");
+    expect(screen.getByRole("textbox", { name: "Search query" })).toHaveValue("What results are reported?");
+    await waitFor(() => expect(apiMocks.getDocumentProfile).toHaveBeenCalledWith("doc-1"));
   });
 
   it("loads documents and searches within the selected document", async () => {

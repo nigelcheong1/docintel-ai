@@ -41,6 +41,19 @@ class DocumentDetail(DocumentRead):
     chunk_count: int
 
 
+class DocumentPageRead(BaseModel):
+    document_id: str
+    page_number: int
+    text_source: str
+    text_preview: str
+    character_count: int
+    chunk_count: int
+    token_estimate: int
+    ocr_engine: str | None = None
+    ocr_confidence: float | None = None
+    ocr_duration_ms: int | None = None
+
+
 class DocumentSectionRead(BaseModel):
     heading: str
     page_number: int
