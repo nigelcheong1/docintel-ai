@@ -44,11 +44,15 @@ class DocumentDetail(DocumentRead):
 class DocumentPageRead(BaseModel):
     document_id: str
     page_number: int
+    image_url: str
     text_source: str
     text_preview: str
     character_count: int
     chunk_count: int
     token_estimate: int
+    text_density: float
+    ocr_quality: Literal["native", "strong", "moderate", "weak", "missing"]
+    needs_review: bool
     ocr_engine: str | None = None
     ocr_confidence: float | None = None
     ocr_duration_ms: int | None = None

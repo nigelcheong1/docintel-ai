@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -9,8 +10,11 @@ import {
   Database,
   Gauge,
   Layers3,
+  RotateCcw,
   Search,
   Sparkles,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -74,6 +78,9 @@ function selectedPageFrom(pages: DocumentPage[], initialPageNumber?: number) {
 }
 
 function pageTone(page: DocumentPage) {
+  if (page.needs_review || page.ocr_quality === "weak" || page.ocr_quality === "missing") {
+    return "amber" as const;
+  }
   if (page.text_source === "ocr" || page.text_source === "hybrid") {
     return "amber" as const;
   }
@@ -81,6 +88,35 @@ function pageTone(page: DocumentPage) {
     return "success" as const;
   }
   return "neutral" as const;
+}
+
+function formatOcrQuality(value: DocumentPage["ocr_quality"]) {
+  if (value === "native") {
+    return "Native text";
+  }
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)} OCR`;
+}
+
+function PreviewControl({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-slate-600 shadow-sm transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
 }
 
 function FactList({ title, facts }: { title: string; facts: DocumentFact[] }) {
@@ -129,6 +165,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
     selectedPageFrom(pages, initialPageNumber)?.page_number ?? null,
   );
   const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialPageNumber ? "evidence" : "overview");
+  const [previewZoom, setPreviewZoom] = useState(100);
   const selectedPage = pages.find((page) => page.page_number === selectedPageNumber) ?? pages[0] ?? null;
   const visibleChunks = useMemo(
     () =>
@@ -268,19 +305,65 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                       : formatCount(visibleChunks.length, "chunk available", "chunks available")}
                   </p>
                 </div>
-                {selectedPage ? <Badge tone={pageTone(selectedPage)}>{formatTextSource(selectedPage.text_source)}</Badge> : null}
+                {selectedPage ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPage.needs_review ? <Badge tone="amber">Review needed</Badge> : null}
+                    <Badge tone={pageTone(selectedPage)}>{formatTextSource(selectedPage.text_source)}</Badge>
+                  </div>
+                ) : null}
               </div>
-              <div className="space-y-3">
-                {visibleChunks.map((chunk) => (
-                  <article key={chunk.id} className="rounded-lg border border-line bg-white p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                      <span>Chunk {chunk.chunk_index + 1}</span>
-                      <span>{chunk.token_estimate} tokens</span>
+              {selectedPage ? (
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                  <section className="min-w-0 rounded-lg border border-line bg-slate-50 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-ink">Source page</h3>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {formatOcrQuality(selectedPage.ocr_quality)} - {selectedPage.text_density} density
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-12 text-center text-xs font-semibold text-slate-600">{previewZoom}%</span>
+                        <PreviewControl
+                          label="Zoom out page preview"
+                          onClick={() => setPreviewZoom((current) => Math.max(50, current - 25))}
+                        >
+                          <ZoomOut className="h-4 w-4" aria-hidden="true" />
+                        </PreviewControl>
+                        <PreviewControl label="Reset page preview zoom" onClick={() => setPreviewZoom(100)}>
+                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        </PreviewControl>
+                        <PreviewControl
+                          label="Zoom in page preview"
+                          onClick={() => setPreviewZoom((current) => Math.min(200, current + 25))}
+                        >
+                          <ZoomIn className="h-4 w-4" aria-hidden="true" />
+                        </PreviewControl>
+                      </div>
                     </div>
-                    <p className="mt-2 break-words text-sm leading-6 text-slate-700">{chunk.text}</p>
-                  </article>
-                ))}
-              </div>
+                    <div className="mt-3 max-h-[32rem] overflow-auto rounded-md border border-line bg-white p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Source previews come from the local API with document-specific dimensions. */}
+                      <img
+                        src={selectedPage.image_url}
+                        alt={`Page ${selectedPage.page_number} source preview`}
+                        className="mx-auto block h-auto max-w-none rounded-sm border border-slate-200 bg-white shadow-sm"
+                        style={{ width: `${previewZoom}%`, minWidth: `${previewZoom}%` }}
+                      />
+                    </div>
+                  </section>
+                  <section className="min-w-0 space-y-3">
+                    {visibleChunks.map((chunk) => (
+                      <article key={chunk.id} className="rounded-lg border border-line bg-white p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                          <span>Chunk {chunk.chunk_index + 1}</span>
+                          <span>{chunk.token_estimate} tokens</span>
+                        </div>
+                        <p className="mt-2 break-words text-sm leading-6 text-slate-700">{chunk.text}</p>
+                      </article>
+                    ))}
+                  </section>
+                </div>
+              ) : null}
             </Panel>
           ) : null}
 
@@ -355,12 +438,16 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-ink">Page {page.page_number}</span>
-                        <Badge tone={pageTone(page)}>{formatTextSource(page.text_source)}</Badge>
+                        <span className="flex flex-wrap justify-end gap-1.5">
+                          {page.needs_review ? <Badge tone="amber">Review needed</Badge> : null}
+                          <Badge tone={pageTone(page)}>{formatTextSource(page.text_source)}</Badge>
+                        </span>
                       </span>
                       <span className="mt-2 line-clamp-2 block text-xs leading-5 text-slate-500">{page.text_preview}</span>
                       <span className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                         <span>{formatCount(page.chunk_count, "chunk", "chunks")}</span>
                         <span>{page.character_count} chars</span>
+                        <span>{formatOcrQuality(page.ocr_quality)}</span>
                         {typeof page.ocr_confidence === "number" ? <span>{formatPercent(page.ocr_confidence)} OCR</span> : null}
                       </span>
                     </button>

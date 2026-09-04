@@ -34,11 +34,15 @@ export type DocumentDetail = DocumentSummary & {
 export type DocumentPage = {
   document_id: string;
   page_number: number;
+  image_url: string;
   text_source: string;
   text_preview: string;
   character_count: number;
   chunk_count: number;
   token_estimate: number;
+  text_density: number;
+  ocr_quality: "native" | "strong" | "moderate" | "weak" | "missing";
+  needs_review: boolean;
   ocr_engine?: string | null;
   ocr_confidence?: number | null;
   ocr_duration_ms?: number | null;

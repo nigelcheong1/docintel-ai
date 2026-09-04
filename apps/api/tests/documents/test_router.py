@@ -171,10 +171,96 @@ def test_document_pages_endpoint_returns_page_diagnostics(db_session):
     assert payload[0]["chunk_count"] == 2
     assert payload[0]["token_estimate"] == 13
     assert payload[0]["text_preview"] == "First native page contains searchable text."
+    assert payload[0]["image_url"] == f"/documents/{document.id}/pages/1/image"
+    assert payload[0]["text_density"] > 0
+    assert payload[0]["ocr_quality"] == "native"
+    assert payload[0]["needs_review"] is False
     assert payload[1]["text_source"] == "ocr"
     assert payload[1]["ocr_engine"] == "fake-ocr"
     assert payload[1]["ocr_confidence"] == 88.5
     assert payload[1]["ocr_duration_ms"] == 15
+    assert payload[1]["image_url"] == f"/documents/{document.id}/pages/2/image"
+    assert payload[1]["ocr_quality"] == "strong"
+    assert payload[1]["needs_review"] is False
+
+
+@pytest.mark.integration
+def test_document_page_image_endpoint_renders_pdf_page(db_session, tmp_path):
+    stored = save_upload_bytes(
+        "preview.pdf",
+        "application/pdf",
+        create_pdf_bytes(tmp_path / "preview.pdf", "Preview page source text for image rendering."),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+
+    response = client.get(f"/documents/{document.id}/pages/1/image")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG")
+
+
+@pytest.mark.integration
+def test_document_page_image_endpoint_renders_uploaded_image_page(db_session, tmp_path):
+    stored = save_upload_bytes(
+        "scan.png",
+        "image/png",
+        create_image_bytes(tmp_path / "scan.png"),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(
+        db_session,
+        stored,
+        lambda: FakeEmbeddingProvider(),
+        ocr_provider_factory=lambda: FakeOcrProvider(available=False),
+    )
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+
+    response = client.get(f"/documents/{document.id}/pages/1/image")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG")
+
+
+@pytest.mark.integration
+def test_document_page_image_endpoint_rejects_missing_page(db_session, tmp_path):
+    stored = save_upload_bytes(
+        "preview.pdf",
+        "application/pdf",
+        create_pdf_bytes(tmp_path / "preview.pdf", "Only one preview page exists."),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+
+    response = client.get(f"/documents/{document.id}/pages/2/image")
+
+    assert response.status_code == 400
+    assert "Page 2" in response.json()["detail"]
 
 
 @pytest.mark.integration

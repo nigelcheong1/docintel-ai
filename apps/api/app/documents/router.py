@@ -10,6 +10,7 @@ from app.documents.parse_quality import build_parse_quality_for_document
 from app.db.session import get_db
 from app.documents.intelligence import build_document_profile
 from app.documents.ocr import TesseractOcrProvider
+from app.documents.page_rendering import DocumentPageRenderError, render_document_page_image
 from app.documents.schemas import ChunkRead, DocumentDetail, DocumentPageRead, DocumentProfileRead, DocumentRead
 from app.documents.service import (
     DocumentPersistenceError,
@@ -86,16 +87,44 @@ def _text_preview(text: str, limit: int = 240) -> str:
     return f"{normalized[: limit - 1].rstrip()}..."
 
 
+def _page_text_density(page) -> float:
+    area = float((page.width or 0) * (page.height or 0))
+    if area <= 0:
+        return 0.0
+    return round((len(page.text) / area) * 1000, 3)
+
+
+def _page_ocr_quality(page) -> str:
+    if page.text_source == "native":
+        return "native"
+    if page.ocr_confidence is None:
+        return "missing"
+    if page.ocr_confidence >= 85:
+        return "strong"
+    if page.ocr_confidence >= 65:
+        return "moderate"
+    return "weak"
+
+
+def _page_needs_review(page) -> bool:
+    ocr_quality = _page_ocr_quality(page)
+    return not page.text.strip() or len(page.chunks) == 0 or ocr_quality in {"weak", "missing"}
+
+
 def document_page_read(document: Document) -> list[DocumentPageRead]:
     return [
         DocumentPageRead(
             document_id=document.id,
             page_number=page.page_number,
+            image_url=f"/documents/{document.id}/pages/{page.page_number}/image",
             text_source=page.text_source,
             text_preview=_text_preview(page.text),
             character_count=len(page.text),
             chunk_count=len(page.chunks),
             token_estimate=sum(chunk.token_estimate for chunk in page.chunks),
+            text_density=_page_text_density(page),
+            ocr_quality=_page_ocr_quality(page),
+            needs_review=_page_needs_review(page),
             ocr_engine=page.ocr_engine,
             ocr_confidence=page.ocr_confidence,
             ocr_duration_ms=page.ocr_duration_ms,
@@ -156,6 +185,21 @@ def document_detail(document_id: str, db: Annotated[Session, Depends(get_db)]) -
 def document_pages(document_id: str, db: Annotated[Session, Depends(get_db)]) -> list[DocumentPageRead]:
     document = get_document_or_404(db, document_id)
     return document_page_read(document)
+
+
+@router.get("/{document_id}/pages/{page_number}/image")
+def document_page_image(
+    document_id: str,
+    page_number: int,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    document = get_document_or_404(db, document_id)
+    try:
+        rendered = render_document_page_image(document, page_number=page_number, storage_dir=settings.storage_dir)
+    except DocumentPageRenderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(content=rendered.content, media_type=rendered.media_type)
 
 
 @router.get("/{document_id}/profile", response_model=DocumentProfileRead)
