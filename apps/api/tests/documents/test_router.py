@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.db.session import get_db
 from app.documents import router
 from app.documents.ocr import OcrPageResult
+from app.documents.router import document_page_read
 from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
@@ -43,6 +45,42 @@ class FakeOcrProvider:
 
     def ocr_image(self, image: Image.Image, *, language: str) -> OcrPageResult:
         return OcrPageResult(text=self.text, confidence=88.0, engine_name=self.engine_name, duration_ms=5)
+
+
+def test_document_page_read_derives_processing_statuses_without_database():
+    def page(page_number, *, text_source, ocr_confidence, text="Searchable page text."):
+        return SimpleNamespace(
+            page_number=page_number,
+            text=text,
+            width=100,
+            height=100,
+            text_source=text_source,
+            ocr_engine="fake-ocr" if text_source != "native" else None,
+            ocr_confidence=ocr_confidence,
+            ocr_duration_ms=5 if text_source != "native" else None,
+            chunks=[SimpleNamespace(token_estimate=4)] if text else [],
+        )
+
+    document = SimpleNamespace(
+        id="doc-1",
+        pages=[
+            page(1, text_source="native", ocr_confidence=None),
+            page(2, text_source="ocr", ocr_confidence=91),
+            page(3, text_source="ocr", ocr_confidence=72),
+            page(4, text_source="ocr", ocr_confidence=42),
+            page(5, text_source="ocr", ocr_confidence=None, text=""),
+        ],
+    )
+
+    payload = [item.model_dump() for item in document_page_read(document)]
+
+    assert [item["processing_status"] for item in payload] == [
+        "native_text",
+        "ocr_strong",
+        "ocr_moderate",
+        "ocr_weak",
+        "missing_text",
+    ]
 
 
 def test_embedding_provider_is_cached_by_model_settings(monkeypatch):
@@ -174,6 +212,7 @@ def test_document_pages_endpoint_returns_page_diagnostics(db_session):
     assert payload[0]["image_url"] == f"/documents/{document.id}/pages/1/image"
     assert payload[0]["text_density"] > 0
     assert payload[0]["ocr_quality"] == "native"
+    assert payload[0]["processing_status"] == "native_text"
     assert payload[0]["needs_review"] is False
     assert payload[1]["text_source"] == "ocr"
     assert payload[1]["ocr_engine"] == "fake-ocr"
@@ -181,6 +220,7 @@ def test_document_pages_endpoint_returns_page_diagnostics(db_session):
     assert payload[1]["ocr_duration_ms"] == 15
     assert payload[1]["image_url"] == f"/documents/{document.id}/pages/2/image"
     assert payload[1]["ocr_quality"] == "strong"
+    assert payload[1]["processing_status"] == "ocr_strong"
     assert payload[1]["needs_review"] is False
 
 

@@ -1,5 +1,19 @@
+"use client";
+
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ExternalLink, Info, Lightbulb } from "lucide-react";
+import type { ReactNode } from "react";
+import { useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  Eye,
+  Info,
+  Lightbulb,
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +78,28 @@ function formatRejectedReason(reason: string) {
   return reason;
 }
 
+function SourcePreviewControl({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-slate-600 shadow-sm transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostics }) {
   return (
     <Panel className="p-5" aria-labelledby="search-diagnostics-heading">
@@ -111,6 +147,9 @@ function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostic
 
 function EvidenceCard({ hit }: { hit: SearchHit }) {
   const isAnswerEvidence = hit.result_role === "answer_evidence";
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const documentPageUrl = hit.document_page_url ?? `/documents/${hit.document_id}?page=${hit.page_number}`;
 
   return (
     <article
@@ -135,15 +174,63 @@ function EvidenceCard({ hit }: { hit: SearchHit }) {
         </dl>
       </div>
       <p className="mt-3 break-words text-sm leading-6 text-slate-700">{hit.snippet}</p>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         <Link
-          href={`/documents/${hit.document_id}?page=${hit.page_number}`}
+          href={documentPageUrl}
           className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-600 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-          Open page
+          Open cited chunk
         </Link>
+        {hit.page_image_url ? (
+          <button
+            type="button"
+            aria-expanded={isPreviewOpen}
+            aria-label={
+              isPreviewOpen ? `Hide source preview for page ${hit.page_number}` : `Preview source for page ${hit.page_number}`
+            }
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-600 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+            onClick={() => setIsPreviewOpen((current) => !current)}
+          >
+            <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+            {isPreviewOpen ? "Hide source" : "Preview source"}
+          </button>
+        ) : null}
       </div>
+      {isPreviewOpen && hit.page_image_url ? (
+        <section className="mt-3 rounded-lg border border-teal-100 bg-slate-50 p-3" aria-label={`Source preview page ${hit.page_number}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-slate-600">Page {hit.page_number} source</p>
+            <div className="flex items-center gap-2">
+              <span className="min-w-12 text-center text-xs font-semibold text-slate-600">{previewZoom}%</span>
+              <SourcePreviewControl
+                label="Zoom out source preview"
+                onClick={() => setPreviewZoom((current) => Math.max(50, current - 25))}
+              >
+                <ZoomOut className="h-4 w-4" aria-hidden="true" />
+              </SourcePreviewControl>
+              <SourcePreviewControl label="Reset source preview zoom" onClick={() => setPreviewZoom(100)}>
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              </SourcePreviewControl>
+              <SourcePreviewControl
+                label="Zoom in source preview"
+                onClick={() => setPreviewZoom((current) => Math.min(200, current + 25))}
+              >
+                <ZoomIn className="h-4 w-4" aria-hidden="true" />
+              </SourcePreviewControl>
+            </div>
+          </div>
+          <div className="mt-3 max-h-96 overflow-auto rounded-md border border-line bg-white p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Source previews are served by the local document API. */}
+            <img
+              src={hit.page_image_url}
+              alt={`Page ${hit.page_number} source preview for ${hit.document_filename}`}
+              className="mx-auto block h-auto max-w-none rounded-sm border border-slate-200 bg-white shadow-sm"
+              style={{ width: `${previewZoom}%`, minWidth: `${previewZoom}%` }}
+            />
+          </div>
+        </section>
+      ) : null}
       {Object.keys(hit.ranking_signals).length > 0 ? (
         <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-xs">
           {Object.entries(hit.ranking_signals).map(([signal, value]) => (

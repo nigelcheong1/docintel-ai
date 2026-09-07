@@ -70,7 +70,8 @@ def _parse_tesseract_tsv(output: str | None) -> tuple[str, float | None]:
 
 
 def prepare_image_for_ocr(image: Image.Image) -> Image.Image:
-    prepared = ImageOps.grayscale(image)
+    prepared = ImageOps.exif_transpose(image)
+    prepared = ImageOps.grayscale(prepared)
     prepared = ImageOps.autocontrast(prepared)
 
     target_min_width = 1200

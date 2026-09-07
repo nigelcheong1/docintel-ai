@@ -15,6 +15,17 @@ def test_prepare_image_for_ocr_normalizes_small_color_scan():
     assert prepared.height > image.height
 
 
+def test_prepare_image_for_ocr_applies_exif_orientation():
+    image = Image.new("RGB", (40, 80), "white")
+    exif = image.getexif()
+    exif[274] = 6
+    image.info["exif"] = exif.tobytes()
+
+    prepared = prepare_image_for_ocr(image)
+
+    assert prepared.width > prepared.height
+
+
 def test_tesseract_provider_reports_unavailable_when_disabled():
     provider = TesseractOcrProvider(enabled=False, tesseract_cmd=None, timeout_seconds=20)
 

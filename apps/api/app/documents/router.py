@@ -106,6 +106,15 @@ def _page_ocr_quality(page) -> str:
     return "weak"
 
 
+def _page_processing_status(page) -> str:
+    ocr_quality = _page_ocr_quality(page)
+    if ocr_quality == "native":
+        return "native_text"
+    if ocr_quality == "missing":
+        return "missing_text"
+    return f"ocr_{ocr_quality}"
+
+
 def _page_needs_review(page) -> bool:
     ocr_quality = _page_ocr_quality(page)
     return not page.text.strip() or len(page.chunks) == 0 or ocr_quality in {"weak", "missing"}
@@ -124,6 +133,7 @@ def document_page_read(document: Document) -> list[DocumentPageRead]:
             token_estimate=sum(chunk.token_estimate for chunk in page.chunks),
             text_density=_page_text_density(page),
             ocr_quality=_page_ocr_quality(page),
+            processing_status=_page_processing_status(page),
             needs_review=_page_needs_review(page),
             ocr_engine=page.ocr_engine,
             ocr_confidence=page.ocr_confidence,

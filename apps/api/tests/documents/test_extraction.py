@@ -3,8 +3,9 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-from app.documents.extraction import extract_image_pages, extract_pdf_pages
+from app.documents.extraction import extract_image_pages, extract_pdf_pages, pdf_ocr_page_numbers, should_ocr_pdf_page
 from app.documents.ocr import OcrPageResult
+from app.documents.parser import ParsedPage
 
 
 class FakeOcrProvider:
@@ -45,6 +46,19 @@ def test_extract_pdf_pages_ocr_only_sparse_pages(tmp_path):
     assert "Native text" in result.pages[0].text
     assert result.pages[1].text == "OCR text from scanned page"
     assert result.ocr_page_count == 1
+
+
+def test_pdf_ocr_page_numbers_selects_only_sparse_pages_with_cap():
+    pages = [
+        ParsedPage(page_number=1, text="", width=900, height=200),
+        ParsedPage(page_number=2, text="Dense native text remains searchable. " * 8, width=900, height=200),
+        ParsedPage(page_number=3, text="too short", width=900, height=200),
+        ParsedPage(page_number=4, text="", width=900, height=200),
+    ]
+
+    assert should_ocr_pdf_page(pages[0].text) is True
+    assert should_ocr_pdf_page(pages[1].text) is False
+    assert pdf_ocr_page_numbers(pages, max_ocr_pages=2) == [1, 3]
 
 
 def test_extract_image_pages_uses_ocr_as_page_one(tmp_path):

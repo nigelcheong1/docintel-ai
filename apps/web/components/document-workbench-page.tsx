@@ -11,9 +11,10 @@ import type { DocumentChunk, DocumentDetail, DocumentPage, DocumentProfile } fro
 type DocumentWorkbenchPageProps = {
   documentId: string;
   initialPageNumber?: number;
+  initialChunkId?: string;
 };
 
-export function DocumentWorkbenchPage({ documentId, initialPageNumber }: DocumentWorkbenchPageProps) {
+export function DocumentWorkbenchPage({ documentId, initialPageNumber, initialChunkId }: DocumentWorkbenchPageProps) {
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [profile, setProfile] = useState<DocumentProfile | null>(null);
   const [pages, setPages] = useState<DocumentPage[]>([]);
@@ -64,6 +65,7 @@ export function DocumentWorkbenchPage({ documentId, initialPageNumber }: Documen
           pages={pages}
           chunks={chunks}
           initialPageNumber={initialPageNumber}
+          initialChunkId={initialChunkId}
         />
       ) : null}
     </AppShell>

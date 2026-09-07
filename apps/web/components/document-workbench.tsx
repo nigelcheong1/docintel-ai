@@ -31,6 +31,7 @@ type DocumentWorkbenchProps = {
   pages: DocumentPage[];
   chunks: DocumentChunk[];
   initialPageNumber?: number;
+  initialChunkId?: string;
 };
 
 function formatDocumentType(value?: string | null) {
@@ -97,6 +98,17 @@ function formatOcrQuality(value: DocumentPage["ocr_quality"]) {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)} OCR`;
 }
 
+function formatProcessingStatus(value?: DocumentPage["processing_status"]) {
+  const labels: Record<DocumentPage["processing_status"], string> = {
+    native_text: "Native text",
+    ocr_strong: "OCR strong",
+    ocr_moderate: "OCR moderate",
+    ocr_weak: "OCR weak",
+    missing_text: "Missing text",
+  };
+  return value ? labels[value] : "Processing pending";
+}
+
 function PreviewControl({
   label,
   onClick,
@@ -157,14 +169,20 @@ function WorkflowStep({ label, active }: { label: string; active: boolean }) {
 }
 
 export function DocumentWorkbench(props: DocumentWorkbenchProps) {
-  return <DocumentWorkbenchContent key={`${props.document.id}:${props.initialPageNumber ?? "overview"}`} {...props} />;
+  return (
+    <DocumentWorkbenchContent
+      key={`${props.document.id}:${props.initialPageNumber ?? "overview"}:${props.initialChunkId ?? "none"}`}
+      {...props}
+    />
+  );
 }
 
-function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPageNumber }: DocumentWorkbenchProps) {
+function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPageNumber, initialChunkId }: DocumentWorkbenchProps) {
   const [selectedPageNumber, setSelectedPageNumber] = useState<number | null>(
     selectedPageFrom(pages, initialPageNumber)?.page_number ?? null,
   );
-  const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialPageNumber ? "evidence" : "overview");
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(initialChunkId ?? null);
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialPageNumber || initialChunkId ? "evidence" : "overview");
   const [previewZoom, setPreviewZoom] = useState(100);
   const selectedPage = pages.find((page) => page.page_number === selectedPageNumber) ?? pages[0] ?? null;
   const visibleChunks = useMemo(
@@ -272,6 +290,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                           className="w-full rounded-lg border border-line bg-white p-3 text-left text-sm transition hover:border-teal-300 hover:bg-teal-50/50"
                           onClick={() => {
                             setSelectedPageNumber(section.page_number);
+                            setSelectedChunkId(null);
                             setActiveTab("evidence");
                           }}
                         >
@@ -353,10 +372,21 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                   </section>
                   <section className="min-w-0 space-y-3">
                     {visibleChunks.map((chunk) => (
-                      <article key={chunk.id} className="rounded-lg border border-line bg-white p-4">
+                      <article
+                        key={chunk.id}
+                        className={[
+                          "rounded-lg border bg-white p-4 transition",
+                          chunk.id === selectedChunkId
+                            ? "border-amber-300 bg-amber-50/60 shadow-sm shadow-amber-900/10"
+                            : "border-line",
+                        ].join(" ")}
+                      >
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                           <span>Chunk {chunk.chunk_index + 1}</span>
-                          <span>{chunk.token_estimate} tokens</span>
+                          <span className="flex flex-wrap items-center justify-end gap-2">
+                            {chunk.id === selectedChunkId ? <Badge tone="amber">Selected citation</Badge> : null}
+                            <span>{chunk.token_estimate} tokens</span>
+                          </span>
                         </div>
                         <p className="mt-2 break-words text-sm leading-6 text-slate-700">{chunk.text}</p>
                       </article>
@@ -433,6 +463,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                       ].join(" ")}
                       onClick={() => {
                         setSelectedPageNumber(page.page_number);
+                        setSelectedChunkId(null);
                         setActiveTab("evidence");
                       }}
                     >
@@ -447,7 +478,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                       <span className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                         <span>{formatCount(page.chunk_count, "chunk", "chunks")}</span>
                         <span>{page.character_count} chars</span>
-                        <span>{formatOcrQuality(page.ocr_quality)}</span>
+                        <span>{formatProcessingStatus(page.processing_status)}</span>
                         {typeof page.ocr_confidence === "number" ? <span>{formatPercent(page.ocr_confidence)} OCR</span> : null}
                       </span>
                     </button>

@@ -78,6 +78,7 @@ const pages: DocumentPage[] = [
     token_estimate: 120,
     text_density: 0.84,
     ocr_quality: "native",
+    processing_status: "native_text",
     needs_review: false,
   },
   {
@@ -91,6 +92,7 @@ const pages: DocumentPage[] = [
     token_estimate: 180,
     text_density: 0.7,
     ocr_quality: "strong",
+    processing_status: "ocr_strong",
     needs_review: false,
     ocr_engine: "tesseract",
     ocr_confidence: 88.5,
@@ -142,6 +144,7 @@ describe("DocumentWorkbench", () => {
     expect(screen.getByText("2 pages")).toBeInTheDocument();
     expect(screen.getByText("3 chunks")).toBeInTheDocument();
     expect(screen.getByText("88.5% OCR confidence")).toBeInTheDocument();
+    expect(screen.getByText("OCR strong")).toBeInTheDocument();
     expect(screen.getByText("OCR confidence is lower on page 2.")).toBeInTheDocument();
 
     const pageEvidence = screen.getByRole("region", { name: "Page evidence" });
@@ -208,12 +211,32 @@ describe("DocumentWorkbench", () => {
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
+  it("highlights a citation chunk opened from a search deep link", () => {
+    render(
+      <DocumentWorkbench
+        document={documentDetail}
+        profile={profile}
+        pages={pages}
+        chunks={chunks}
+        initialPageNumber={2}
+        initialChunkId="chunk-3"
+      />,
+    );
+
+    const selectedChunk = screen.getByText("The model reaches 91.38 Top1 accuracy.").closest("article");
+
+    expect(selectedChunk).toHaveTextContent("Selected citation");
+    expect(selectedChunk).toHaveClass("border-amber-300");
+    expect(screen.getByRole("img", { name: "Page 2 source preview" })).toBeInTheDocument();
+  });
+
   it("marks weak OCR pages as needing review", () => {
     const reviewPages = pages.map((page) =>
       page.page_number === 2
         ? {
             ...page,
             ocr_quality: "weak" as const,
+            processing_status: "ocr_weak" as const,
             needs_review: true,
           }
         : page,
