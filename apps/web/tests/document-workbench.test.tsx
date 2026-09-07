@@ -1,8 +1,23 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DocumentWorkbench } from "@/components/document-workbench";
+import {
+  generateDocumentStudySummary,
+  generateStudyQuestions,
+  getDocumentStudySummary,
+  getStudyQuestions,
+  submitStudyAnswer,
+} from "@/lib/api";
 import type { DocumentChunk, DocumentDetail, DocumentPage, DocumentProfile } from "@/lib/types";
+
+vi.mock("@/lib/api", () => ({
+  generateDocumentStudySummary: vi.fn(),
+  generateStudyQuestions: vi.fn(),
+  getDocumentStudySummary: vi.fn(),
+  getStudyQuestions: vi.fn(),
+  submitStudyAnswer: vi.fn(),
+}));
 
 const documentDetail: DocumentDetail = {
   id: "doc-1",
@@ -128,6 +143,57 @@ const chunks: DocumentChunk[] = [
 ];
 
 describe("DocumentWorkbench", () => {
+  beforeEach(() => {
+    vi.mocked(getDocumentStudySummary).mockResolvedValue(null);
+    vi.mocked(getStudyQuestions).mockResolvedValue([]);
+    vi.mocked(generateDocumentStudySummary).mockResolvedValue({
+      id: "summary-1",
+      document_id: "doc-1",
+      content: "DocIntel AI summarizes cited evidence and prepares study material.",
+      created_at: "2026-09-07T00:00:00Z",
+      citations: [
+        {
+          chunk_id: "chunk-1",
+          document_id: "doc-1",
+          document_filename: "research-paper.pdf",
+          page_number: 1,
+          section_heading: "ABSTRACT",
+          page_image_url: "/documents/doc-1/pages/1/image",
+          document_page_url: "/documents/doc-1?page=1&chunk=chunk-1",
+        },
+      ],
+    });
+    vi.mocked(generateStudyQuestions).mockResolvedValue([
+      {
+        id: "question-1",
+        document_id: "doc-1",
+        question: "What methods are used?",
+        expected_answer: "The system uses OCR and embeddings.",
+        created_at: "2026-09-07T00:00:00Z",
+        latest_answer: null,
+        citations: [
+          {
+            chunk_id: "chunk-2",
+            document_id: "doc-1",
+            document_filename: "research-paper.pdf",
+            page_number: 2,
+            section_heading: "METHOD",
+            page_image_url: "/documents/doc-1/pages/2/image",
+            document_page_url: "/documents/doc-1?page=2&chunk=chunk-2",
+          },
+        ],
+      },
+    ]);
+    vi.mocked(submitStudyAnswer).mockResolvedValue({
+      id: "answer-1",
+      question_id: "question-1",
+      answer_text: "It uses OCR and embeddings.",
+      score: 0.82,
+      feedback: "Strong answer. You covered the main cited points.",
+      created_at: "2026-09-07T00:00:00Z",
+    });
+  });
+
   it("summarizes document coverage and lets reviewers inspect page evidence", () => {
     render(
       <DocumentWorkbench
@@ -247,5 +313,37 @@ describe("DocumentWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: /Page 2/ }));
 
     expect(screen.getAllByText("Review needed").length).toBeGreaterThan(0);
+  });
+
+  it("generates a cited study summary from the workbench", async () => {
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Summary" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate summary" }));
+
+    expect(await screen.findByText("DocIntel AI summarizes cited evidence and prepares study material.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Page 1 ABSTRACT" })).toHaveAttribute(
+      "href",
+      "/documents/doc-1?page=1&chunk=chunk-1",
+    );
+    expect(generateDocumentStudySummary).toHaveBeenCalledWith("doc-1");
+  });
+
+  it("generates study questions and submits an answer for feedback", async () => {
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Study" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate study set" }));
+
+    expect(await screen.findByText("What methods are used?")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Answer for What methods are used?"), {
+      target: { value: "It uses OCR and embeddings." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check answer" }));
+
+    await waitFor(() => expect(submitStudyAnswer).toHaveBeenCalledWith("doc-1", "question-1", "It uses OCR and embeddings."));
+    expect(await screen.findByText("Strong answer. You covered the main cited points.")).toBeInTheDocument();
+    expect(screen.getByText("82%")).toBeInTheDocument();
   });
 });

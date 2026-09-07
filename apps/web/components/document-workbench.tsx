@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   BookOpenCheck,
+  Brain,
+  CheckCircle2,
   Database,
+  FileText,
   Gauge,
   Layers3,
   RotateCcw,
@@ -21,9 +24,25 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import type { DocumentChunk, DocumentDetail, DocumentFact, DocumentPage, DocumentProfile } from "@/lib/types";
+import {
+  generateDocumentStudySummary,
+  generateStudyQuestions,
+  getDocumentStudySummary,
+  getStudyQuestions,
+  submitStudyAnswer,
+} from "@/lib/api";
+import type {
+  DocumentChunk,
+  DocumentDetail,
+  DocumentFact,
+  DocumentPage,
+  DocumentProfile,
+  DocumentStudySummary,
+  StudyCitation,
+  StudyQuestion,
+} from "@/lib/types";
 
-type WorkbenchTab = "overview" | "evidence" | "quality";
+type WorkbenchTab = "overview" | "summary" | "study" | "evidence" | "quality";
 
 type DocumentWorkbenchProps = {
   document: DocumentDetail;
@@ -73,6 +92,18 @@ function formatOcrConfidence(value: number | null | undefined) {
 function formatCount(value: number, singular: string, plural: string) {
   return `${value} ${value === 1 ? singular : plural}`;
 }
+
+function formatScore(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+const workbenchTabs: Array<{ id: WorkbenchTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "summary", label: "Summary" },
+  { id: "study", label: "Study" },
+  { id: "evidence", label: "Evidence" },
+  { id: "quality", label: "Quality" },
+];
 
 function selectedPageFrom(pages: DocumentPage[], initialPageNumber?: number) {
   return pages.find((page) => page.page_number === initialPageNumber) ?? pages[0] ?? null;
@@ -131,6 +162,26 @@ function PreviewControl({
   );
 }
 
+function CitationLinks({ citations }: { citations: StudyCitation[] }) {
+  if (citations.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {citations.map((citation) => (
+        <Link
+          key={`${citation.chunk_id}-${citation.page_number}`}
+          href={citation.document_page_url}
+          className="inline-flex min-h-8 items-center rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-800 transition hover:border-teal-500 hover:bg-teal-100"
+        >
+          Page {citation.page_number}
+          {citation.section_heading ? ` ${citation.section_heading}` : ""}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function FactList({ title, facts }: { title: string; facts: DocumentFact[] }) {
   if (facts.length === 0) {
     return null;
@@ -184,6 +235,13 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(initialChunkId ?? null);
   const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialPageNumber || initialChunkId ? "evidence" : "overview");
   const [previewZoom, setPreviewZoom] = useState(100);
+  const [studySummary, setStudySummary] = useState<DocumentStudySummary | null>(null);
+  const [studyQuestions, setStudyQuestions] = useState<StudyQuestion[]>([]);
+  const [studyMessage, setStudyMessage] = useState("");
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
+  const [checkingQuestionId, setCheckingQuestionId] = useState<string | null>(null);
   const selectedPage = pages.find((page) => page.page_number === selectedPageNumber) ?? pages[0] ?? null;
   const visibleChunks = useMemo(
     () =>
@@ -196,6 +254,85 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
   );
   const ocrConfidence = document.parse_quality?.ocr_confidence_average;
   const warnings = document.parse_quality?.warnings ?? [];
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadStudyWorkspace() {
+      try {
+        const [summaryResult, questionResults] = await Promise.all([
+          getDocumentStudySummary(document.id),
+          getStudyQuestions(document.id),
+        ]);
+        if (!isCurrent) {
+          return;
+        }
+        setStudySummary((current) => current ?? summaryResult);
+        setStudyQuestions((current) => (current.length > 0 ? current : questionResults));
+        setStudyMessage("");
+      } catch (error) {
+        if (isCurrent) {
+          setStudyMessage(error instanceof Error ? error.message : "Could not load study workspace.");
+        }
+      }
+    }
+
+    void loadStudyWorkspace();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [document.id]);
+
+  async function handleGenerateSummary() {
+    setIsGeneratingSummary(true);
+    setStudyMessage("");
+    try {
+      setStudySummary(await generateDocumentStudySummary(document.id));
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not generate summary.");
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  }
+
+  async function handleGenerateQuestions() {
+    setIsGeneratingQuestions(true);
+    setStudyMessage("");
+    try {
+      const generated = await generateStudyQuestions(document.id, 5);
+      setStudyQuestions((current) => {
+        const seen = new Set(current.map((question) => question.id));
+        return [...current, ...generated.filter((question) => !seen.has(question.id))];
+      });
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not generate study questions.");
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  }
+
+  async function handleSubmitAnswer(questionId: string) {
+    const answerText = answerDrafts[questionId]?.trim() ?? "";
+    if (!answerText) {
+      setStudyMessage("Enter an answer before checking it.");
+      return;
+    }
+    setCheckingQuestionId(questionId);
+    setStudyMessage("");
+    try {
+      const gradedAnswer = await submitStudyAnswer(document.id, questionId, answerText);
+      setStudyQuestions((current) =>
+        current.map((question) =>
+          question.id === questionId ? { ...question, latest_answer: gradedAnswer } : question,
+        ),
+      );
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not check answer.");
+    } finally {
+      setCheckingQuestionId(null);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -251,16 +388,16 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
         <div className="space-y-5">
           <Panel className="p-4">
             <div className="flex flex-wrap gap-2" role="tablist" aria-label="Workbench views">
-              {(["overview", "evidence", "quality"] as const).map((tab) => (
+              {workbenchTabs.map((tab) => (
                 <Button
-                  key={tab}
+                  key={tab.id}
                   type="button"
-                  variant={activeTab === tab ? "primary" : "secondary"}
-                  className="min-h-9 px-3 py-1.5 text-xs capitalize"
-                  onClick={() => setActiveTab(tab)}
-                  aria-pressed={activeTab === tab}
+                  variant={activeTab === tab.id ? "primary" : "secondary"}
+                  className="min-h-9 px-3 py-1.5 text-xs"
+                  onClick={() => setActiveTab(tab.id)}
+                  aria-pressed={activeTab === tab.id}
                 >
-                  {tab}
+                  {tab.label}
                 </Button>
               ))}
             </div>
@@ -308,6 +445,136 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                   </div>
                 </div>
               ) : null}
+            </Panel>
+          ) : null}
+
+          {activeTab === "summary" ? (
+            <Panel aria-label="Study summary" className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-accent" aria-hidden="true" />
+                    <h2 className="text-lg font-bold text-ink">Cited summary</h2>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Generate a reusable overview from the strongest indexed evidence.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleGenerateSummary}
+                  isLoading={isGeneratingSummary}
+                  variant={studySummary ? "secondary" : "primary"}
+                >
+                  {studySummary ? "Regenerate summary" : "Generate summary"}
+                </Button>
+              </div>
+              {studyMessage ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                  {studyMessage}
+                </p>
+              ) : null}
+              {studySummary ? (
+                <article className="rounded-lg border border-teal-100 bg-teal-50/40 p-4">
+                  <p className="text-sm leading-7 text-ink">{studySummary.content}</p>
+                  <CitationLinks citations={studySummary.citations} />
+                </article>
+              ) : (
+                <div className="rounded-lg border border-dashed border-line bg-slate-50 p-5 text-sm leading-6 text-slate-600">
+                  No generated summary yet. Create one to turn this document into a quick review sheet.
+                </div>
+              )}
+            </Panel>
+          ) : null}
+
+          {activeTab === "study" ? (
+            <Panel aria-label="Study questions" className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-4 w-4 text-accent" aria-hidden="true" />
+                    <h2 className="text-lg font-bold text-ink">Study mode</h2>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Generate practice questions, answer them, and get feedback grounded in citations.
+                  </p>
+                </div>
+                <Button type="button" onClick={handleGenerateQuestions} isLoading={isGeneratingQuestions}>
+                  Generate study set
+                </Button>
+              </div>
+              {studyMessage ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                  {studyMessage}
+                </p>
+              ) : null}
+              {studyQuestions.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-line bg-slate-50 p-5 text-sm leading-6 text-slate-600">
+                  No study questions yet. Generate a study set from the current document evidence.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {studyQuestions.map((question, index) => {
+                    const latestAnswer = question.latest_answer;
+                    return (
+                      <article key={question.id} className="rounded-lg border border-line bg-white p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-normal text-teal-700">
+                              Question {index + 1}
+                            </p>
+                            <h3 className="mt-1 break-words text-base font-bold text-ink">{question.question}</h3>
+                          </div>
+                          {latestAnswer ? (
+                            <Badge tone={latestAnswer.score >= 0.75 ? "success" : latestAnswer.score >= 0.4 ? "amber" : "danger"}>
+                              {formatScore(latestAnswer.score)}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <details className="mt-3 rounded-md border border-teal-100 bg-teal-50/40 p-3">
+                          <summary className="cursor-pointer text-sm font-semibold text-teal-800">
+                            Expected answer
+                          </summary>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">{question.expected_answer}</p>
+                        </details>
+                        <CitationLinks citations={question.citations} />
+                        <div className="mt-4 space-y-2">
+                          <label htmlFor={`answer-${question.id}`} className="text-sm font-semibold text-ink">
+                            Your answer
+                          </label>
+                          <textarea
+                            id={`answer-${question.id}`}
+                            aria-label={`Answer for ${question.question}`}
+                            value={answerDrafts[question.id] ?? ""}
+                            onChange={(event) =>
+                              setAnswerDrafts((current) => ({ ...current, [question.id]: event.target.value }))
+                            }
+                            className="min-h-24 w-full rounded-md border border-line bg-white px-3 py-2 text-sm leading-6 text-ink shadow-sm transition placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                            placeholder="Write your answer from memory, then check it against the cited evidence."
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => void handleSubmitAnswer(question.id)}
+                            isLoading={checkingQuestionId === question.id}
+                          >
+                            Check answer
+                          </Button>
+                        </div>
+                        {latestAnswer ? (
+                          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                            <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                              Feedback
+                            </p>
+                            <p className="mt-1 text-sm leading-6 text-emerald-900">{latestAnswer.feedback}</p>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </Panel>
           ) : null}
 

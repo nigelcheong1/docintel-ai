@@ -48,6 +48,8 @@ class Document(Base):
 
     pages: Mapped[list["Page"]] = relationship(back_populates="document", cascade="all, delete-orphan")
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    summaries: Mapped[list["DocumentSummary"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    study_questions: Mapped[list["StudyQuestion"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
 class Page(Base):
@@ -96,6 +98,45 @@ class ChunkEmbedding(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     chunk: Mapped[Chunk] = relationship(back_populates="embedding")
+
+
+class DocumentSummary(Base):
+    __tablename__ = "document_summaries"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    document: Mapped[Document] = relationship(back_populates="summaries")
+
+
+class StudyQuestion(Base):
+    __tablename__ = "study_questions"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    document: Mapped[Document] = relationship(back_populates="study_questions")
+    answers: Mapped[list["StudyAnswer"]] = relationship(back_populates="question", cascade="all, delete-orphan")
+
+
+class StudyAnswer(Base):
+    __tablename__ = "study_answers"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    question_id: Mapped[str] = mapped_column(ForeignKey("study_questions.id", ondelete="CASCADE"), nullable=False)
+    answer_text: Mapped[str] = mapped_column(Text, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    feedback: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    question: Mapped[StudyQuestion] = relationship(back_populates="answers")
 
 
 class Question(Base):

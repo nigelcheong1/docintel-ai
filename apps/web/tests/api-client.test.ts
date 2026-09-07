@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  generateDocumentStudySummary,
+  generateStudyQuestions,
   deleteDocument,
   getDocument,
   getDocumentChunks,
   getDocumentPages,
   getDocumentProfile,
+  getDocumentStudySummary,
   getDocuments,
   getGoldenEval,
+  getStudyQuestions,
   reindexDocument,
   searchDocuments,
+  submitStudyAnswer,
 } from "@/lib/api";
 
 describe("api client", () => {
@@ -141,6 +146,88 @@ describe("api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/chunks", { cache: "no-store" });
     expect(chunks[0]).toMatchObject({ id: "chunk-1", page_number: 2, token_estimate: 8 });
+  });
+
+  it("fetches and generates document study summaries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "summary-1",
+        document_id: "doc-1",
+        content: "A cited summary.",
+        citations: [],
+        created_at: "2026-09-07T00:00:00Z",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fetched = await getDocumentStudySummary("doc-1");
+    const generated = await generateDocumentStudySummary("doc-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8000/documents/doc-1/study/summary", {
+      cache: "no-store",
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8000/documents/doc-1/study/summary", {
+      method: "POST",
+    });
+    expect(fetched?.content).toBe("A cited summary.");
+    expect(generated.content).toBe("A cited summary.");
+  });
+
+  it("fetches and generates study questions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: "question-1",
+          document_id: "doc-1",
+          question: "What methods are used?",
+          expected_answer: "OCR and embeddings.",
+          citations: [],
+          created_at: "2026-09-07T00:00:00Z",
+          latest_answer: null,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fetched = await getStudyQuestions("doc-1");
+    const generated = await generateStudyQuestions("doc-1", 3);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8000/documents/doc-1/study/questions", {
+      cache: "no-store",
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8000/documents/doc-1/study/questions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ count: 3 }),
+    });
+    expect(fetched[0].question).toBe("What methods are used?");
+    expect(generated[0].expected_answer).toBe("OCR and embeddings.");
+  });
+
+  it("submits a study answer for grading", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "answer-1",
+        question_id: "question-1",
+        answer_text: "It uses OCR.",
+        score: 0.72,
+        feedback: "Partial answer.",
+        created_at: "2026-09-07T00:00:00Z",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const answer = await submitStudyAnswer("doc-1", "question-1", "It uses OCR.");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/study/questions/question-1/answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer_text: "It uses OCR." }),
+    });
+    expect(answer.score).toBe(0.72);
   });
 
   it("deletes a document without attempting to parse the empty response", async () => {
