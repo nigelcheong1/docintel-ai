@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import fitz
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db.session import get_db
@@ -9,6 +10,8 @@ from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
 from app.retrieval.embeddings import FakeEmbeddingProvider
+
+pytestmark = pytest.mark.integration
 
 
 def create_multiline_pdf(path: Path, lines: list[str]) -> bytes:

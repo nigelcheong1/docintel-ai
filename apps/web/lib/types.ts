@@ -86,6 +86,43 @@ export type DocumentProfile = {
   suggested_questions: string[];
 };
 
+export type StudyCitation = {
+  chunk_id: string;
+  document_id: string;
+  document_filename: string;
+  page_number: number;
+  section_heading?: string | null;
+  page_image_url: string;
+  document_page_url: string;
+};
+
+export type StudyAnswer = {
+  id: string;
+  question_id: string;
+  answer_text: string;
+  score: number;
+  feedback: string;
+  created_at: string;
+};
+
+export type StudyQuestion = {
+  id: string;
+  document_id: string;
+  question: string;
+  expected_answer: string;
+  citations: StudyCitation[];
+  created_at: string;
+  latest_answer?: StudyAnswer | null;
+};
+
+export type DocumentStudySummary = {
+  id: string;
+  document_id: string;
+  content: string;
+  citations: StudyCitation[];
+  created_at: string;
+};
+
 export type SearchHit = {
   chunk_id: string;
   document_id: string;

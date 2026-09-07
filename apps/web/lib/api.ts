@@ -3,10 +3,13 @@ import type {
   DocumentDetail,
   DocumentPage,
   DocumentProfile,
+  DocumentStudySummary,
   DocumentSummary,
   EvalRunSummary,
   GoldenEvalResponse,
   SearchResponse,
+  StudyAnswer,
+  StudyQuestion,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -51,6 +54,43 @@ export async function getDocumentChunks(documentId: string): Promise<DocumentChu
 export async function getDocumentProfile(documentId: string): Promise<DocumentProfile> {
   const response = await fetch(`${API_BASE_URL}/documents/${documentId}/profile`, { cache: "no-store" });
   return parseJsonResponse<DocumentProfile>(response);
+}
+
+export async function getDocumentStudySummary(documentId: string): Promise<DocumentStudySummary | null> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/summary`, { cache: "no-store" });
+  return parseJsonResponse<DocumentStudySummary | null>(response);
+}
+
+export async function generateDocumentStudySummary(documentId: string): Promise<DocumentStudySummary> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/summary`, { method: "POST" });
+  return parseJsonResponse<DocumentStudySummary>(response);
+}
+
+export async function getStudyQuestions(documentId: string): Promise<StudyQuestion[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/questions`, { cache: "no-store" });
+  return parseJsonResponse<StudyQuestion[]>(response);
+}
+
+export async function generateStudyQuestions(documentId: string, count = 5): Promise<StudyQuestion[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ count }),
+  });
+  return parseJsonResponse<StudyQuestion[]>(response);
+}
+
+export async function submitStudyAnswer(
+  documentId: string,
+  questionId: string,
+  answerText: string,
+): Promise<StudyAnswer> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/questions/${questionId}/answers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answer_text: answerText }),
+  });
+  return parseJsonResponse<StudyAnswer>(response);
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {
