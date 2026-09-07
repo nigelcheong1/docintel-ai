@@ -52,6 +52,7 @@ class DocumentPageRead(BaseModel):
     token_estimate: int
     text_density: float
     ocr_quality: Literal["native", "strong", "moderate", "weak", "missing"]
+    processing_status: Literal["native_text", "ocr_strong", "ocr_moderate", "ocr_weak", "missing_text"]
     needs_review: bool
     ocr_engine: str | None = None
     ocr_confidence: float | None = None

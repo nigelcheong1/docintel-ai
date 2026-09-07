@@ -36,3 +36,21 @@ def test_format_search_hit_exposes_source_score_and_ranking_signals():
     assert formatted.source_score == 0.88
     assert formatted.ranking_signals == {"keyword_overlap": 1.0, "section_intent": 1.0}
     assert formatted.section_heading == "KEY PROJECTS"
+
+
+def test_format_search_hit_exposes_source_preview_and_chunk_deep_link():
+    hit = SearchHit(
+        chunk_id="chunk-1",
+        document_id="document-1",
+        document_filename="resume.pdf",
+        page_number=3,
+        chunk_index=2,
+        text="KEY PROJECTS Built a local search tool.",
+        score=0.93,
+        source_score=0.88,
+    )
+
+    formatted = format_search_hit(hit)
+
+    assert formatted.page_image_url == "/documents/document-1/pages/3/image"
+    assert formatted.document_page_url == "/documents/document-1?page=3&chunk=chunk-1"

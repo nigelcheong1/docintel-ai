@@ -277,7 +277,47 @@ describe("SearchResults", () => {
     expect(screen.getByText("Page 2")).toBeInTheDocument();
     expect(screen.getByText("KEY PROJECTS")).toBeInTheDocument();
     expect(screen.getByText("87%")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open page" })).toHaveAttribute("href", "/documents/doc-1?page=2");
+    expect(screen.getByRole("link", { name: "Open cited chunk" })).toHaveAttribute("href", "/documents/doc-1?page=2");
+  });
+
+  it("previews source pages and opens the exact cited chunk", () => {
+    render(
+      <SearchResults
+        hits={[
+          {
+            chunk_id: "chunk-preview",
+            document_id: "doc-1",
+            document_filename: "invoice.pdf",
+            page_number: 2,
+            chunk_index: 0,
+            score: 0.87,
+            source_score: 0.83,
+            ranking_signals: {},
+            section_heading: "INVOICE SUMMARY",
+            snippet: "Invoice total is 1250 Malaysian Ringgit.",
+            page_image_url: "/documents/doc-1/pages/2/image",
+            document_page_url: "/documents/doc-1?page=2&chunk=chunk-preview",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Open cited chunk" })).toHaveAttribute(
+      "href",
+      "/documents/doc-1?page=2&chunk=chunk-preview",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview source for page 2" }));
+
+    expect(screen.getByRole("img", { name: "Page 2 source preview for invoice.pdf" })).toHaveAttribute(
+      "src",
+      "/documents/doc-1/pages/2/image",
+    );
+    expect(screen.getByText("100%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in source preview" }));
+
+    expect(screen.getByText("125%")).toBeInTheDocument();
   });
 
   it("allows long filenames and snippets to wrap inside result cards", () => {

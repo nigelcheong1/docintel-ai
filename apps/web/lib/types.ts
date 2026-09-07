@@ -42,6 +42,7 @@ export type DocumentPage = {
   token_estimate: number;
   text_density: number;
   ocr_quality: "native" | "strong" | "moderate" | "weak" | "missing";
+  processing_status: "native_text" | "ocr_strong" | "ocr_moderate" | "ocr_weak" | "missing_text";
   needs_review: boolean;
   ocr_engine?: string | null;
   ocr_confidence?: number | null;
@@ -95,6 +96,8 @@ export type SearchHit = {
   source_score: number;
   ranking_signals: Record<string, number>;
   snippet: string;
+  page_image_url?: string;
+  document_page_url?: string;
   section_heading?: string | null;
   result_role?: "answer_evidence" | "related";
 };

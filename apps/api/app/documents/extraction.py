@@ -8,7 +8,7 @@ from PIL import Image
 
 from app.documents.ocr import OcrProvider
 from app.documents.parse_quality import normalized_text_length
-from app.documents.parser import DocumentParseError, parse_pdf
+from app.documents.parser import DocumentParseError, ParsedPage, parse_pdf
 
 LOW_TEXT_PAGE_MAX_CHARS = 80
 
@@ -34,6 +34,16 @@ class ExtractionResult:
 
 def _is_sparse_text(text: str) -> bool:
     return normalized_text_length(text) < LOW_TEXT_PAGE_MAX_CHARS
+
+
+def should_ocr_pdf_page(text: str) -> bool:
+    return _is_sparse_text(text)
+
+
+def pdf_ocr_page_numbers(pages: list[ParsedPage], *, max_ocr_pages: int) -> list[int]:
+    if max_ocr_pages <= 0:
+        return []
+    return [page.page_number for page in pages if should_ocr_pdf_page(page.text)][:max_ocr_pages]
 
 
 def _page_image(page: fitz.Page, *, dpi: int) -> Image.Image:
@@ -64,9 +74,8 @@ def extract_pdf_pages(
     if ocr_provider is None or not ocr_provider.is_available() or max_ocr_pages <= 0:
         return ExtractionResult(pages=extracted_pages, ocr_page_count=0, ocr_duration_ms=0)
 
-    sparse_indexes = [
-        index for index, page in enumerate(extracted_pages) if _is_sparse_text(page.text)
-    ][:max_ocr_pages]
+    ocr_page_numbers = set(pdf_ocr_page_numbers(native_pages, max_ocr_pages=max_ocr_pages))
+    sparse_indexes = [index for index, page in enumerate(extracted_pages) if page.page_number in ocr_page_numbers]
     if not sparse_indexes:
         return ExtractionResult(pages=extracted_pages, ocr_page_count=0, ocr_duration_ms=0)
 

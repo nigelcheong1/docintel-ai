@@ -35,6 +35,8 @@ class SearchHitRead(BaseModel):
     document_filename: str
     page_number: int
     chunk_index: int
+    page_image_url: str
+    document_page_url: str
     score: float
     source_score: float
     ranking_signals: dict[str, float]
@@ -80,6 +82,8 @@ def format_search_hit(hit: SearchHit, answer_chunk_ids: set[str] | None = None) 
         document_filename=hit.document_filename,
         page_number=hit.page_number,
         chunk_index=hit.chunk_index,
+        page_image_url=f"/documents/{hit.document_id}/pages/{hit.page_number}/image",
+        document_page_url=f"/documents/{hit.document_id}?page={hit.page_number}&chunk={hit.chunk_id}",
         score=hit.score,
         source_score=hit.source_score,
         ranking_signals=hit.ranking_signals,

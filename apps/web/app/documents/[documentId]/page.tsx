@@ -1,18 +1,12 @@
 import { DocumentWorkbenchPage } from "@/components/document-workbench-page";
+import { parseInitialChunk, parseInitialPage } from "@/lib/document-deep-link";
 
 type DocumentDetailPageProps = {
   params: Promise<{ documentId: string }> | { documentId: string };
-  searchParams?: Promise<{ page?: string | string[] }> | { page?: string | string[] };
+  searchParams?:
+    | Promise<{ page?: string | string[]; chunk?: string | string[] }>
+    | { page?: string | string[]; chunk?: string | string[] };
 };
-
-function parseInitialPage(value?: string | string[]) {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  if (!rawValue) {
-    return undefined;
-  }
-  const pageNumber = Number.parseInt(rawValue, 10);
-  return Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : undefined;
-}
 
 export default async function DocumentDetailPage({ params, searchParams }: DocumentDetailPageProps) {
   const resolvedParams = await params;
@@ -22,6 +16,7 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
     <DocumentWorkbenchPage
       documentId={resolvedParams.documentId}
       initialPageNumber={parseInitialPage(resolvedSearchParams?.page)}
+      initialChunkId={parseInitialChunk(resolvedSearchParams?.chunk)}
     />
   );
 }
