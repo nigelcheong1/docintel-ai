@@ -326,6 +326,13 @@ describe("DocumentWorkbench", () => {
       "href",
       "/documents/doc-1?page=1&chunk=chunk-1",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Preview citation research-paper.pdf page 1" }));
+
+    expect(screen.getByRole("dialog", { name: "Source viewer" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Page 1 source preview for research-paper.pdf" })).toHaveAttribute(
+      "src",
+      "/documents/doc-1/pages/1/image",
+    );
     expect(generateDocumentStudySummary).toHaveBeenCalledWith("doc-1");
   });
 
@@ -345,5 +352,73 @@ describe("DocumentWorkbench", () => {
     await waitFor(() => expect(submitStudyAnswer).toHaveBeenCalledWith("doc-1", "question-1", "It uses OCR and embeddings."));
     expect(await screen.findByText("Strong answer. You covered the main cited points.")).toBeInTheDocument();
     expect(screen.getByText("82%")).toBeInTheDocument();
+  });
+
+  it("shows study attempt history and citation snippets in the source viewer", async () => {
+    vi.mocked(getStudyQuestions).mockResolvedValueOnce([
+      {
+        id: "question-history",
+        document_id: "doc-1",
+        question: "What methods are used?",
+        expected_answer: "The system uses OCR and embeddings.",
+        created_at: "2026-09-07T00:00:00Z",
+        latest_answer: {
+          id: "answer-new",
+          question_id: "question-history",
+          answer_text: "It uses OCR and embeddings.",
+          score: 0.82,
+          feedback: "Strong answer.",
+          created_at: "2026-09-07T11:00:00Z",
+        },
+        answer_count: 2,
+        recent_answers: [
+          {
+            id: "answer-new",
+            question_id: "question-history",
+            answer_text: "It uses OCR and embeddings.",
+            score: 0.82,
+            feedback: "Strong answer.",
+            created_at: "2026-09-07T11:00:00Z",
+          },
+          {
+            id: "answer-old",
+            question_id: "question-history",
+            answer_text: "It reads files.",
+            score: 0.35,
+            feedback: "Needs work.",
+            created_at: "2026-09-07T10:00:00Z",
+          },
+        ],
+        citations: [
+          {
+            chunk_id: "chunk-2",
+            document_id: "doc-1",
+            document_filename: "research-paper.pdf",
+            page_number: 2,
+            section_heading: "METHOD",
+            page_image_url: "/documents/doc-1/pages/2/image",
+            document_page_url: "/documents/doc-1?page=2&chunk=chunk-2",
+            snippet: "METHOD The pipeline uses OCR, page chunks, embeddings, and cited answer evidence.",
+            score: 0.72,
+            source_score: 0.68,
+          },
+        ],
+      },
+    ]);
+
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Study" }));
+
+    expect(await screen.findByText("2 attempts")).toBeInTheDocument();
+    expect(screen.getByText("Recent attempts")).toBeInTheDocument();
+    expect(screen.getByText("Needs work.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview citation research-paper.pdf page 2" }));
+
+    const sourceViewer = screen.getByRole("dialog", { name: "Source viewer" });
+    expect(within(sourceViewer).getByText("METHOD The pipeline uses OCR, page chunks, embeddings, and cited answer evidence.")).toBeInTheDocument();
+    expect(within(sourceViewer).getByText("72%")).toBeInTheDocument();
+    expect(within(sourceViewer).getByText("68%")).toBeInTheDocument();
   });
 });

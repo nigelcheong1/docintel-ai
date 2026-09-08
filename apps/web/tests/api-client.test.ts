@@ -8,6 +8,7 @@ import {
   getDocumentChunks,
   getDocumentPages,
   getDocumentProfile,
+  getDocumentStatus,
   getDocumentStudySummary,
   getDocuments,
   getGoldenEval,
@@ -72,6 +73,31 @@ describe("api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1", { cache: "no-store" });
     expect(document).toMatchObject({ page_count: 12, chunk_count: 48 });
+  });
+
+  it("fetches document processing status", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        document_id: "doc-1",
+        filename: "sample.pdf",
+        status: "embedding",
+        active_stage: "embed",
+        progress_percent: 80,
+        message: "Embedding evidence chunks for semantic search.",
+        page_count: 2,
+        chunk_count: 8,
+        embedded_chunk_count: 4,
+        ocr_page_count: 0,
+        stages: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const status = await getDocumentStatus("doc-1");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/documents/doc-1/status", { cache: "no-store" });
+    expect(status).toMatchObject({ active_stage: "embed", progress_percent: 80 });
   });
 
   it("fetches document intelligence profiles", async () => {

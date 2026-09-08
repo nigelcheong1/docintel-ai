@@ -6,13 +6,21 @@ from sqlalchemy.orm import Session
 from app.db.models import Chunk, Document, DocumentStatus
 from app.db.session import get_db
 from app.documents.intelligence import build_document_profile
-from app.documents.router import get_embedding_provider
+from app.documents.router import get_embedding_provider_factory
+from app.documents.service import EmbeddingProviderFactory
 from app.retrieval.answers import AnswerQuality, build_grounded_answer
 from app.retrieval.document_answers import build_document_aware_answer
-from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.query_router import route_query
 from app.retrieval.reranker import rerank_hits
-from app.retrieval.search import SearchDiagnostics, SearchHit, SearchRequest, SearchResponse, format_search_hit, search_chunks
+from app.retrieval.search import (
+    SearchDiagnostics,
+    SearchHit,
+    SearchRequest,
+    SearchResponse,
+    format_search_hit,
+    hybrid_search_chunks,
+    search_chunks,
+)
 
 router = APIRouter(tags=["search"])
 
@@ -151,11 +159,16 @@ def _empty_scoped_document_response(
     )
 
 
+def _embedding_fallback_reason(exc: Exception) -> str:
+    message = str(exc).strip() or exc.__class__.__name__
+    return f"Embedding provider unavailable: {message}"
+
+
 @router.post("/search", response_model=SearchResponse)
 def search(
     request: SearchRequest,
     db: Annotated[Session, Depends(get_db)],
-    embedder: Annotated[EmbeddingProvider, Depends(get_embedding_provider)],
+    embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
 ) -> SearchResponse:
     document = None
     profile = None
@@ -173,12 +186,25 @@ def search(
                     query_intent=route.intent,
                 )
 
-    query_embedding = embedder.embed_texts([request.query])[0]
+    query_embedding: list[float] | None = None
+    embedding_failure_reason: str | None = None
+    try:
+        embedder = embedder_factory()
+        query_embedding = embedder.embed_texts([request.query])[0]
+    except Exception as exc:
+        embedding_failure_reason = _embedding_fallback_reason(exc)
+
     candidate_limit = min(50, max(request.top_k * 4, request.top_k + 10))
-    hits = rerank_hits(
+    candidate_hits, retrieval_mode = hybrid_search_chunks(
+        db,
+        query_embedding,
         request.query,
-        search_chunks(db, query_embedding, candidate_limit, request.document_id),
-    )[: request.top_k]
+        candidate_limit,
+        request.document_id,
+        vector_search=search_chunks,
+        fallback_reason=embedding_failure_reason,
+    )
+    hits = rerank_hits(request.query, candidate_hits)[: request.top_k]
 
     typed_answer = (
         build_document_aware_answer(request.query, document, profile, route)
@@ -214,4 +240,6 @@ def search(
         document_type=document_type,
         query_intent=query_intent,
         diagnostics=diagnostics,
+        retrieval_mode=retrieval_mode.mode,
+        retrieval_fallback_reason=retrieval_mode.fallback_reason,
     )

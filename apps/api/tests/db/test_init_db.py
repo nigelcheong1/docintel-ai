@@ -4,7 +4,10 @@ from app.db.init_db import document_status_enum_sync_sql, sync_local_schema
 
 
 def test_document_status_enum_sync_adds_ocr_processing():
-    assert document_status_enum_sync_sql() == "ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'ocr_processing'"
+    assert document_status_enum_sync_sql() == [
+        "ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'ocr_processing'",
+        "ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'embedding'",
+    ]
 
 
 def test_sync_local_schema_adds_missing_ocr_columns(tmp_path):

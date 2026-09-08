@@ -177,6 +177,7 @@ def rerank_hits(query: str, hits: Sequence[SearchHit]) -> list[SearchHit]:
                 hit,
                 score=score,
                 ranking_signals={
+                    **hit.ranking_signals,
                     "keyword_overlap": keyword_overlap,
                     "section_intent": section_intent,
                 },

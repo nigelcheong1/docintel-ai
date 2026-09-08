@@ -48,6 +48,69 @@ function DocumentMetadata({ document }: { document: DocumentSummary | DocumentDe
   );
 }
 
+const ACTIVE_DOCUMENT_STATUSES = new Set(["uploaded", "processing", "ocr_processing", "embedding"]);
+
+function fallbackProcessingMessage(status: string): string {
+  const messages: Record<string, string> = {
+    uploaded: "Upload saved. Waiting to start document processing.",
+    processing: "Extracting readable text and page structure.",
+    ocr_processing: "Running OCR for scanned or image-only pages.",
+    embedding: "Embedding evidence chunks for semantic search.",
+  };
+  return messages[status] ?? "Processing document.";
+}
+
+function fallbackProgressPercent(status: string): number {
+  const progress: Record<string, number> = {
+    uploaded: 10,
+    processing: 35,
+    ocr_processing: 45,
+    embedding: 80,
+  };
+  return progress[status] ?? 25;
+}
+
+function ProcessingProgress({ document }: { document: DocumentSummary | DocumentDetail }) {
+  const status = document.processing_status;
+  if (!status && !ACTIVE_DOCUMENT_STATUSES.has(document.status)) {
+    return null;
+  }
+
+  const progress = Math.max(0, Math.min(100, status?.progress_percent ?? fallbackProgressPercent(document.status)));
+  const message = status?.message ?? fallbackProcessingMessage(document.status);
+
+  return (
+    <div className="mt-2 w-full min-w-32 space-y-1">
+      <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+        <span className="min-w-0 truncate">{message}</span>
+        <span className="font-semibold text-teal-800">{progress}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`${document.filename} processing progress`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+        className="h-2 overflow-hidden rounded-full bg-teal-50 ring-1 ring-inset ring-teal-100"
+      >
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-teal-700 via-teal-600 to-amber-400 transition-[width] duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DocumentStatusDisplay({ document }: { document: DocumentSummary | DocumentDetail }) {
+  return (
+    <div className="min-w-0">
+      <StatusBadge status={document.status} />
+      <ProcessingProgress document={document} />
+    </div>
+  );
+}
+
 function qualityBadgeFor(document: DocumentSummary | DocumentDetail) {
   const quality = document.parse_quality;
 
@@ -250,7 +313,7 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
             <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 text-sm">
               <dt className="text-slate-500">Status</dt>
               <dd>
-                <StatusBadge status={document.status} />
+                <DocumentStatusDisplay document={document} />
               </dd>
               <dt className="text-slate-500">Type</dt>
               <dd className="break-all text-slate-600">{document.mime_type}</dd>
@@ -296,7 +359,7 @@ export function DocumentList({ documents, onDelete, onReindex }: DocumentListPro
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  <StatusBadge status={document.status} />
+                  <DocumentStatusDisplay document={document} />
                 </td>
                 <td className="px-4 py-3 text-slate-600">{"page_count" in document ? document.page_count : "Not available"}</td>
                 <td className="px-4 py-3 text-slate-600">{"chunk_count" in document ? document.chunk_count : "Not available"}</td>

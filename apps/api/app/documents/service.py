@@ -27,6 +27,7 @@ class DocumentReindexError(ValueError):
 
 EmbeddingProviderFactory = Callable[[], EmbeddingProvider]
 OcrProviderFactory = Callable[[], OcrProvider]
+SessionFactory = Callable[[], Session]
 OCR_UNAVAILABLE_MESSAGE = (
     "Local OCR is not available. Install Tesseract OCR or configure DOCINTEL_TESSERACT_CMD, then retry OCR."
 )
@@ -91,6 +92,10 @@ def _persist_new_document(db: Session, stored: StoredUpload) -> PersistedDocumen
     return PersistedDocument(model=document, document_id=document_id)
 
 
+def create_upload_record(db: Session, stored: StoredUpload) -> Document:
+    return _persist_new_document(db, stored).model
+
+
 def _failure_message(exc: Exception) -> str:
     if isinstance(exc, DocumentParseError):
         return str(exc)
@@ -151,6 +156,7 @@ def _add_index_records_from_pages(
     embedder_factory: EmbeddingProviderFactory,
     *,
     insufficient_text_message: str = INSUFFICIENT_TEXT_MESSAGE,
+    commit_text_index_before_embedding: bool = True,
 ) -> None:
     pages = [
         Page(
@@ -174,8 +180,6 @@ def _add_index_records_from_pages(
     if not text_chunks:
         raise DocumentParseError(insufficient_text_message)
 
-    embedder = embedder_factory()
-    vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
     chunks = [
         Chunk(
             document_id=document.id,
@@ -188,7 +192,13 @@ def _add_index_records_from_pages(
         for text_chunk in text_chunks
     ]
     db.add_all(chunks)
+    document.status = DocumentStatus.EMBEDDING
     db.flush()
+    if commit_text_index_before_embedding:
+        db.commit()
+
+    embedder = embedder_factory()
+    vectors = embedder.embed_texts([chunk.text for chunk in text_chunks])
     db.add_all(
         [
             ChunkEmbedding(chunk_id=chunk.id, model_name=embedder.model_name, embedding=vector)
@@ -197,23 +207,29 @@ def _add_index_records_from_pages(
     )
 
 
-def index_stored_upload(
+def _delete_generated_study_artifacts(db: Session, document: Document) -> None:
+    for summary in list(document.summaries):
+        db.delete(summary)
+    for question in list(document.study_questions):
+        db.delete(question)
+
+
+def _index_existing_document(
     db: Session,
-    stored: StoredUpload,
+    document: Document,
+    document_kind: str,
     embedder_factory: EmbeddingProviderFactory | None,
     *,
     ocr_provider_factory: OcrProviderFactory | None = None,
     ocr_language: str = "eng",
     ocr_dpi: int = 200,
     ocr_max_pages: int = 25,
+    commit_text_index_before_embedding: bool = False,
 ) -> Document:
-    persisted_document = _persist_new_document(db, stored)
-    document = persisted_document.model
-    document_id = persisted_document.document_id
-
     try:
+        document_id = document.id
         ocr_provider = ocr_provider_factory() if ocr_provider_factory is not None else None
-        if stored.kind == "image":
+        if document_kind == "image":
             if ocr_provider is None or not ocr_provider.is_available():
                 return _persist_deferred_ocr_status(db, document, document_id, OCR_UNAVAILABLE_MESSAGE)
             if embedder_factory is None:
@@ -236,13 +252,14 @@ def index_stored_upload(
                 max_ocr_pages=ocr_max_pages,
             )
 
-        insufficient_text_message = SPARSE_IMAGE_OCR_MESSAGE if stored.kind == "image" else INSUFFICIENT_TEXT_MESSAGE
+        insufficient_text_message = SPARSE_IMAGE_OCR_MESSAGE if document_kind == "image" else INSUFFICIENT_TEXT_MESSAGE
         _add_index_records_from_pages(
             db,
             document,
             extraction_result.pages,
             embedder_factory,
             insufficient_text_message=insufficient_text_message,
+            commit_text_index_before_embedding=commit_text_index_before_embedding,
         )
         if extraction_result.ocr_page_count:
             _complete_ocr_processing(document)
@@ -254,6 +271,62 @@ def index_stored_upload(
         return document
     except Exception as exc:
         return _persist_failed_status(db, document_id, _failure_message(exc))
+
+
+def index_stored_upload(
+    db: Session,
+    stored: StoredUpload,
+    embedder_factory: EmbeddingProviderFactory | None,
+    *,
+    ocr_provider_factory: OcrProviderFactory | None = None,
+    ocr_language: str = "eng",
+    ocr_dpi: int = 200,
+    ocr_max_pages: int = 25,
+    commit_text_index_before_embedding: bool = True,
+) -> Document:
+    document = create_upload_record(db, stored)
+    return _index_existing_document(
+        db,
+        document,
+        stored.kind,
+        embedder_factory,
+        ocr_provider_factory=ocr_provider_factory,
+        ocr_language=ocr_language,
+        ocr_dpi=ocr_dpi,
+        ocr_max_pages=ocr_max_pages,
+        commit_text_index_before_embedding=commit_text_index_before_embedding,
+    )
+
+
+def process_document_upload(
+    session_factory: SessionFactory,
+    document_id: str,
+    stored: StoredUpload,
+    embedder_factory: EmbeddingProviderFactory | None,
+    *,
+    ocr_provider_factory: OcrProviderFactory | None = None,
+    ocr_language: str = "eng",
+    ocr_dpi: int = 200,
+    ocr_max_pages: int = 25,
+) -> Document | None:
+    db = session_factory()
+    try:
+        document = db.get(Document, document_id)
+        if document is None:
+            return None
+        return _index_existing_document(
+            db,
+            document,
+            stored.kind,
+            embedder_factory,
+            ocr_provider_factory=ocr_provider_factory,
+            ocr_language=ocr_language,
+            ocr_dpi=ocr_dpi,
+            ocr_max_pages=ocr_max_pages,
+            commit_text_index_before_embedding=True,
+        )
+    finally:
+        db.close()
 
 
 def list_documents(db: Session) -> list[Document]:
@@ -323,6 +396,7 @@ def reindex_document(
     try:
         document.status = DocumentStatus.PROCESSING
         document.error_message = None
+        _delete_generated_study_artifacts(db, document)
         for page in list(document.pages):
             db.delete(page)
         db.flush()
@@ -354,6 +428,7 @@ def reindex_document(
             extraction_result.pages,
             embedder_factory,
             insufficient_text_message=insufficient_text_message,
+            commit_text_index_before_embedding=False,
         )
         if extraction_result.ocr_page_count:
             _complete_ocr_processing(document)
@@ -367,3 +442,58 @@ def reindex_document(
     except Exception as exc:
         db.rollback()
         raise DocumentReindexError(_failure_message(exc)) from exc
+
+
+def start_reindex_document(db: Session, document_id: str) -> Document:
+    document = get_document_or_404(db, document_id)
+    document.status = DocumentStatus.PROCESSING
+    document.error_message = None
+    document.processing_started_at = utc_now()
+    document.processing_completed_at = None
+    document.processing_duration_ms = None
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def process_document_reindex(
+    session_factory: SessionFactory,
+    document_id: str,
+    embedder_factory: EmbeddingProviderFactory,
+    *,
+    storage_dir: Path | None = None,
+    ocr_provider_factory: OcrProviderFactory | None = None,
+    ocr_language: str = "eng",
+    ocr_dpi: int = 200,
+    ocr_max_pages: int = 25,
+) -> Document | None:
+    db = session_factory()
+    try:
+        try:
+            return reindex_document(
+                db,
+                document_id,
+                embedder_factory,
+                storage_dir=storage_dir,
+                ocr_provider_factory=ocr_provider_factory,
+                ocr_language=ocr_language,
+                ocr_dpi=ocr_dpi,
+                ocr_max_pages=ocr_max_pages,
+            )
+        except (DocumentPersistenceError, DocumentReindexError) as exc:
+            db.rollback()
+            document = db.get(Document, document_id)
+            if document is None:
+                return None
+            document.status = DocumentStatus.INDEXED if document.chunks else DocumentStatus.FAILED
+            document.error_message = str(exc)
+            document.processing_completed_at = utc_now()
+            if document.processing_started_at is not None:
+                document.processing_duration_ms = max(
+                    0,
+                    int((document.processing_completed_at - document.processing_started_at).total_seconds() * 1000),
+                )
+            db.commit()
+            return document
+    finally:
+        db.close()

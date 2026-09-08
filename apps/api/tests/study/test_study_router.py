@@ -31,8 +31,66 @@ def sample_citation():
     }
 
 
+def test_summary_read_backfills_legacy_citation_urls():
+    summary = DocumentSummary(
+        id="summary-1",
+        document_id="document-1",
+        content="Legacy summary.",
+        citations=[
+            {
+                "chunk_id": "chunk-1",
+                "document_id": "document-1",
+                "document_filename": "paper.pdf",
+                "page_number": 2,
+                "section_heading": "METHOD",
+            }
+        ],
+        created_at=datetime(2026, 9, 7, tzinfo=UTC),
+    )
+
+    payload = study_router._summary_read(summary).model_dump()
+
+    assert payload["citations"][0]["page_image_url"] == "/documents/document-1/pages/2/image"
+    assert payload["citations"][0]["document_page_url"] == "/documents/document-1?page=2&chunk=chunk-1"
+
+
+def test_question_read_includes_answer_attempt_history():
+    question = StudyQuestion(
+        id="question-1",
+        document_id="document-1",
+        question="What methods are used?",
+        expected_answer="The system uses OCR and embeddings.",
+        citations=[sample_citation()],
+        created_at=datetime(2026, 9, 7, tzinfo=UTC),
+    )
+    question.answers = [
+        StudyAnswer(
+            id="answer-old",
+            question_id=question.id,
+            answer_text="It reads files.",
+            score=0.35,
+            feedback="Needs work.",
+            created_at=datetime(2026, 9, 7, 10, tzinfo=UTC),
+        ),
+        StudyAnswer(
+            id="answer-new",
+            question_id=question.id,
+            answer_text="It uses OCR and embeddings.",
+            score=0.82,
+            feedback="Strong answer.",
+            created_at=datetime(2026, 9, 7, 11, tzinfo=UTC),
+        ),
+    ]
+
+    payload = study_router._question_read(question).model_dump()
+
+    assert payload["latest_answer"]["id"] == "answer-new"
+    assert payload["answer_count"] == 2
+    assert [answer["id"] for answer in payload["recent_answers"]] == ["answer-new", "answer-old"]
+
+
 def test_generate_summary_endpoint_returns_cited_summary(monkeypatch):
-    def fake_generate_summary(_db, document_id: str):
+    def fake_generate_summary(_db, document_id: str, embedder_factory=None):
         return DocumentSummary(
             id="summary-1",
             document_id=document_id,
@@ -51,7 +109,7 @@ def test_generate_summary_endpoint_returns_cited_summary(monkeypatch):
 
 
 def test_generate_summary_endpoint_returns_400_when_document_is_not_ready(monkeypatch):
-    def fake_generate_summary(_db, _document_id: str):
+    def fake_generate_summary(_db, _document_id: str, embedder_factory=None):
         raise StudyDocumentNotReadyError("Document must be indexed before study features can be generated.")
 
     monkeypatch.setattr(study_router, "generate_document_summary", fake_generate_summary)
@@ -62,7 +120,7 @@ def test_generate_summary_endpoint_returns_400_when_document_is_not_ready(monkey
 
 
 def test_generate_questions_endpoint_returns_questions(monkeypatch):
-    def fake_generate_questions(_db, document_id: str, count: int):
+    def fake_generate_questions(_db, document_id: str, count: int, embedder_factory=None):
         return [
             StudyQuestion(
                 id="question-1",

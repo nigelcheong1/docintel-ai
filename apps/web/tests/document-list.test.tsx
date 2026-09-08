@@ -112,6 +112,44 @@ describe("DocumentList", () => {
     }
   });
 
+  it("shows processing progress when a document is still being indexed", () => {
+    render(
+      <DocumentList
+        documents={[
+          {
+            id: "doc-1",
+            filename: "quarterly-report.pdf",
+            mime_type: "application/pdf",
+            status: "embedding",
+            processing_status: {
+              document_id: "doc-1",
+              filename: "quarterly-report.pdf",
+              status: "embedding",
+              active_stage: "embed",
+              progress_percent: 80,
+              message: "Embedding evidence chunks for semantic search.",
+              page_count: 12,
+              chunk_count: 48,
+              embedded_chunk_count: 24,
+              ocr_page_count: 0,
+              stages: [
+                { key: "upload", label: "Upload saved", status: "complete", detail: null },
+                { key: "extract", label: "Text extracted", status: "complete", detail: "12 pages" },
+                { key: "chunk", label: "Chunks created", status: "complete", detail: "48 chunks" },
+                { key: "embed", label: "Embeddings stored", status: "active", detail: "24/48 embedded" },
+                { key: "ready", label: "Ready", status: "pending", detail: null },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("Embedding evidence chunks for semantic search.")).toHaveLength(2);
+    expect(screen.getAllByRole("progressbar", { name: "quarterly-report.pdf processing progress" })).toHaveLength(2);
+    expect(screen.getAllByText("80%")).toHaveLength(2);
+  });
+
   it("surfaces parse quality guidance when OCR would help", () => {
     render(
       <DocumentList

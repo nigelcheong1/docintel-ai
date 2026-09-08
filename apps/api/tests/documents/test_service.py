@@ -6,17 +6,20 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page
+from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, DocumentSummary, Page, StudyAnswer, StudyQuestion
 from app.documents.ocr import OcrPageResult
-from app.documents.storage import save_upload_bytes
+from app.documents.storage import StoredUpload, save_upload_bytes
 from app.documents.service import (
     DocumentPersistenceError,
     DocumentReindexError,
     delete_document,
     index_stored_upload,
+    process_document_reindex,
+    process_document_upload,
     reindex_document,
 )
 from app.retrieval.embeddings import FakeEmbeddingProvider
+from app.retrieval.search import lexical_search_chunks
 
 pytestmark = pytest.mark.integration
 
@@ -44,6 +47,89 @@ class FakeOcrProvider:
         return OcrPageResult(text=self.text, confidence=88.0, engine_name=self.engine_name, duration_ms=5)
 
 
+def test_process_document_upload_uses_task_owned_session(monkeypatch, tmp_path):
+    document = Document(
+        id="document-1",
+        filename="sample.pdf",
+        stored_filename="sample.pdf",
+        mime_type="application/pdf",
+        file_path=str(tmp_path / "sample.pdf"),
+        status=DocumentStatus.PROCESSING,
+    )
+    stored = StoredUpload(
+        original_filename="sample.pdf",
+        stored_filename="sample.pdf",
+        mime_type="application/pdf",
+        file_path=tmp_path / "sample.pdf",
+        kind="pdf",
+        size_bytes=10,
+    )
+    seen: dict[str, object] = {}
+
+    class FakeTaskSession:
+        closed = False
+
+        def get(self, model, document_id):
+            seen["get"] = (model, document_id)
+            return document
+
+        def close(self):
+            self.closed = True
+
+    task_session = FakeTaskSession()
+
+    def fake_index(db, indexed_document, document_kind, embedder_factory, **kwargs):
+        seen["db"] = db
+        seen["document"] = indexed_document
+        seen["kind"] = document_kind
+        return indexed_document
+
+    monkeypatch.setattr("app.documents.service._index_existing_document", fake_index)
+
+    result = process_document_upload(lambda: task_session, document.id, stored, lambda: FakeEmbeddingProvider())
+
+    assert result is document
+    assert seen["get"] == (Document, document.id)
+    assert seen["db"] is task_session
+    assert seen["document"] is document
+    assert seen["kind"] == "pdf"
+    assert task_session.closed is True
+
+
+def test_process_document_reindex_uses_task_owned_session(monkeypatch):
+    document = Document(
+        id="document-1",
+        filename="sample.pdf",
+        stored_filename="sample.pdf",
+        mime_type="application/pdf",
+        file_path="sample.pdf",
+        status=DocumentStatus.PROCESSING,
+    )
+    seen: dict[str, object] = {}
+
+    class FakeTaskSession:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    task_session = FakeTaskSession()
+
+    def fake_reindex(db, document_id, embedder_factory, **kwargs):
+        seen["db"] = db
+        seen["document_id"] = document_id
+        return document
+
+    monkeypatch.setattr("app.documents.service.reindex_document", fake_reindex)
+
+    result = process_document_reindex(lambda: task_session, document.id, lambda: FakeEmbeddingProvider())
+
+    assert result is document
+    assert seen["db"] is task_session
+    assert seen["document_id"] == document.id
+    assert task_session.closed is True
+
+
 def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
     pdf_path = tmp_path / "sample.pdf"
     content = create_sample_pdf(pdf_path, "Payment due date is 2026-09-01")
@@ -55,6 +141,34 @@ def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
     assert len(document.pages) == 1
     assert len(document.chunks) >= 1
     assert document.chunks[0].embedding is not None
+
+
+def test_index_stored_upload_preserves_text_chunks_when_embedding_fails(db_session, tmp_path):
+    pdf_path = tmp_path / "fallback.pdf"
+    content = create_sample_pdf(
+        pdf_path,
+        "Lexical fallback evidence should remain searchable even when embedding generation fails.",
+    )
+    stored = save_upload_bytes("fallback.pdf", "application/pdf", content, tmp_path / "storage", 20)
+
+    class FailingEmbeddingProvider:
+        model_name = "failing-test-embedder"
+
+        def embed_texts(self, texts):
+            raise RuntimeError("embedding generation crashed")
+
+    document = index_stored_upload(db_session, stored, lambda: FailingEmbeddingProvider())
+
+    db_session.expire_all()
+    persisted = db_session.get(Document, document.id)
+    assert persisted is not None
+    assert persisted.status == DocumentStatus.FAILED
+    assert persisted.error_message == "Indexing failed: embedding generation crashed"
+    assert len(persisted.pages) == 1
+    assert len(persisted.chunks) >= 1
+    assert all(chunk.embedding is None for chunk in persisted.chunks)
+    hits = lexical_search_chunks(db_session, "lexical fallback evidence", top_k=3, document_id=persisted.id)
+    assert [hit.document_filename for hit in hits] == ["fallback.pdf"]
 
 
 def test_index_stored_upload_fails_cleanly_when_pdf_has_no_usable_chunks(db_session, tmp_path):
@@ -379,3 +493,42 @@ def test_reindex_document_preserves_prior_index_when_embedding_fails(db_session,
     assert [page.id for page in persisted.pages] == old_page_ids
     assert [chunk.id for chunk in persisted.chunks] == old_chunk_ids
     assert [chunk.embedding.id for chunk in persisted.chunks if chunk.embedding is not None] == old_embedding_ids
+
+
+def test_reindex_document_invalidates_stale_study_artifacts_after_success(db_session, tmp_path):
+    original_pdf_path = tmp_path / "original.pdf"
+    stored = save_upload_bytes(
+        "study.pdf",
+        "application/pdf",
+        create_sample_pdf(original_pdf_path, "Original searchable content with enough words for study artifacts"),
+        tmp_path / "storage",
+        20,
+    )
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    old_chunk_id = document.chunks[0].id
+    summary = DocumentSummary(
+        document_id=document.id,
+        content="Old summary.",
+        citations=[{"chunk_id": old_chunk_id, "page_number": 1}],
+    )
+    question = StudyQuestion(
+        document_id=document.id,
+        question="What did the old document say?",
+        expected_answer="Old expected answer.",
+        citations=[{"chunk_id": old_chunk_id, "page_number": 1}],
+    )
+    answer = StudyAnswer(
+        question=question,
+        answer_text="Old answer.",
+        score=0.5,
+        feedback="Old feedback.",
+    )
+    db_session.add_all([summary, question, answer])
+    db_session.commit()
+
+    reindexed = reindex_document(db_session, document.id, lambda: FakeEmbeddingProvider())
+
+    assert reindexed.status == DocumentStatus.INDEXED
+    assert db_session.scalars(select(DocumentSummary).where(DocumentSummary.document_id == document.id)).all() == []
+    assert db_session.scalars(select(StudyQuestion).where(StudyQuestion.document_id == document.id)).all() == []
+    assert db_session.scalars(select(StudyAnswer).where(StudyAnswer.question_id == question.id)).all() == []

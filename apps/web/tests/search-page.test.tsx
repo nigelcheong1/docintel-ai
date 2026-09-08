@@ -257,6 +257,23 @@ describe("SearchPage", () => {
     expect(screen.queryByText("invoice.pdf")).not.toBeInTheDocument();
   });
 
+  it("surfaces lexical fallback diagnostics from search responses", async () => {
+    apiMocks.searchDocuments.mockResolvedValueOnce({
+      ...successfulResponse,
+      retrieval_mode: "lexical",
+      retrieval_fallback_reason: "Embedding provider unavailable: local model could not be loaded.",
+    });
+
+    render(<SearchPage />);
+
+    const input = screen.getByRole("textbox", { name: "Search query" });
+    fireEvent.change(input, { target: { value: "invoice total" } });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(await screen.findByText("Lexical fallback")).toBeInTheDocument();
+    expect(screen.getByText("Embedding provider unavailable: local model could not be loaded.")).toBeInTheDocument();
+  });
+
   it("ignores stale results and loading completion from an older search", async () => {
     const olderSearch = deferred<typeof successfulResponse>();
     const newerSearch = deferred<typeof successfulResponse>();

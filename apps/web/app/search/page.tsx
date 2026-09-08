@@ -68,6 +68,8 @@ export default function SearchPage() {
   const [documentType, setDocumentType] = useState<string | null>(null);
   const [queryIntent, setQueryIntent] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<SearchDiagnostics | null>(null);
+  const [retrievalMode, setRetrievalMode] = useState<"hybrid" | "vector" | "lexical" | null>(null);
+  const [retrievalFallbackReason, setRetrievalFallbackReason] = useState<string | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
   const [isProfileLoading, setIsProfileLoading] = useState(Boolean(initialContext.documentId));
   const [isSearching, setIsSearching] = useState(false);
@@ -114,6 +116,8 @@ export default function SearchPage() {
     setDocumentType(null);
     setQueryIntent(null);
     setDiagnostics(null);
+    setRetrievalMode(null);
+    setRetrievalFallbackReason(null);
     setIsSearching(false);
     setMessage("Enter a question or search phrase.");
   }
@@ -132,6 +136,8 @@ export default function SearchPage() {
     setDocumentType(null);
     setQueryIntent(null);
     setDiagnostics(null);
+    setRetrievalMode(null);
+    setRetrievalFallbackReason(null);
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
@@ -145,6 +151,8 @@ export default function SearchPage() {
       setDocumentType(response.document_type ?? null);
       setQueryIntent(response.query_intent ?? null);
       setDiagnostics(response.diagnostics ?? null);
+      setRetrievalMode(response.retrieval_mode ?? null);
+      setRetrievalFallbackReason(response.retrieval_fallback_reason ?? null);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
     } catch (error) {
       if (searchId === latestSearchId.current) {
@@ -227,6 +235,8 @@ export default function SearchPage() {
         documentType={documentType}
         queryIntent={queryIntent}
         diagnostics={diagnostics}
+        retrievalMode={retrievalMode}
+        retrievalFallbackReason={retrievalFallbackReason}
         onSuggestionSelect={handleSuggestionSelect}
       />
     </AppShell>

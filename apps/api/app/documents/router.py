@@ -1,27 +1,38 @@
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.models import Chunk, Document
-from app.documents.parse_quality import build_parse_quality_for_document
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.documents.intelligence import build_document_profile
 from app.documents.ocr import TesseractOcrProvider
+from app.documents.parse_quality import build_parse_quality_for_document
 from app.documents.page_rendering import DocumentPageRenderError, render_document_page_image
-from app.documents.schemas import ChunkRead, DocumentDetail, DocumentPageRead, DocumentProfileRead, DocumentRead
+from app.documents.processing_status import build_processing_status
+from app.documents.schemas import (
+    ChunkRead,
+    DocumentDetail,
+    DocumentPageRead,
+    DocumentProcessingStatusRead,
+    DocumentProfileRead,
+    DocumentRead,
+)
 from app.documents.service import (
     DocumentPersistenceError,
     DocumentReindexError,
     EmbeddingProviderFactory,
     OcrProviderFactory,
+    SessionFactory,
+    create_upload_record,
     delete_document,
     get_document_or_404,
-    index_stored_upload,
     list_documents,
-    reindex_document,
+    process_document_reindex,
+    process_document_upload,
+    start_reindex_document,
 )
 from app.documents.storage import FileValidationError, UploadTooLargeError, save_upload_stream
 from app.retrieval.embeddings import LocalEmbeddingProvider
@@ -50,6 +61,10 @@ def get_ocr_provider_factory(settings: Annotated[Settings, Depends(get_settings)
         tesseract_cmd=settings.tesseract_cmd,
         timeout_seconds=settings.ocr_page_timeout_seconds,
     )
+
+
+def get_session_factory() -> SessionFactory:
+    return SessionLocal
 
 
 def document_read(document: Document) -> DocumentRead:
@@ -145,9 +160,11 @@ def document_page_read(document: Document) -> list[DocumentPageRead]:
 
 @router.post("", response_model=DocumentRead)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File()],
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
     ocr_provider_factory: Annotated[OcrProviderFactory, Depends(get_ocr_provider_factory)],
 ) -> DocumentRead:
@@ -165,17 +182,20 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        return document_read(
-            index_stored_upload(
-                db,
-                stored,
-                embedder_factory,
-                ocr_provider_factory=ocr_provider_factory,
-                ocr_language=settings.ocr_language,
-                ocr_dpi=settings.ocr_dpi,
-                ocr_max_pages=settings.ocr_max_pages,
-            )
+        document = create_upload_record(db, stored)
+        response = document_read(document)
+        background_tasks.add_task(
+            process_document_upload,
+            session_factory,
+            document.id,
+            stored,
+            embedder_factory,
+            ocr_provider_factory=ocr_provider_factory,
+            ocr_language=settings.ocr_language,
+            ocr_dpi=settings.ocr_dpi,
+            ocr_max_pages=settings.ocr_max_pages,
         )
+        return response
     except DocumentPersistenceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -189,6 +209,12 @@ def documents(db: Annotated[Session, Depends(get_db)]) -> list[DocumentRead]:
 def document_detail(document_id: str, db: Annotated[Session, Depends(get_db)]) -> DocumentDetail:
     document = get_document_or_404(db, document_id)
     return document_detail_read(document)
+
+
+@router.get("/{document_id}/status", response_model=DocumentProcessingStatusRead)
+def document_processing_status(document_id: str, db: Annotated[Session, Depends(get_db)]) -> DocumentProcessingStatusRead:
+    document = get_document_or_404(db, document_id)
+    return build_processing_status(document)
 
 
 @router.get("/{document_id}/pages", response_model=list[DocumentPageRead])
@@ -251,25 +277,29 @@ def delete_document_route(
 
 @router.post("/{document_id}/reindex", response_model=DocumentRead)
 def reindex_document_route(
+    background_tasks: BackgroundTasks,
     document_id: str,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
     ocr_provider_factory: Annotated[OcrProviderFactory, Depends(get_ocr_provider_factory)],
 ) -> DocumentRead:
     try:
-        return document_read(
-            reindex_document(
-                db,
-                document_id,
-                embedder_factory,
-                storage_dir=settings.storage_dir,
-                ocr_provider_factory=ocr_provider_factory,
-                ocr_language=settings.ocr_language,
-                ocr_dpi=settings.ocr_dpi,
-                ocr_max_pages=settings.ocr_max_pages,
-            )
+        document = start_reindex_document(db, document_id)
+        response = document_read(document)
+        background_tasks.add_task(
+            process_document_reindex,
+            session_factory,
+            document_id,
+            embedder_factory,
+            storage_dir=settings.storage_dir,
+            ocr_provider_factory=ocr_provider_factory,
+            ocr_language=settings.ocr_language,
+            ocr_dpi=settings.ocr_dpi,
+            ocr_max_pages=settings.ocr_max_pages,
         )
+        return response
     except DocumentReindexError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except DocumentPersistenceError as exc:
