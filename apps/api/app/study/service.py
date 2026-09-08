@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from uuid import uuid4
@@ -8,10 +9,14 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import Chunk, Document, DocumentStatus, DocumentSummary, StudyAnswer, StudyQuestion
 from app.documents.intelligence import build_document_profile, chunk_heading, clean_text, ordered_chunks, strip_leading_heading
+from app.llm.providers import LlmProvider, LocalHeuristicLlmProvider, get_llm_provider
 from app.retrieval.document_answers import build_document_aware_answer
+from app.retrieval.embeddings import EmbeddingProvider
 from app.retrieval.query_router import route_query
+from app.retrieval.search import SearchHit, build_snippet, hybrid_search_chunks
 
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
@@ -68,6 +73,7 @@ _DEFAULT_STUDY_QUESTIONS = [
     "What are the main topics covered in this document?",
     "What dates are mentioned?",
 ]
+EmbeddingProviderFactory = Callable[[], EmbeddingProvider]
 
 
 class StudyError(Exception):
@@ -118,6 +124,26 @@ def _citation(document: Document, chunk: Chunk) -> dict[str, object]:
         "section_heading": chunk_heading(chunk),
         "page_image_url": f"/documents/{document.id}/pages/{chunk.page.page_number}/image",
         "document_page_url": f"/documents/{document.id}?page={chunk.page.page_number}&chunk={chunk.id}",
+        "snippet": build_snippet(chunk.text),
+        "score": 1.0,
+        "source_score": 1.0,
+        "ranking_signals": {"study_context": 1.0},
+    }
+
+
+def _citation_from_hit(hit: SearchHit) -> dict[str, object]:
+    return {
+        "chunk_id": hit.chunk_id,
+        "document_id": hit.document_id,
+        "document_filename": hit.document_filename,
+        "page_number": hit.page_number,
+        "section_heading": hit.section_heading,
+        "page_image_url": f"/documents/{hit.document_id}/pages/{hit.page_number}/image",
+        "document_page_url": f"/documents/{hit.document_id}?page={hit.page_number}&chunk={hit.chunk_id}",
+        "snippet": build_snippet(hit.text),
+        "score": hit.score,
+        "source_score": hit.source_score,
+        "ranking_signals": hit.ranking_signals,
     }
 
 
@@ -152,13 +178,115 @@ def _summary_chunks(document: Document, limit: int = 3) -> list[Chunk]:
     return sorted(selected, key=lambda chunk: chunk.chunk_index)
 
 
-def build_document_summary(document: Document) -> GeneratedSummary:
-    selected_chunks = _summary_chunks(document)
+def _retrieval_chunk_score(chunk: Chunk, query: str) -> tuple[int, int, int]:
+    heading = chunk_heading(chunk)
+    if heading == "REFERENCES":
+        return (-1, -100, -chunk.chunk_index)
+    query_words = _words(query)
+    chunk_words = _words(f"{heading} {chunk.text}")
+    overlap = len(query_words.intersection(chunk_words))
+    return (overlap, _SUMMARY_HEADING_WEIGHTS.get(heading or "", 10), -chunk.chunk_index)
+
+
+def _retrieved_chunks(document: Document, query: str, limit: int = 3) -> list[Chunk]:
+    chunks = [chunk for chunk in ordered_chunks(document) if clean_text(chunk.text)]
+    scored = [(chunk, _retrieval_chunk_score(chunk, query)) for chunk in chunks]
+    matches = [item for item in scored if item[1][0] > 0]
+    if not matches:
+        return _summary_chunks(document, limit=limit)
+    ranked = sorted(matches, key=lambda item: item[1], reverse=True)
+    return [chunk for chunk, _score in ranked[:limit]]
+
+
+def _chunks_context(chunks: list[Chunk]) -> str:
+    context_parts: list[str] = []
+    for chunk in chunks:
+        heading = chunk_heading(chunk)
+        text = strip_leading_heading(chunk.text, heading)
+        prefix = f"Page {chunk.page.page_number}"
+        if heading:
+            prefix = f"{prefix} {heading}"
+        context_parts.append(f"{prefix}\n{text}")
+    return "\n\n".join(context_parts)
+
+
+def _hits_context(hits: list[SearchHit]) -> str:
+    context_parts: list[str] = []
+    for hit in hits:
+        text = strip_leading_heading(hit.text, hit.section_heading)
+        prefix = f"Page {hit.page_number}"
+        if hit.section_heading:
+            prefix = f"{prefix} {hit.section_heading}"
+        context_parts.append(f"{prefix}\n{text}")
+    return "\n\n".join(context_parts)
+
+
+def _embedding_for_query(
+    query: str,
+    embedder_factory: EmbeddingProviderFactory | None,
+) -> tuple[list[float] | None, str | None]:
+    if embedder_factory is None:
+        return None, "Embedding provider unavailable; lexical search was used."
+    try:
+        return embedder_factory().embed_texts([query])[0], None
+    except Exception as exc:
+        return None, f"Embedding provider unavailable: {exc}"
+
+
+def _study_retrieval_hits(
+    db: Session,
+    document: Document,
+    query: str,
+    limit: int,
+    embedder_factory: EmbeddingProviderFactory | None,
+) -> list[SearchHit]:
+    query_embedding, fallback_reason = _embedding_for_query(query, embedder_factory)
+    hits, _mode = hybrid_search_chunks(
+        db,
+        query_embedding,
+        query,
+        limit,
+        document.id,
+        fallback_reason=fallback_reason,
+    )
+    return hits[:limit]
+
+
+def build_document_summary(
+    document: Document,
+    provider: LlmProvider | None = None,
+    retrieval_hits: list[SearchHit] | None = None,
+) -> GeneratedSummary:
+    if retrieval_hits is not None:
+        if not retrieval_hits:
+            raise StudyDocumentNotReadyError("This document has no indexed evidence chunks to summarize.")
+        if provider is not None:
+            summary = clean_text(provider.summarize(_hits_context(retrieval_hits)))
+            if not summary:
+                raise StudyDocumentNotReadyError("This document has no usable text to summarize.")
+            return GeneratedSummary(content=summary, citations=[_citation_from_hit(hit) for hit in retrieval_hits])
+        sentences = [_first_sentence(strip_leading_heading(hit.text, hit.section_heading)) for hit in retrieval_hits]
+        sentences = [sentence for sentence in sentences if sentence]
+        if not sentences:
+            raise StudyDocumentNotReadyError("This document has no usable text to summarize.")
+        return GeneratedSummary(content=" ".join(sentences), citations=[_citation_from_hit(hit) for hit in retrieval_hits])
+
+    selected_chunks = (
+        _retrieved_chunks(document, "document overview summary main topics key points", limit=3)
+        if provider is not None
+        else _summary_chunks(document)
+    )
     if not selected_chunks:
         raise StudyDocumentNotReadyError("This document has no indexed evidence chunks to summarize.")
 
     sentences: list[str] = []
     citations: list[dict[str, object]] = []
+    if provider is not None:
+        summary = clean_text(provider.summarize(_chunks_context(selected_chunks)))
+        if not summary:
+            raise StudyDocumentNotReadyError("This document has no usable text to summarize.")
+        return GeneratedSummary(content=summary, citations=[_citation(document, chunk) for chunk in selected_chunks])
+
     for chunk in selected_chunks:
         heading = chunk_heading(chunk)
         sentence = _first_sentence(strip_leading_heading(chunk.text, heading))
@@ -190,11 +318,43 @@ def _dedupe_questions(questions: list[str]) -> list[str]:
     return unique
 
 
-def build_study_questions(document: Document, count: int = 5) -> list[GeneratedQuestion]:
+def build_study_questions(
+    document: Document,
+    count: int = 5,
+    provider: LlmProvider | None = None,
+    retrieval_hits: list[SearchHit] | None = None,
+) -> list[GeneratedQuestion]:
     profile = build_document_profile(document)
     candidate_questions = _dedupe_questions([*profile.suggested_questions, *_DEFAULT_STUDY_QUESTIONS])
     generated: list[GeneratedQuestion] = []
+    if provider is not None:
+        if retrieval_hits is not None:
+            citations = [_citation_from_hit(hit) for hit in retrieval_hits]
+            context = _hits_context(retrieval_hits)
+        else:
+            retrieved_chunks = _retrieved_chunks(
+                document,
+                "study questions main topics key facts methods results datasets limitations payment terms parties export controls",
+                limit=3,
+            )
+            citations = [_citation(document, chunk) for chunk in retrieved_chunks]
+            context = _chunks_context(retrieved_chunks)
+        for provider_question in provider.generate_questions(context, count=count):
+            if any(_similar_enough(provider_question.question, existing.question) for existing in generated):
+                continue
+            generated.append(
+                GeneratedQuestion(
+                    question=provider_question.question,
+                    expected_answer=provider_question.expected_answer,
+                    citations=citations,
+                )
+            )
+            if len(generated) >= count:
+                return generated
+
     for question in candidate_questions:
+        if any(_similar_enough(question, existing.question) for existing in generated):
+            continue
         route = route_query(question, profile.document_type)
         result = build_document_aware_answer(question, document, profile, route)
         if result is None or result.answer is None or result.quality.status != "answerable":
@@ -219,20 +379,18 @@ def build_study_questions(document: Document, count: int = 5) -> list[GeneratedQ
     return generated
 
 
-def score_study_answer(question: StudyQuestion, answer_text: str) -> StudyScore:
-    expected_words = _words(question.expected_answer)
-    answer_words = _words(answer_text)
-    if not expected_words or not answer_words:
-        score = 0.0
-    else:
-        score = len(expected_words.intersection(answer_words)) / len(expected_words)
-    score = round(max(0.0, min(1.0, score)), 2)
+def score_study_answer(question: StudyQuestion, answer_text: str, provider: LlmProvider | None = None) -> StudyScore:
+    llm_provider = provider or LocalHeuristicLlmProvider()
+    evaluated = llm_provider.evaluate_answer(question.question, question.expected_answer, answer_text)
+    score = round(max(0.0, min(1.0, evaluated.score)), 2)
     if score >= 0.75:
         feedback = "Strong answer. You covered the main cited points."
     elif score >= 0.4:
         feedback = "Partial answer. Add more of the cited details to make it stronger."
     else:
         feedback = "Needs work. Revisit the cited evidence and include the key terms from the expected answer."
+    if evaluated.feedback and "Missing terms:" in evaluated.feedback:
+        feedback = f"{feedback} {evaluated.feedback}"
     return StudyScore(score=score, feedback=feedback)
 
 
@@ -264,9 +422,25 @@ def list_study_questions(db: Session, document_id: str) -> list[StudyQuestion]:
     )
 
 
-def generate_document_summary(db: Session, document_id: str) -> DocumentSummary:
+def _default_provider() -> LlmProvider:
+    return get_llm_provider(get_settings())
+
+
+def generate_document_summary(
+    db: Session,
+    document_id: str,
+    provider: LlmProvider | None = None,
+    embedder_factory: EmbeddingProviderFactory | None = None,
+) -> DocumentSummary:
     document = _get_ready_document(db, document_id)
-    generated = build_document_summary(document)
+    retrieval_hits = _study_retrieval_hits(
+        db,
+        document,
+        "document overview summary main topics key points",
+        3,
+        embedder_factory,
+    )
+    generated = build_document_summary(document, provider=provider or _default_provider(), retrieval_hits=retrieval_hits or None)
     summary = DocumentSummary(
         id=str(uuid4()),
         document_id=document.id,
@@ -279,12 +453,30 @@ def generate_document_summary(db: Session, document_id: str) -> DocumentSummary:
     return summary
 
 
-def generate_study_questions(db: Session, document_id: str, count: int = 5) -> list[StudyQuestion]:
+def generate_study_questions(
+    db: Session,
+    document_id: str,
+    count: int = 5,
+    provider: LlmProvider | None = None,
+    embedder_factory: EmbeddingProviderFactory | None = None,
+) -> list[StudyQuestion]:
     document = _get_ready_document(db, document_id)
     existing_questions = [question.question for question in list_study_questions(db, document_id)]
+    retrieval_hits = _study_retrieval_hits(
+        db,
+        document,
+        "study questions main topics key facts methods results datasets limitations payment terms parties export controls",
+        3,
+        embedder_factory,
+    )
     generated_questions = [
         generated
-        for generated in build_study_questions(document, count=count + len(existing_questions))
+        for generated in build_study_questions(
+            document,
+            count=count + len(existing_questions),
+            provider=provider or _default_provider(),
+            retrieval_hits=retrieval_hits or None,
+        )
         if not any(_similar_enough(generated.question, existing) for existing in existing_questions)
     ][:count]
     questions = [
@@ -305,11 +497,17 @@ def generate_study_questions(db: Session, document_id: str, count: int = 5) -> l
     return questions
 
 
-def grade_study_answer(db: Session, document_id: str, question_id: str, answer_text: str) -> StudyAnswer:
+def grade_study_answer(
+    db: Session,
+    document_id: str,
+    question_id: str,
+    answer_text: str,
+    provider: LlmProvider | None = None,
+) -> StudyAnswer:
     question = db.get(StudyQuestion, question_id)
     if question is None or question.document_id != document_id:
         raise StudyQuestionNotFoundError("Study question not found for this document.")
-    scored = score_study_answer(question, answer_text)
+    scored = score_study_answer(question, answer_text, provider=provider or _default_provider())
     answer = StudyAnswer(
         id=str(uuid4()),
         question_id=question.id,

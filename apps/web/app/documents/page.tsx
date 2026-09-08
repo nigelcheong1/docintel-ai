@@ -6,8 +6,14 @@ import { AppShell } from "@/components/app-shell";
 import { DocumentList } from "@/components/document-list";
 import { UploadPanel } from "@/components/upload-panel";
 import { Panel } from "@/components/ui/panel";
-import { deleteDocument, getDocument, getDocuments, reindexDocument } from "@/lib/api";
+import { deleteDocument, getDocument, getDocuments, getDocumentStatus, reindexDocument } from "@/lib/api";
 import type { DocumentDetail } from "@/lib/types";
+
+const ACTIVE_DOCUMENT_STATUSES = new Set(["uploaded", "processing", "ocr_processing", "embedding"]);
+
+function isActivelyProcessing(document: DocumentDetail): boolean {
+  return ACTIVE_DOCUMENT_STATUSES.has(document.status);
+}
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<DocumentDetail[]>([]);
@@ -16,7 +22,21 @@ export default function DocumentsPage() {
   async function refreshDocuments() {
     try {
       const summaries = await getDocuments();
-      const result = await Promise.all(summaries.map((document) => getDocument(document.id)));
+      const result = await Promise.all(
+        summaries.map(async (document) => {
+          const detail = await getDocument(document.id);
+          if (!isActivelyProcessing(detail)) {
+            return detail;
+          }
+
+          try {
+            const processingStatus = await getDocumentStatus(document.id);
+            return { ...detail, processing_status: processingStatus };
+          } catch {
+            return detail;
+          }
+        }),
+      );
       setDocuments(result);
       setMessage("");
     } catch (error) {
@@ -29,6 +49,19 @@ export default function DocumentsPage() {
       void refreshDocuments();
     });
   }, []);
+
+  const hasActiveProcessing = documents.some(isActivelyProcessing);
+
+  useEffect(() => {
+    if (!hasActiveProcessing) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshDocuments();
+    }, 1500);
+    return () => window.clearInterval(intervalId);
+  }, [hasActiveProcessing]);
 
   async function handleDelete(documentId: string) {
     await deleteDocument(documentId);

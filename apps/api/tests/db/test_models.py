@@ -13,6 +13,10 @@ def test_document_status_includes_ocr_processing():
     assert DocumentStatus.OCR_PROCESSING.value == "ocr_processing"
 
 
+def test_document_status_includes_embedding_stage():
+    assert DocumentStatus.EMBEDDING.value == "embedding"
+
+
 def test_page_ocr_metadata_columns_are_declared():
     columns = Page.__table__.columns
 

@@ -24,11 +24,33 @@ export type DocumentSummary = {
   created_at?: string;
   updated_at?: string;
   parse_quality?: ParseQuality | null;
+  processing_status?: DocumentProcessingStatus | null;
 };
 
 export type DocumentDetail = DocumentSummary & {
   page_count: number;
   chunk_count: number;
+};
+
+export type DocumentProcessingStage = {
+  key: "upload" | "extract" | "ocr" | "chunk" | "embed" | "ready" | "failed";
+  label: string;
+  status: "pending" | "active" | "complete" | "failed";
+  detail?: string | null;
+};
+
+export type DocumentProcessingStatus = {
+  document_id: string;
+  filename: string;
+  status: string;
+  active_stage: "upload" | "extract" | "ocr" | "chunk" | "embed" | "ready" | "failed";
+  progress_percent: number;
+  message: string;
+  page_count: number;
+  chunk_count: number;
+  embedded_chunk_count: number;
+  ocr_page_count: number;
+  stages: DocumentProcessingStage[];
 };
 
 export type DocumentPage = {
@@ -92,8 +114,12 @@ export type StudyCitation = {
   document_filename: string;
   page_number: number;
   section_heading?: string | null;
-  page_image_url: string;
-  document_page_url: string;
+  page_image_url?: string | null;
+  document_page_url?: string | null;
+  snippet?: string | null;
+  score?: number | null;
+  source_score?: number | null;
+  ranking_signals?: Record<string, number>;
 };
 
 export type StudyAnswer = {
@@ -113,6 +139,8 @@ export type StudyQuestion = {
   citations: StudyCitation[];
   created_at: string;
   latest_answer?: StudyAnswer | null;
+  answer_count?: number;
+  recent_answers?: StudyAnswer[];
 };
 
 export type DocumentStudySummary = {
@@ -182,6 +210,8 @@ export type SearchResponse = {
   quality: AnswerQuality;
   document_type?: string | null;
   query_intent: string;
+  retrieval_mode?: "hybrid" | "vector" | "lexical";
+  retrieval_fallback_reason?: string | null;
   diagnostics?: SearchDiagnostics | null;
 };
 

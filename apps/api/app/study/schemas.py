@@ -9,8 +9,12 @@ class StudyCitationRead(BaseModel):
     document_filename: str
     page_number: int
     section_heading: str | None = None
-    page_image_url: str
-    document_page_url: str
+    page_image_url: str | None = None
+    document_page_url: str | None = None
+    snippet: str | None = None
+    score: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    ranking_signals: dict[str, float] = Field(default_factory=dict)
 
 
 class DocumentStudySummaryRead(BaseModel):
@@ -42,6 +46,8 @@ class StudyQuestionRead(BaseModel):
     citations: list[StudyCitationRead]
     created_at: datetime
     latest_answer: StudyAnswerRead | None = None
+    answer_count: int = 0
+    recent_answers: list[StudyAnswerRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

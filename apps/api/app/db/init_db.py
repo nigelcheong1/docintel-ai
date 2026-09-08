@@ -25,8 +25,11 @@ def _add_column_if_missing(connection, table_name: str, column_name: str, column
         connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}"))
 
 
-def document_status_enum_sync_sql() -> str:
-    return f"ALTER TYPE document_status ADD VALUE IF NOT EXISTS '{DocumentStatus.OCR_PROCESSING.value}'"
+def document_status_enum_sync_sql() -> list[str]:
+    return [
+        f"ALTER TYPE document_status ADD VALUE IF NOT EXISTS '{DocumentStatus.OCR_PROCESSING.value}'",
+        f"ALTER TYPE document_status ADD VALUE IF NOT EXISTS '{DocumentStatus.EMBEDDING.value}'",
+    ]
 
 
 def sync_local_schema(bind: Engine) -> None:
@@ -36,7 +39,8 @@ def sync_local_schema(bind: Engine) -> None:
 
     with bind.begin() as connection:
         if bind.dialect.name == "postgresql":
-            connection.execute(text(document_status_enum_sync_sql()))
+            for statement in document_status_enum_sync_sql():
+                connection.execute(text(statement))
         timestamp_type = _ddl_type(bind, "timestamp")
         integer_type = _ddl_type(bind, "integer")
         string_type = _ddl_type(bind, "string")

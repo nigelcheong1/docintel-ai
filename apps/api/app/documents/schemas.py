@@ -59,6 +59,27 @@ class DocumentPageRead(BaseModel):
     ocr_duration_ms: int | None = None
 
 
+class DocumentProcessingStageRead(BaseModel):
+    key: Literal["upload", "extract", "ocr", "chunk", "embed", "ready", "failed"]
+    label: str
+    status: Literal["pending", "active", "complete", "failed"]
+    detail: str | None = None
+
+
+class DocumentProcessingStatusRead(BaseModel):
+    document_id: str
+    filename: str
+    status: str
+    active_stage: Literal["upload", "extract", "ocr", "chunk", "embed", "ready", "failed"]
+    progress_percent: int
+    message: str
+    page_count: int
+    chunk_count: int
+    embedded_chunk_count: int
+    ocr_page_count: int
+    stages: list[DocumentProcessingStageRead]
+
+
 class DocumentSectionRead(BaseModel):
     heading: str
     page_number: int

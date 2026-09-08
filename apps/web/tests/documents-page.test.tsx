@@ -7,6 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   deleteDocument: vi.fn(),
   getDocument: vi.fn(),
   getDocuments: vi.fn(),
+  getDocumentStatus: vi.fn(),
   reindexDocument: vi.fn(),
   uploadDocument: vi.fn(),
 }));
@@ -40,6 +41,7 @@ describe("DocumentsPage", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -72,4 +74,29 @@ describe("DocumentsPage", () => {
     await waitFor(() => expect(apiMocks.getDocuments).toHaveBeenCalledTimes(2));
     expect(apiMocks.getDocument).toHaveBeenCalledTimes(2);
   });
+
+  it("polls for updates while a document is processing", async () => {
+    apiMocks.getDocuments.mockResolvedValue([{ ...documentSummary, status: "embedding" }]);
+    apiMocks.getDocument.mockResolvedValue({ ...documentDetail, status: "embedding" });
+    apiMocks.getDocumentStatus.mockResolvedValue({
+      document_id: "doc-1",
+      filename: "quarterly-report.pdf",
+      status: "embedding",
+      active_stage: "embed",
+      progress_percent: 80,
+      message: "Embedding evidence chunks for semantic search.",
+      page_count: 12,
+      chunk_count: 48,
+      embedded_chunk_count: 24,
+      ocr_page_count: 0,
+      stages: [],
+    });
+
+    render(<DocumentsPage />);
+
+    expect(await screen.findAllByText("Embedding evidence chunks for semantic search.")).toHaveLength(2);
+    expect(apiMocks.getDocumentStatus).toHaveBeenCalledWith("doc-1");
+
+    await waitFor(() => expect(apiMocks.getDocuments).toHaveBeenCalledTimes(2), { timeout: 2500 });
+  }, 5000);
 });

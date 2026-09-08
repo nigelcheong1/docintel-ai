@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.db.session import get_db
-from app.documents.router import get_embedding_provider
 from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
@@ -105,7 +104,7 @@ def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     client = TestClient(app)
 
     response = client.post("/search", json={"query": "invoice total", "top_k": 3})
@@ -127,6 +126,37 @@ def test_search_endpoint_returns_cited_hits(db_session, tmp_path):
     assert body["quality"]["confidence"] in {"strong", "moderate"}
 
 
+def test_search_endpoint_uses_lexical_fallback_when_embedding_provider_fails(db_session, tmp_path):
+    content = create_sample_pdf(
+        tmp_path / "fallback.pdf",
+        "Lexical fallback evidence stays searchable when the local embedding model is unavailable.",
+    )
+    stored = save_upload_bytes("fallback.pdf", "application/pdf", content, tmp_path / "storage", 20)
+    index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+
+    class FailingEmbeddingProvider:
+        def embed_texts(self, texts):
+            raise RuntimeError("local model could not be loaded")
+
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FailingEmbeddingProvider()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post("/search", json={"query": "lexical fallback evidence", "top_k": 3})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["retrieval_mode"] == "lexical"
+    assert "Embedding provider unavailable" in body["retrieval_fallback_reason"]
+    assert [hit["document_filename"] for hit in body["hits"]] == ["fallback.pdf"]
+    assert "lexical fallback evidence" in body["hits"][0]["snippet"].lower()
+
+
 def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
     content = create_sample_pdf(
         tmp_path / "resume.pdf",
@@ -141,7 +171,7 @@ def test_search_endpoint_returns_chunk_section_heading(db_session, tmp_path):
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     client = TestClient(app)
 
     response = client.post("/search", json={"query": "projects", "top_k": 1})
@@ -165,7 +195,7 @@ def test_scoped_search_on_deferred_ocr_document_returns_insufficient_evidence(db
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     client = TestClient(app)
 
     response = client.post("/search", json={"query": "What is in this scan?", "document_id": document.id})
@@ -221,7 +251,7 @@ def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):
         yield object()
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post("/search", json={"query": "projects", "top_k": 2})
 
     assert response.status_code == 200
@@ -230,7 +260,12 @@ def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):
     assert len(body["hits"]) == 2
     assert body["hits"][0]["chunk_id"] == "project-12"
     assert body["hits"][0]["source_score"] == 0.84
-    assert body["hits"][0]["ranking_signals"] == {"keyword_overlap": 1.0, "section_intent": 1.0}
+    assert body["hits"][0]["ranking_signals"] == {
+        "vector_score": 0.84,
+        "lexical_score": 0.0,
+        "keyword_overlap": 1.0,
+        "section_intent": 1.0,
+    }
 
 
 def test_search_endpoint_returns_diagnostics_and_evidence_roles(monkeypatch):
@@ -269,7 +304,7 @@ def test_search_endpoint_returns_diagnostics_and_evidence_roles(monkeypatch):
         yield object()
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post("/search", json={"query": "What total amount is due?", "top_k": 2})
 
     assert response.status_code == 200
@@ -330,7 +365,7 @@ def test_search_endpoint_includes_document_aware_evidence_when_vector_hit_misses
         yield InMemoryDocumentDb(document)
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post(
         "/search",
         json={"query": "What is this document about?", "top_k": 1, "document_id": document.id},
@@ -382,7 +417,7 @@ def test_search_endpoint_abstains_when_retrieved_hits_do_not_answer_question(mon
         yield object()
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post(
         "/search",
         json={"query": "How does invoice payment work?", "top_k": 2, "document_id": "document-1"},
@@ -421,7 +456,7 @@ def test_search_endpoint_answers_research_paper_overview_from_profile(db_session
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post(
         "/search",
         json={"query": "What is this document about?", "top_k": 3, "document_id": document.id},
@@ -459,7 +494,7 @@ def test_search_endpoint_answers_invoice_totals_from_profile(db_session, tmp_pat
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post(
         "/search",
         json={"query": "What total amount is due?", "top_k": 3, "document_id": document.id},
@@ -494,7 +529,7 @@ def test_search_endpoint_returns_type_aware_mismatch_for_research_paper(db_sessi
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     response = TestClient(app).post(
         "/search",
         json={"query": "Who are the parties involved?", "top_k": 3, "document_id": document.id},

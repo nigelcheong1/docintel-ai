@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { useState } from "react";
 import {
   AlertTriangle,
@@ -10,11 +9,9 @@ import {
   Eye,
   Info,
   Lightbulb,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 
+import { SourceViewer, type SourceViewerSource } from "@/components/source-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -78,28 +75,6 @@ function formatRejectedReason(reason: string) {
   return reason;
 }
 
-function SourcePreviewControl({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-slate-600 shadow-sm transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
 function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostics }) {
   return (
     <Panel className="p-5" aria-labelledby="search-diagnostics-heading">
@@ -145,10 +120,47 @@ function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostic
   );
 }
 
-function EvidenceCard({ hit }: { hit: SearchHit }) {
+function RetrievalFallbackNotice({
+  retrievalMode,
+  retrievalFallbackReason,
+}: {
+  retrievalMode?: "hybrid" | "vector" | "lexical" | null;
+  retrievalFallbackReason?: string | null;
+}) {
+  if (retrievalMode !== "lexical" || !retrievalFallbackReason) {
+    return null;
+  }
+
+  return (
+    <Panel className="border-amber-200 bg-amber-50/80 p-4" aria-label="Retrieval fallback">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-amber-700" aria-hidden="true" />
+        <div>
+          <p className="text-sm font-semibold text-amber-900">Lexical fallback</p>
+          <p className="mt-1 text-sm leading-6 text-amber-900">{retrievalFallbackReason}</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function sourceFromHit(hit: SearchHit): SourceViewerSource {
+  return {
+    chunk_id: hit.chunk_id,
+    document_id: hit.document_id,
+    document_filename: hit.document_filename,
+    page_number: hit.page_number,
+    section_heading: hit.section_heading,
+    page_image_url: hit.page_image_url,
+    document_page_url: hit.document_page_url,
+    snippet: hit.snippet,
+    score: hit.score,
+    source_score: hit.source_score,
+  };
+}
+
+function EvidenceCard({ hit, onPreviewSource }: { hit: SearchHit; onPreviewSource: (source: SourceViewerSource) => void }) {
   const isAnswerEvidence = hit.result_role === "answer_evidence";
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(100);
   const documentPageUrl = hit.document_page_url ?? `/documents/${hit.document_id}?page=${hit.page_number}`;
 
   return (
@@ -185,52 +197,15 @@ function EvidenceCard({ hit }: { hit: SearchHit }) {
         {hit.page_image_url ? (
           <button
             type="button"
-            aria-expanded={isPreviewOpen}
-            aria-label={
-              isPreviewOpen ? `Hide source preview for page ${hit.page_number}` : `Preview source for page ${hit.page_number}`
-            }
+            aria-label={`Preview source for page ${hit.page_number}`}
             className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-600 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
-            onClick={() => setIsPreviewOpen((current) => !current)}
+            onClick={() => onPreviewSource(sourceFromHit(hit))}
           >
             <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-            {isPreviewOpen ? "Hide source" : "Preview source"}
+            Preview source
           </button>
         ) : null}
       </div>
-      {isPreviewOpen && hit.page_image_url ? (
-        <section className="mt-3 rounded-lg border border-teal-100 bg-slate-50 p-3" aria-label={`Source preview page ${hit.page_number}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-slate-600">Page {hit.page_number} source</p>
-            <div className="flex items-center gap-2">
-              <span className="min-w-12 text-center text-xs font-semibold text-slate-600">{previewZoom}%</span>
-              <SourcePreviewControl
-                label="Zoom out source preview"
-                onClick={() => setPreviewZoom((current) => Math.max(50, current - 25))}
-              >
-                <ZoomOut className="h-4 w-4" aria-hidden="true" />
-              </SourcePreviewControl>
-              <SourcePreviewControl label="Reset source preview zoom" onClick={() => setPreviewZoom(100)}>
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
-              </SourcePreviewControl>
-              <SourcePreviewControl
-                label="Zoom in source preview"
-                onClick={() => setPreviewZoom((current) => Math.min(200, current + 25))}
-              >
-                <ZoomIn className="h-4 w-4" aria-hidden="true" />
-              </SourcePreviewControl>
-            </div>
-          </div>
-          <div className="mt-3 max-h-96 overflow-auto rounded-md border border-line bg-white p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element -- Source previews are served by the local document API. */}
-            <img
-              src={hit.page_image_url}
-              alt={`Page ${hit.page_number} source preview for ${hit.document_filename}`}
-              className="mx-auto block h-auto max-w-none rounded-sm border border-slate-200 bg-white shadow-sm"
-              style={{ width: `${previewZoom}%`, minWidth: `${previewZoom}%` }}
-            />
-          </div>
-        </section>
-      ) : null}
       {Object.keys(hit.ranking_signals).length > 0 ? (
         <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-xs">
           {Object.entries(hit.ranking_signals).map(([signal, value]) => (
@@ -245,7 +220,15 @@ function EvidenceCard({ hit }: { hit: SearchHit }) {
   );
 }
 
-function EvidenceGroup({ title, hits }: { title: string; hits: SearchHit[] }) {
+function EvidenceGroup({
+  title,
+  hits,
+  onPreviewSource,
+}: {
+  title: string;
+  hits: SearchHit[];
+  onPreviewSource: (source: SourceViewerSource) => void;
+}) {
   if (hits.length === 0) {
     return null;
   }
@@ -255,7 +238,7 @@ function EvidenceGroup({ title, hits }: { title: string; hits: SearchHit[] }) {
         {title}
       </h2>
       {hits.map((hit) => (
-        <EvidenceCard key={hit.chunk_id} hit={hit} />
+        <EvidenceCard key={hit.chunk_id} hit={hit} onPreviewSource={onPreviewSource} />
       ))}
     </section>
   );
@@ -268,6 +251,8 @@ export function SearchResults({
   documentType,
   queryIntent,
   diagnostics,
+  retrievalMode,
+  retrievalFallbackReason,
   onSuggestionSelect,
 }: {
   hits: SearchHit[];
@@ -276,10 +261,18 @@ export function SearchResults({
   documentType?: string | null;
   queryIntent?: string | null;
   diagnostics?: SearchDiagnostics | null;
+  retrievalMode?: "hybrid" | "vector" | "lexical" | null;
+  retrievalFallbackReason?: string | null;
   onSuggestionSelect?: (question: string) => void;
 }) {
+  const [selectedSource, setSelectedSource] = useState<SourceViewerSource | null>(null);
   if (hits.length === 0 && !answer && quality?.status !== "insufficient_evidence") {
-    return <p className="rounded border border-line bg-white p-4 text-sm text-slate-600">No cited evidence found.</p>;
+    return (
+      <div className="space-y-3">
+        <RetrievalFallbackNotice retrievalMode={retrievalMode} retrievalFallbackReason={retrievalFallbackReason} />
+        <p className="rounded border border-line bg-white p-4 text-sm text-slate-600">No cited evidence found.</p>
+      </div>
+    );
   }
 
   const answerChunkIds = new Set([
@@ -289,9 +282,11 @@ export function SearchResults({
   const answerEvidence = hits.filter((hit) => hit.result_role === "answer_evidence" || answerChunkIds.has(hit.chunk_id));
   const answerEvidenceIds = new Set(answerEvidence.map((hit) => hit.chunk_id));
   const relatedHits = hits.filter((hit) => !answerEvidenceIds.has(hit.chunk_id));
+  const sourcesByChunkId = new Map(hits.map((hit) => [hit.chunk_id, sourceFromHit(hit)]));
 
   return (
     <div className="space-y-3">
+      <RetrievalFallbackNotice retrievalMode={retrievalMode} retrievalFallbackReason={retrievalFallbackReason} />
       {answer ? (
         <Panel tone="accent" className="border-l-4 border-l-accent p-5" aria-labelledby="answer-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -313,9 +308,22 @@ export function SearchResults({
           {answer.citations.length > 0 ? (
             <ul className="mt-3 space-y-1 text-xs text-slate-600">
               {answer.citations.map((citation) => (
-                <li key={citation.chunk_id} className="break-words">
-                  {citation.document_filename}, page {citation.page_number}
-                  {citation.section_heading ? `, ${citation.section_heading}` : ""}
+                <li key={citation.chunk_id} className="flex flex-wrap items-center gap-2 break-words">
+                  <span>
+                    {citation.document_filename}, page {citation.page_number}
+                    {citation.section_heading ? `, ${citation.section_heading}` : ""}
+                  </span>
+                  {sourcesByChunkId.get(citation.chunk_id)?.page_image_url ? (
+                    <button
+                      type="button"
+                      aria-label={`Preview citation ${citation.document_filename} page ${citation.page_number}`}
+                      className="inline-flex min-h-7 items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-800 transition hover:border-teal-500 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+                      onClick={() => setSelectedSource(sourcesByChunkId.get(citation.chunk_id) ?? null)}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      Preview
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -365,8 +373,13 @@ export function SearchResults({
         </Panel>
       ) : null}
       {diagnostics ? <SearchDiagnosticsPanel diagnostics={diagnostics} /> : null}
-      <EvidenceGroup title="Answer evidence" hits={answerEvidence} />
-      <EvidenceGroup title={answerEvidence.length > 0 ? "Related evidence" : "Evidence results"} hits={relatedHits} />
+      <EvidenceGroup title="Answer evidence" hits={answerEvidence} onPreviewSource={setSelectedSource} />
+      <EvidenceGroup
+        title={answerEvidence.length > 0 ? "Related evidence" : "Evidence results"}
+        hits={relatedHits}
+        onPreviewSource={setSelectedSource}
+      />
+      {selectedSource ? <SourceViewer source={selectedSource} onClose={() => setSelectedSource(null)} /> : null}
     </div>
   );
 }

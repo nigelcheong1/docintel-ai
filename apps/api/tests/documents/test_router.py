@@ -47,6 +47,10 @@ class FakeOcrProvider:
         return OcrPageResult(text=self.text, confidence=88.0, engine_name=self.engine_name, duration_ms=5)
 
 
+def override_task_session_factory(db_session):
+    return lambda: db_session
+
+
 def test_document_page_read_derives_processing_statuses_without_database():
     def page(page_number, *, text_source, ocr_confidence, text="Searchable page text."):
         return SimpleNamespace(
@@ -311,6 +315,7 @@ def test_image_upload_indexes_image_when_ocr_is_available(db_session, tmp_path):
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[router.get_session_factory] = lambda: override_task_session_factory(db_session)
     app.dependency_overrides[get_settings] = lambda: Settings(storage_dir=tmp_path / "storage")
     app.dependency_overrides[router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     app.dependency_overrides[router.get_ocr_provider_factory] = lambda: lambda: FakeOcrProvider()
@@ -322,7 +327,10 @@ def test_image_upload_indexes_image_when_ocr_is_available(db_session, tmp_path):
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "indexed"
+    assert response.json()["status"] == "processing"
+    detail_response = client.get(f"/documents/{response.json()['id']}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["status"] == "indexed"
 
 
 @pytest.mark.integration
@@ -339,6 +347,7 @@ def test_image_upload_defers_ocr_without_initializing_embedding_provider(db_sess
         return unexpected_provider
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[router.get_session_factory] = lambda: override_task_session_factory(db_session)
     app.dependency_overrides[get_settings] = lambda: Settings(storage_dir=tmp_path / "storage")
     app.dependency_overrides[router.get_embedding_provider_factory] = unexpected_provider_factory
     app.dependency_overrides[router.get_ocr_provider_factory] = lambda: lambda: FakeOcrProvider(available=False)
@@ -347,7 +356,10 @@ def test_image_upload_defers_ocr_without_initializing_embedding_provider(db_sess
     response = client.post("/documents", files={"file": ("scan.png", b"image-bytes", "image/png")})
 
     assert response.status_code == 200
-    assert response.json()["status"] == "deferred_ocr"
+    assert response.json()["status"] == "processing"
+    detail_response = client.get(f"/documents/{response.json()['id']}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["status"] == "deferred_ocr"
 
 
 @pytest.mark.integration
@@ -431,6 +443,7 @@ def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_pa
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[router.get_session_factory] = lambda: override_task_session_factory(db_session)
     app.dependency_overrides[router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     client = TestClient(app)
 
@@ -438,7 +451,10 @@ def test_reindex_document_endpoint_returns_reindexed_document(db_session, tmp_pa
 
     assert response.status_code == 200
     assert response.json()["id"] == document.id
-    assert response.json()["status"] == DocumentStatus.INDEXED.value
+    assert response.json()["status"] == DocumentStatus.PROCESSING.value
+    detail_response = client.get(f"/documents/{document.id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["status"] == DocumentStatus.INDEXED.value
 
 
 @pytest.mark.integration
@@ -462,17 +478,19 @@ def test_reindex_document_endpoint_surfaces_failure_and_preserves_prior_index(db
         raise RuntimeError("local model could not be loaded")
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[router.get_session_factory] = lambda: override_task_session_factory(db_session)
     app.dependency_overrides[router.get_embedding_provider_factory] = lambda: failing_embedder
     client = TestClient(app)
 
     response = client.post(f"/documents/{document.id}/reindex")
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Indexing failed: local model could not be loaded"
+    assert response.status_code == 200
+    assert response.json()["status"] == DocumentStatus.PROCESSING.value
     db_session.expire_all()
     persisted = db_session.get(Document, document.id)
     assert persisted is not None
     assert persisted.status == DocumentStatus.INDEXED
+    assert persisted.error_message == "Indexing failed: local model could not be loaded"
     assert [chunk.id for chunk in persisted.chunks] == old_chunk_ids
 
 
@@ -497,6 +515,7 @@ def test_reindex_document_endpoint_accepts_images_when_ocr_is_available(db_sessi
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[router.get_session_factory] = lambda: override_task_session_factory(db_session)
     app.dependency_overrides[router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
     app.dependency_overrides[router.get_ocr_provider_factory] = lambda: lambda: FakeOcrProvider()
     client = TestClient(app)
@@ -504,7 +523,10 @@ def test_reindex_document_endpoint_accepts_images_when_ocr_is_available(db_sessi
     response = client.post(f"/documents/{document.id}/reindex")
 
     assert response.status_code == 200
-    assert response.json()["status"] == DocumentStatus.INDEXED.value
+    assert response.json()["status"] == DocumentStatus.PROCESSING.value
+    detail_response = client.get(f"/documents/{document.id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["status"] == DocumentStatus.INDEXED.value
 
 
 @pytest.mark.integration

@@ -10,6 +10,7 @@ import {
   Brain,
   CheckCircle2,
   Database,
+  Eye,
   FileText,
   Gauge,
   Layers3,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { SourceViewer, type SourceViewerSource } from "@/components/source-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -162,22 +164,59 @@ function PreviewControl({
   );
 }
 
-function CitationLinks({ citations }: { citations: StudyCitation[] }) {
+function sourceFromCitation(citation: StudyCitation): SourceViewerSource {
+  return {
+    chunk_id: citation.chunk_id,
+    document_id: citation.document_id,
+    document_filename: citation.document_filename,
+    page_number: citation.page_number,
+    section_heading: citation.section_heading,
+    page_image_url: citation.page_image_url,
+    document_page_url: citation.document_page_url,
+    snippet: citation.snippet,
+    score: citation.score,
+    source_score: citation.source_score,
+  };
+}
+
+function CitationLinks({
+  citations,
+  onPreviewCitation,
+}: {
+  citations: StudyCitation[];
+  onPreviewCitation?: (source: SourceViewerSource) => void;
+}) {
   if (citations.length === 0) {
     return null;
   }
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      {citations.map((citation) => (
-        <Link
-          key={`${citation.chunk_id}-${citation.page_number}`}
-          href={citation.document_page_url}
-          className="inline-flex min-h-8 items-center rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-800 transition hover:border-teal-500 hover:bg-teal-100"
-        >
-          Page {citation.page_number}
-          {citation.section_heading ? ` ${citation.section_heading}` : ""}
-        </Link>
-      ))}
+      {citations.map((citation) => {
+        const documentPageUrl =
+          citation.document_page_url ?? `/documents/${citation.document_id}?page=${citation.page_number}&chunk=${citation.chunk_id}`;
+        return (
+        <span key={`${citation.chunk_id}-${citation.page_number}`} className="inline-flex flex-wrap items-center gap-1.5">
+          <Link
+            href={documentPageUrl}
+            className="inline-flex min-h-8 items-center rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-800 transition hover:border-teal-500 hover:bg-teal-100"
+          >
+            Page {citation.page_number}
+            {citation.section_heading ? ` ${citation.section_heading}` : ""}
+          </Link>
+          {onPreviewCitation && citation.page_image_url ? (
+            <button
+              type="button"
+              aria-label={`Preview citation ${citation.document_filename} page ${citation.page_number}`}
+              className="inline-flex min-h-8 items-center gap-1 rounded-md border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-teal-600 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2"
+              onClick={() => onPreviewCitation(sourceFromCitation(citation))}
+            >
+              <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+              Preview
+            </button>
+          ) : null}
+        </span>
+        );
+      })}
     </div>
   );
 }
@@ -242,6 +281,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
   const [checkingQuestionId, setCheckingQuestionId] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<SourceViewerSource | null>(null);
   const selectedPage = pages.find((page) => page.page_number === selectedPageNumber) ?? pages[0] ?? null;
   const visibleChunks = useMemo(
     () =>
@@ -323,9 +363,25 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
     try {
       const gradedAnswer = await submitStudyAnswer(document.id, questionId, answerText);
       setStudyQuestions((current) =>
-        current.map((question) =>
-          question.id === questionId ? { ...question, latest_answer: gradedAnswer } : question,
-        ),
+        current.map((question) => {
+          if (question.id !== questionId) {
+            return question;
+          }
+          const previousAnswers = question.recent_answers?.length
+            ? question.recent_answers
+            : question.latest_answer
+              ? [question.latest_answer]
+              : [];
+          return {
+            ...question,
+            latest_answer: gradedAnswer,
+            answer_count: (question.answer_count ?? previousAnswers.length) + 1,
+            recent_answers: [
+              gradedAnswer,
+              ...previousAnswers.filter((answer) => answer.id !== gradedAnswer.id),
+            ].slice(0, 3),
+          };
+        }),
       );
     } catch (error) {
       setStudyMessage(error instanceof Error ? error.message : "Could not check answer.");
@@ -477,7 +533,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
               {studySummary ? (
                 <article className="rounded-lg border border-teal-100 bg-teal-50/40 p-4">
                   <p className="text-sm leading-7 text-ink">{studySummary.content}</p>
-                  <CitationLinks citations={studySummary.citations} />
+                  <CitationLinks citations={studySummary.citations} onPreviewCitation={setSelectedSource} />
                 </article>
               ) : (
                 <div className="rounded-lg border border-dashed border-line bg-slate-50 p-5 text-sm leading-6 text-slate-600">
@@ -516,6 +572,12 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                 <div className="space-y-3">
                   {studyQuestions.map((question, index) => {
                     const latestAnswer = question.latest_answer;
+                    const recentAnswers = question.recent_answers?.length
+                      ? question.recent_answers
+                      : latestAnswer
+                        ? [latestAnswer]
+                        : [];
+                    const answerCount = question.answer_count ?? recentAnswers.length;
                     return (
                       <article key={question.id} className="rounded-lg border border-line bg-white p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -525,11 +587,16 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                             </p>
                             <h3 className="mt-1 break-words text-base font-bold text-ink">{question.question}</h3>
                           </div>
-                          {latestAnswer ? (
-                            <Badge tone={latestAnswer.score >= 0.75 ? "success" : latestAnswer.score >= 0.4 ? "amber" : "danger"}>
-                              {formatScore(latestAnswer.score)}
-                            </Badge>
-                          ) : null}
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {answerCount > 0 ? (
+                              <Badge tone="neutral">{formatCount(answerCount, "attempt", "attempts")}</Badge>
+                            ) : null}
+                            {latestAnswer ? (
+                              <Badge tone={latestAnswer.score >= 0.75 ? "success" : latestAnswer.score >= 0.4 ? "amber" : "danger"}>
+                                {formatScore(latestAnswer.score)}
+                              </Badge>
+                            ) : null}
+                          </div>
                         </div>
                         <details className="mt-3 rounded-md border border-teal-100 bg-teal-50/40 p-3">
                           <summary className="cursor-pointer text-sm font-semibold text-teal-800">
@@ -537,7 +604,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                           </summary>
                           <p className="mt-2 text-sm leading-6 text-slate-700">{question.expected_answer}</p>
                         </details>
-                        <CitationLinks citations={question.citations} />
+                        <CitationLinks citations={question.citations} onPreviewCitation={setSelectedSource} />
                         <div className="mt-4 space-y-2">
                           <label htmlFor={`answer-${question.id}`} className="text-sm font-semibold text-ink">
                             Your answer
@@ -568,6 +635,24 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                               Feedback
                             </p>
                             <p className="mt-1 text-sm leading-6 text-emerald-900">{latestAnswer.feedback}</p>
+                            {recentAnswers.length > 1 ? (
+                              <div className="mt-3 border-t border-emerald-200 pt-3">
+                                <p className="text-xs font-semibold uppercase tracking-normal text-emerald-800">
+                                  Recent attempts
+                                </p>
+                                <ul className="mt-2 space-y-2">
+                                  {recentAnswers.map((answer) => (
+                                    <li
+                                      key={answer.id}
+                                      className="flex flex-wrap items-start justify-between gap-2 rounded-md bg-white/70 px-3 py-2 text-xs text-emerald-950"
+                                    >
+                                      <span className="min-w-0 flex-1 break-words">{answer.feedback}</span>
+                                      <span className="font-semibold">{formatScore(answer.score)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                       </article>
@@ -778,6 +863,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
           </Panel>
         </aside>
       </div>
+      {selectedSource ? <SourceViewer source={selectedSource} onClose={() => setSelectedSource(null)} /> : null}
     </div>
   );
 }

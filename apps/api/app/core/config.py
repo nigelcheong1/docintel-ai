@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
+    llm_provider: str = "local"
+    llm_model_name: str = "llama-3.1-8b-instant"
+    llm_timeout_seconds: int = 30
+    groq_api_key: str | None = None
+    groq_base_url: str = "https://api.groq.com/openai/v1"
     ocr_enabled: bool = True
     ocr_language: str = "eng"
     ocr_dpi: int = 200

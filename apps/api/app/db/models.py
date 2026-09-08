@@ -21,6 +21,7 @@ class DocumentStatus(StrEnum):
     UPLOADED = "uploaded"
     PROCESSING = "processing"
     OCR_PROCESSING = "ocr_processing"
+    EMBEDDING = "embedding"
     INDEXED = "indexed"
     DEFERRED_OCR = "deferred_ocr"
     FAILED = "failed"

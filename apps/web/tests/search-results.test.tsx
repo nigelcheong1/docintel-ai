@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SearchResults } from "@/components/search-results";
@@ -132,6 +132,31 @@ describe("SearchResults", () => {
     const answerEvidence = screen.getByRole("heading", { name: "Answer evidence" });
     const relatedEvidence = screen.getByRole("heading", { name: "Related evidence" });
     expect(answerEvidence.compareDocumentPosition(relatedEvidence)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("shows retrieval fallback details when vector search is unavailable", () => {
+    render(
+      <SearchResults
+        retrievalMode="lexical"
+        retrievalFallbackReason="Embedding provider unavailable: local model could not be loaded."
+        hits={[
+          {
+            chunk_id: "chunk-fallback",
+            document_id: "doc-1",
+            document_filename: "paper.pdf",
+            page_number: 1,
+            chunk_index: 0,
+            score: 0.64,
+            source_score: 0.64,
+            ranking_signals: { lexical_score: 0.64 },
+            snippet: "ABSTRACT Local lexical retrieval found this result.",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Lexical fallback")).toBeInTheDocument();
+    expect(screen.getByText("Embedding provider unavailable: local model could not be loaded.")).toBeInTheDocument();
   });
 
   it("renders an abstention panel with suggested questions", () => {
@@ -318,6 +343,54 @@ describe("SearchResults", () => {
     fireEvent.click(screen.getByRole("button", { name: "Zoom in source preview" }));
 
     expect(screen.getByText("125%")).toBeInTheDocument();
+  });
+
+  it("opens answer citations in the shared source viewer", () => {
+    render(
+      <SearchResults
+        answer={{
+          summary: "The invoice total is 1250 Malaysian Ringgit.",
+          citations: [
+            {
+              chunk_id: "chunk-preview",
+              document_filename: "invoice.pdf",
+              page_number: 2,
+              section_heading: "INVOICE SUMMARY",
+            },
+          ],
+        }}
+        hits={[
+          {
+            chunk_id: "chunk-preview",
+            document_id: "doc-1",
+            document_filename: "invoice.pdf",
+            page_number: 2,
+            chunk_index: 0,
+            score: 0.87,
+            source_score: 0.83,
+            ranking_signals: {},
+            section_heading: "INVOICE SUMMARY",
+            snippet: "Invoice total is 1250 Malaysian Ringgit.",
+            page_image_url: "/documents/doc-1/pages/2/image",
+            document_page_url: "/documents/doc-1?page=2&chunk=chunk-preview",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview citation invoice.pdf page 2" }));
+
+    const sourceViewer = screen.getByRole("dialog", { name: "Source viewer" });
+    expect(sourceViewer).toBeInTheDocument();
+    expect(within(sourceViewer).getByRole("img", { name: "Page 2 source preview for invoice.pdf" })).toHaveAttribute(
+      "src",
+      "/documents/doc-1/pages/2/image",
+    );
+    expect(within(sourceViewer).getByText("Invoice total is 1250 Malaysian Ringgit.")).toBeInTheDocument();
+    expect(within(sourceViewer).getByRole("link", { name: "Open in workbench" })).toHaveAttribute(
+      "href",
+      "/documents/doc-1?page=2&chunk=chunk-preview",
+    );
   });
 
   it("allows long filenames and snippets to wrap inside result cards", () => {
