@@ -23,6 +23,8 @@ export type DocumentSummary = {
   error_message?: string | null;
   created_at?: string;
   updated_at?: string;
+  page_count?: number;
+  chunk_count?: number;
   parse_quality?: ParseQuality | null;
   processing_status?: DocumentProcessingStatus | null;
 };

@@ -6,17 +6,17 @@ import { AppShell } from "@/components/app-shell";
 import { DocumentList } from "@/components/document-list";
 import { UploadPanel } from "@/components/upload-panel";
 import { Panel } from "@/components/ui/panel";
-import { deleteDocument, getDocument, getDocuments, getDocumentStatus, reindexDocument } from "@/lib/api";
-import type { DocumentDetail } from "@/lib/types";
+import { deleteDocument, getDocuments, getDocumentStatus, reindexDocument } from "@/lib/api";
+import type { DocumentSummary } from "@/lib/types";
 
 const ACTIVE_DOCUMENT_STATUSES = new Set(["uploaded", "processing", "ocr_processing", "embedding"]);
 
-function isActivelyProcessing(document: DocumentDetail): boolean {
+function isActivelyProcessing(document: DocumentSummary): boolean {
   return ACTIVE_DOCUMENT_STATUSES.has(document.status);
 }
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<DocumentDetail[]>([]);
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [message, setMessage] = useState("Loading documents...");
 
   async function refreshDocuments() {
@@ -24,16 +24,21 @@ export default function DocumentsPage() {
       const summaries = await getDocuments();
       const result = await Promise.all(
         summaries.map(async (document) => {
-          const detail = await getDocument(document.id);
-          if (!isActivelyProcessing(detail)) {
-            return detail;
+          if (!isActivelyProcessing(document)) {
+            return document;
           }
 
           try {
             const processingStatus = await getDocumentStatus(document.id);
-            return { ...detail, processing_status: processingStatus };
+            return {
+              ...document,
+              status: processingStatus.status,
+              page_count: processingStatus.page_count,
+              chunk_count: processingStatus.chunk_count,
+              processing_status: processingStatus,
+            };
           } catch {
-            return detail;
+            return document;
           }
         }),
       );

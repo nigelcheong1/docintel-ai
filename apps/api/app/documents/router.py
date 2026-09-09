@@ -81,6 +81,8 @@ def document_read(document: Document) -> DocumentRead:
         created_at=document.created_at,
         updated_at=document.updated_at,
         parse_quality=build_parse_quality_for_document(document),
+        page_count=len(document.pages),
+        chunk_count=len(document.chunks),
     )
 
 

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,7 @@ from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.db.session import get_db
 from app.documents import router
 from app.documents.ocr import OcrPageResult
-from app.documents.router import document_page_read
+from app.documents.router import document_page_read, document_read
 from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
@@ -85,6 +86,50 @@ def test_document_page_read_derives_processing_statuses_without_database():
         "ocr_weak",
         "missing_text",
     ]
+
+
+def test_document_read_includes_list_metadata_counts_without_database():
+    document = Document(
+        id="doc-1",
+        filename="report.pdf",
+        stored_filename="report.pdf",
+        mime_type="application/pdf",
+        file_path="storage/report.pdf",
+        status=DocumentStatus.INDEXED,
+        created_at=datetime(2026, 8, 28, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 8, 28, tzinfo=timezone.utc),
+    )
+    page = Page(
+        document=document,
+        page_number=1,
+        text="Searchable page text.",
+        width=612,
+        height=792,
+    )
+    document.pages = [page]
+    document.chunks = [
+        Chunk(
+            document=document,
+            page=page,
+            chunk_index=0,
+            text="Searchable page text.",
+            token_estimate=3,
+            layout={},
+        ),
+        Chunk(
+            document=document,
+            page=page,
+            chunk_index=1,
+            text="More searchable page text.",
+            token_estimate=4,
+            layout={},
+        ),
+    ]
+
+    payload = document_read(document).model_dump()
+
+    assert payload["page_count"] == 1
+    assert payload["chunk_count"] == 2
 
 
 def test_embedding_provider_is_cached_by_model_settings(monkeypatch):

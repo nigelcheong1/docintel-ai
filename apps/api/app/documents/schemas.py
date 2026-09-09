@@ -32,13 +32,14 @@ class DocumentRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     parse_quality: ParseQualityRead | None = None
+    page_count: int
+    chunk_count: int
 
     model_config = {"from_attributes": True}
 
 
 class DocumentDetail(DocumentRead):
-    page_count: int
-    chunk_count: int
+    pass
 
 
 class DocumentPageRead(BaseModel):
