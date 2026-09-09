@@ -92,6 +92,60 @@ _RESEARCH_FUTURE_DIRECTION_PATTERN = re.compile(
     r"\b(?:future research directions include|future directions include|future work|to address these challenges)\b",
     re.IGNORECASE,
 )
+_RESEARCH_FRAGMENT_OPENING_PATTERN = re.compile(
+    r"^(?:and|but|or|unlike|where|which)\b|^\d+(?:-\d+)?\s+",
+    re.IGNORECASE,
+)
+_RESEARCH_VALIDATED_RESULT_PATTERN = re.compile(r"\bvalidated\s+the\s+result\s+simulated\b", re.IGNORECASE)
+_RESEARCH_PRODUCED_FINAL_AGENT_PATTERN = re.compile(
+    r"^produced\s+the\s+final\s+agent,\s+which\s+",
+    re.IGNORECASE,
+)
+_ACADEMIC_LEADING_SECTION_PATTERNS = {
+    "OVERVIEW": (
+        re.compile(
+            r"^(?:\d+(?:\.\d+)*\.?\s*)?"
+            r"(?:overview\s*(?:&|and)\s*objective|overview|(?:&\s*)?objective)\s*[:.-]?\s*",
+            re.IGNORECASE,
+        ),
+    ),
+    "METHOD": (
+        re.compile(
+            r"^(?:\d+(?:\.\d+)*\.?\s*)?(?:design\s+approach|method|methods|methodology)\s*[:.-]?\s*",
+            re.IGNORECASE,
+        ),
+    ),
+    "RESULTS": (
+        re.compile(
+            r"^(?:\d+(?:\.\d+)*\.?\s*)?(?:results\s*(?:&|and)\s*verification|results|verification)\s*[:.-]?\s*",
+            re.IGNORECASE,
+        ),
+    ),
+}
+_ACADEMIC_LIMITATION_HEADINGS = {
+    "CONCLUSION",
+    "DISCUSSION",
+    "FUTURE WORK",
+    "LIMITATION",
+    "LIMITATIONS",
+    "NEXT STEPS",
+    "RECOMMENDATIONS",
+}
+_ACADEMIC_EXPLICIT_LIMITATION_PATTERN = re.compile(
+    r"\b(?:"
+    r"future\s+(?:work|direction|directions|research|improvement|improvements)|"
+    r"further\s+(?:work|research)|"
+    r"limitation|limitations|limited\s+by|"
+    r"remaining\s+(?:issue|issues|challenge|challenges)|"
+    r"could\s+be\s+improved|should\s+be\s+improved|"
+    r"we\s+(?:plan|recommend|suggest)\b"
+    r")",
+    re.IGNORECASE,
+)
+_ACADEMIC_DECLARATION_PATTERN = re.compile(
+    r"\b(?:own\s+work\s+declaration|academic\s+misconduct|plagiarism|retained\s+for\s+future\s+comparisons)\b",
+    re.IGNORECASE,
+)
 _QUERY_STOPWORDS = {
     "a",
     "an",
@@ -186,6 +240,30 @@ def _normalized(text: str) -> str:
     return " ".join(_WORD_PATTERN.findall(text.lower()))
 
 
+def _strip_academic_leading_section_label(text: str, heading: str | None) -> str:
+    patterns = _ACADEMIC_LEADING_SECTION_PATTERNS.get(heading or "", ())
+    if heading is None:
+        patterns = tuple(pattern for group in _ACADEMIC_LEADING_SECTION_PATTERNS.values() for pattern in group)
+
+    stripped = text
+    for pattern in patterns:
+        updated = pattern.sub("", stripped, count=1).strip()
+        if updated != stripped:
+            return updated or text
+    return stripped
+
+
+def _is_research_sentence_fragment(sentence: str) -> bool:
+    return bool(_RESEARCH_FRAGMENT_OPENING_PATTERN.match(clean_research_text(sentence).strip()))
+
+
+def _clean_research_snippet_sentence(sentence: str) -> str:
+    cleaned = clean_research_text(sentence).strip()
+    cleaned = _RESEARCH_VALIDATED_RESULT_PATTERN.sub("validated the result: simulated", cleaned)
+    cleaned = _RESEARCH_PRODUCED_FINAL_AGENT_PATTERN.sub("The final agent ", cleaned)
+    return cleaned
+
+
 def _snippet(text: str, query: str, *, prefer_first: bool = False) -> str:
     cleaned = clean_text(text)
     sentences = [sentence.strip() for sentence in _SENTENCE_BOUNDARY.split(cleaned) if sentence.strip()]
@@ -213,16 +291,22 @@ def _answer_text_for_chunk(chunk: Chunk, profile: DocumentProfileRead, route: Qu
     if route.intent == "overview" and "ABSTRACT" in clean_text(chunk.text):
         target_heading = "ABSTRACT"
     text = research_text_after_heading(chunk.text, target_heading)
-    return clean_research_text(text)
+    cleaned = clean_research_text(text)
+    if profile.document_type == "academic_report":
+        return _strip_academic_leading_section_label(cleaned, heading)
+    return cleaned
 
 
 def _research_snippet(text: str, query: str, *, intent: str | None = None, prefer_first: bool = False) -> str:
     cleaned = clean_research_text(text)
-    sentences = [
+    raw_sentences = [
         sentence.strip()
         for sentence in _SENTENCE_BOUNDARY.split(cleaned)
         if sentence.strip() and not is_research_noise_sentence(sentence)
     ]
+    if raw_sentences and _is_research_sentence_fragment(raw_sentences[0]):
+        return ""
+    sentences = [sentence for sentence in raw_sentences if not _is_research_sentence_fragment(sentence)]
     if not sentences:
         return ""
     if prefer_first:
@@ -273,6 +357,7 @@ def _research_snippet(text: str, query: str, *, intent: str | None = None, prefe
             enumerate(sentences),
             key=lambda item: score_sentence(item[1], item[0]),
         )[1]
+    selected = _clean_research_snippet_sentence(selected)
     if len(selected) <= _MAX_SUMMARY_CHARS:
         return selected
     return selected[: _MAX_SUMMARY_CHARS - 3].rstrip() + "..."
@@ -789,6 +874,49 @@ def _section_answer(
     )
 
 
+def _academic_limitation_chunks(document: Document) -> list[Chunk]:
+    selected: list[Chunk] = []
+    for chunk in ordered_chunks(document):
+        heading = chunk_heading(chunk)
+        if heading == "REFERENCES" or is_table_of_contents_like_text(chunk.text):
+            continue
+
+        body = clean_research_text(research_text_after_heading(chunk.text, heading))
+        if not body or _ACADEMIC_DECLARATION_PATTERN.search(body):
+            continue
+
+        has_explicit_claim = bool(_ACADEMIC_EXPLICIT_LIMITATION_PATTERN.search(body))
+        if heading in {"FUTURE WORK", "LIMITATION", "LIMITATIONS"}:
+            selected.append(chunk)
+        elif heading in _ACADEMIC_LIMITATION_HEADINGS and has_explicit_claim:
+            selected.append(chunk)
+        elif heading is None and has_explicit_claim:
+            selected.append(chunk)
+    return selected
+
+
+def _academic_limitations_answer(
+    query: str,
+    document: Document,
+    profile: DocumentProfileRead,
+    route: QueryRoute,
+) -> DocumentAwareAnswer | None:
+    chunks = _rank_research_answer_chunks(_academic_limitation_chunks(document), route.intent)
+    confidence = (
+        "strong"
+        if any(chunk_heading(chunk) in {"FUTURE WORK", "LIMITATION", "LIMITATIONS"} for chunk in chunks[:_MAX_ANSWER_CHUNKS])
+        else "moderate"
+    )
+    return _build_answer(
+        query=query,
+        chunks=chunks,
+        profile=profile,
+        route=route,
+        confidence=confidence,
+        reason="Document-aware limitations answer built from explicit academic report evidence.",
+    )
+
+
 def _build_section_body_answer(
     *,
     query: str,
@@ -1012,6 +1140,13 @@ def build_document_aware_answer(
             headings={"RECOMMENDATIONS", "NEXT STEPS", "CONCLUSION"},
             terms={"recommendation", "recommendations", "recommend", "should", "next steps"},
             confidence="strong",
+        )
+    if profile.document_type == "academic_report" and route.intent == "limitations":
+        result = _academic_limitations_answer(query, document, profile, route)
+        return result or _no_answer(
+            "No explicit limitations or future-work evidence was detected in this academic report.",
+            profile,
+            route,
         )
     if route.intent in {"limitations", "risks", "obligations"}:
         return _section_answer(
