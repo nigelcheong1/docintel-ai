@@ -1,5 +1,5 @@
 from app.db.models import Chunk, Document, DocumentStatus, Page, StudyQuestion
-from app.llm.providers import AnswerEvaluationResult, GeneratedQuestionResult
+from app.llm.providers import AnswerEvaluationResult, GeneratedQuestionResult, LocalHeuristicLlmProvider
 from app.retrieval.search import RetrievalMode, SearchHit
 from app.study.service import (
     build_document_summary,
@@ -105,6 +105,40 @@ class RecordingProvider:
 
     def evaluate_answer(self, question: str, expected_answer: str, user_answer: str) -> AnswerEvaluationResult:
         return AnswerEvaluationResult(score=0.5, feedback="Provider feedback.")
+
+
+class NoisyAcademicQuestionProvider(RecordingProvider):
+    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+        self.question_context = context
+        return [
+            GeneratedQuestionResult(
+                question="What does the document say about 0 1?",
+                expected_answer=(
+                    "The 16-dimensional feature vector includes idx feature 0,1 ball x, y and "
+                    "8,9 ball-paddle relative positions."
+                ),
+            ),
+            GeneratedQuestionResult(
+                question="What does the document say about 14 controlling?",
+                expected_answer=(
+                    "A single shared policy needs an explicit cue for which side it is controlling."
+                ),
+            ),
+            GeneratedQuestionResult(
+                question="What does the document say about agent both?",
+                expected_answer=(
+                    "Both paddles read the same shared image while only the first agent receives "
+                    "the visual observation."
+                ),
+            ),
+            GeneratedQuestionResult(
+                question="What design or methodology is used?",
+                expected_answer=(
+                    "Training is organised as a staged pipeline using a 16-dimensional observation "
+                    "vector, shaped rewards, and PPO training."
+                ),
+            ),
+        ][:count]
 
 
 class ConstantEmbeddingProvider:
@@ -323,6 +357,52 @@ def test_build_document_summary_filters_toc_fragments_for_academic_reports():
     assert [citation["chunk_id"] for citation in summary.citations] == ["academic-overview", "academic-results"]
 
 
+def test_academic_document_summary_balances_core_sections_when_retrieval_is_narrow():
+    document = make_academic_report_document()
+    document.chunks[3].text = (
+        "METHOD 4. Development Pipeline Phase 0: Measuring the environment Before writing any learning code, "
+        "the environment was characterised empirically. The implementation uses a 16-dimensional observation "
+        "vector, shaped rewards, and PPO training."
+    )
+    retrieval_hits = [
+        SearchHit(
+            chunk_id="academic-method",
+            document_id=document.id,
+            document_filename=document.filename,
+            page_number=5,
+            chunk_index=3,
+            text=document.chunks[3].text,
+            score=0.86,
+            source_score=0.82,
+            ranking_signals={"lexical_score": 0.86},
+            section_heading="METHOD",
+        )
+    ]
+
+    summary = build_document_summary(document, retrieval_hits=retrieval_hits)
+
+    assert "PPO tennis agent" in summary.content
+    assert "16-dimensional observation vector" in summary.content
+    assert "keeps rallies alive" in summary.content
+    assert "Table of Contents" not in summary.content
+    assert not summary.content.startswith("4. Development Pipeline Phase 0")
+    assert [citation["chunk_id"] for citation in summary.citations] == [
+        "academic-overview",
+        "academic-method",
+        "academic-results",
+    ]
+
+    provider_summary = build_document_summary(
+        document,
+        provider=LocalHeuristicLlmProvider(),
+        retrieval_hits=retrieval_hits,
+    )
+    assert "PPO tennis agent" in provider_summary.content
+    assert "16-dimensional observation vector" in provider_summary.content
+    assert "keeps rallies alive" in provider_summary.content
+    assert not provider_summary.content.startswith("4. Development Pipeline Phase 0")
+
+
 def test_build_document_summary_can_use_provider_with_retrieved_context():
     document = make_document()
     add_retrieval_only_chunk(document)
@@ -425,6 +505,23 @@ def test_build_study_questions_for_academic_report_use_meaningful_evidence_not_h
     assert "1 contents" not in combined_questions
     assert any("PPO" in question.expected_answer or "16-dimensional observation" in question.expected_answer for question in questions)
     assert any("rallies alive" in question.expected_answer for question in questions)
+
+
+def test_build_study_questions_filters_provider_fragment_questions_for_academic_reports():
+    questions = build_study_questions(
+        make_academic_report_document(),
+        count=4,
+        provider=NoisyAcademicQuestionProvider(),
+    )
+
+    question_texts = [question.question for question in questions]
+    combined_questions = " ".join(question_texts)
+
+    assert "What design or methodology is used?" in question_texts
+    assert "What results are reported?" in question_texts
+    assert "0 1" not in combined_questions
+    assert "14 controlling" not in combined_questions
+    assert "agent both" not in combined_questions
 
 
 def test_build_study_questions_dedupes_provider_generated_questions():
