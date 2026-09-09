@@ -498,6 +498,7 @@ def test_profile_detects_academic_project_report_without_legal_contract_false_po
     assert "What is this project report about?" in profile.suggested_questions
     assert "Who are the parties involved?" not in profile.suggested_questions
     assert "What obligations are mentioned?" not in profile.suggested_questions
+    assert any(fact.label == "Due date" and fact.value == "17th July 2026" for fact in profile.key_dates)
     assert not any(fact.value == "1" and "Table of Contents" in fact.source_text for fact in profile.key_numbers)
     assert any(fact.label == "Lecturer" and fact.value == "Goh Sim Kuan" for fact in profile.key_entities)
     assert any(fact.label == "Prepared by" and "Nigel Cheong Tze Hock" in fact.value for fact in profile.key_entities)

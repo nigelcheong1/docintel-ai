@@ -132,6 +132,10 @@ class NoisyAcademicQuestionProvider(RecordingProvider):
                 ),
             ),
             GeneratedQuestionResult(
+                question="What does the document say about action both?",
+                expected_answer="The action mapping is global and screen-space, identical for both paddles.",
+            ),
+            GeneratedQuestionResult(
                 question="What design or methodology is used?",
                 expected_answer=(
                     "Training is organised as a staged pipeline using a 16-dimensional observation "
@@ -507,10 +511,53 @@ def test_build_study_questions_for_academic_report_use_meaningful_evidence_not_h
     assert any("rallies alive" in question.expected_answer for question in questions)
 
 
+def test_build_study_questions_skip_academic_future_work_when_only_declaration_mentions_future():
+    document = make_academic_report_document()
+    declaration_page = Page(
+        id="academic-page-2",
+        document_id=document.id,
+        page_number=2,
+        text=(
+            "Own Work Declaration I/We acknowledge the digital copy of the work may be retained "
+            "for future comparisons."
+        ),
+        width=612,
+        height=792,
+    )
+    document.pages.append(declaration_page)
+    document.chunks.append(
+        Chunk(
+            id="academic-declaration",
+            document_id=document.id,
+            page_id=declaration_page.id,
+            page=declaration_page,
+            chunk_index=1,
+            text=declaration_page.text,
+            token_estimate=len(declaration_page.text.split()),
+            layout={},
+        )
+    )
+
+    questions = build_study_questions(document, count=5)
+
+    question_texts = [question.question for question in questions]
+    assert "What limitations or future work are discussed?" not in question_texts
+
+
+def test_build_study_questions_dedupes_academic_overview_question_wording():
+    questions = build_study_questions(make_academic_report_document(), count=5)
+
+    question_texts = [question.question for question in questions]
+
+    assert "What is this project report about?" in question_texts
+    assert "What is this document about?" not in question_texts
+    assert "What are the main topics covered in this document?" not in question_texts
+
+
 def test_build_study_questions_filters_provider_fragment_questions_for_academic_reports():
     questions = build_study_questions(
         make_academic_report_document(),
-        count=4,
+        count=5,
         provider=NoisyAcademicQuestionProvider(),
     )
 
@@ -522,6 +569,7 @@ def test_build_study_questions_filters_provider_fragment_questions_for_academic_
     assert "0 1" not in combined_questions
     assert "14 controlling" not in combined_questions
     assert "agent both" not in combined_questions
+    assert "action both" not in combined_questions
 
 
 def test_build_study_questions_dedupes_provider_generated_questions():

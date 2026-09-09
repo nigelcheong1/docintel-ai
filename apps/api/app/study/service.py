@@ -121,6 +121,13 @@ _SUMMARY_PHASE_LABEL_PATTERN = re.compile(
     r"^development\s+pipeline\s+phase\s+\d+\s*:\s*[^.!?]{0,120}?(?=\b(?:before|the|this|training|a|an|on|in)\b)",
     re.IGNORECASE,
 )
+_OVERVIEW_QUESTION_PATTERN = re.compile(
+    r"^(?:"
+    r"what is this (?:document|project report|report) about|"
+    r"what are the main topics(?: covered in this document)?"
+    r")\??$",
+    re.IGNORECASE,
+)
 _MEANINGFUL_SINGLE_STUDY_TOPICS = {
     "authors",
     "contributors",
@@ -133,7 +140,7 @@ _MEANINGFUL_SINGLE_STUDY_TOPICS = {
     "overview",
     "results",
 }
-_ACADEMIC_FRAGMENT_TOPIC_WORDS = {"agent", "both", "contents", "controlling", "feature", "idx"}
+_ACADEMIC_FRAGMENT_TOPIC_WORDS = {"action", "actions", "agent", "both", "contents", "controlling", "feature", "idx"}
 _DEFAULT_STUDY_QUESTIONS = [
     "What is this document about?",
     "What are the main topics covered in this document?",
@@ -525,11 +532,28 @@ def _similar_enough(first: str, second: str) -> bool:
     return jaccard >= 0.82 or SequenceMatcher(None, first.lower(), second.lower()).ratio() >= 0.88
 
 
+def _study_question_family(question: str) -> str | None:
+    cleaned = clean_text(question).rstrip(" ?") + "?"
+    if _OVERVIEW_QUESTION_PATTERN.match(cleaned):
+        return "overview"
+    return None
+
+
+def _is_duplicate_study_question(question: str, existing_questions: list[str]) -> bool:
+    family = _study_question_family(question)
+    for existing in existing_questions:
+        if family is not None and family == _study_question_family(existing):
+            return True
+        if _similar_enough(question, existing):
+            return True
+    return False
+
+
 def _dedupe_questions(questions: list[str]) -> list[str]:
     unique: list[str] = []
     for question in questions:
         cleaned = clean_text(question).rstrip(" ?") + "?"
-        if any(_similar_enough(cleaned, existing) for existing in unique):
+        if _is_duplicate_study_question(cleaned, unique):
             continue
         unique.append(cleaned)
     return unique
@@ -566,7 +590,7 @@ def build_study_questions(
                 continue
             if not _is_meaningful_expected_answer(provider_question.expected_answer):
                 continue
-            if any(_similar_enough(provider_question.question, existing.question) for existing in generated):
+            if _is_duplicate_study_question(provider_question.question, [existing.question for existing in generated]):
                 continue
             generated.append(
                 GeneratedQuestion(
@@ -581,7 +605,7 @@ def build_study_questions(
     for question in candidate_questions:
         if not _is_useful_study_question(question, profile.document_type):
             continue
-        if any(_similar_enough(question, existing.question) for existing in generated):
+        if _is_duplicate_study_question(question, [existing.question for existing in generated]):
             continue
         route = route_query(question, profile.document_type)
         result = build_document_aware_answer(question, document, profile, route)

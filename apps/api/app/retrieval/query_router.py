@@ -76,6 +76,8 @@ def route_query(query: str, document_type: str | None = None) -> QueryRoute:
         normalized_query,
         {
             "what is this document about",
+            "what is this project report about",
+            "what is this report about",
             "what is the document about",
             "what are the main topics",
             "main topics",

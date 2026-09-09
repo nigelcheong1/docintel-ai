@@ -67,6 +67,62 @@ def test_builds_research_paper_overview_from_abstract():
     assert result.answer.citations[0].section_heading == "ABSTRACT"
 
 
+def test_academic_report_overview_strips_compound_overview_heading():
+    document = make_document(
+        "DRL Final Report.pdf",
+        (
+            "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+            "Assessment Title : Project Submission Prepared by : Student Name. "
+            "1. Overview & Objective dPickleBall is a two-player Unity pickleball game."
+        ),
+        [
+            (
+                "1. Overview & Objective dPickleBall is a two-player Unity pickleball game in which each side's "
+                "paddle is driven by a Python policy.",
+                "OVERVIEW",
+            ),
+        ],
+    )
+
+    result = answer_for("What is this project report about?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.answer.summary.startswith("dPickleBall is a two-player Unity pickleball game")
+    assert "& Objective" not in result.answer.summary
+
+
+def test_academic_report_overview_skips_continuation_fragments():
+    document = make_document(
+        "DRL Final Report.pdf",
+        (
+            "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+            "Assessment Title : Project Submission Prepared by : Student Name. "
+            "Overview & Objective dPickleBall is a two-player Unity pickleball game."
+        ),
+        [
+            (
+                "OVERVIEW Overview & Objective dPickleBall is a two-player Unity pickleball game in which each side's "
+                "paddle is driven by a Python policy.",
+                "OVERVIEW",
+            ),
+            (
+                "OVERVIEW unlike the returns-based objective, does not saturate while the pool stays competitive. "
+                "Resuming the fine-tuned model and training against the pool happens at the hardest level.",
+                "OVERVIEW",
+            ),
+        ],
+    )
+
+    result = answer_for("What is this project report about?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "dPickleBall is a two-player Unity pickleball game" in result.answer.summary
+    assert "unlike the returns-based objective" not in result.answer.summary
+    assert "Resuming the fine-tuned model" not in result.answer.summary
+
+
 def test_research_overview_answer_cleans_abstract_and_ignores_boilerplate():
     document = make_document(
         "paper.pdf",
@@ -269,6 +325,46 @@ def test_research_results_answer_prefers_result_claims_over_parameter_settings()
     assert "transformer heads" not in result.answer.summary
 
 
+def test_academic_report_results_answer_skips_sentence_fragments():
+    document = make_document(
+        "DRL Final Report.pdf",
+        (
+            "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+            "Assessment Title : Project Submission Prepared by : Student Name. "
+            "Results & Verification A replay gate validated the result."
+        ),
+        [
+            (
+                "RESULTS A replay gate validated the result simulated free flight matched real Unity ball flight "
+                "to a mean error of 0.36-0.41 px over 30 frames, well inside the 2 px gate.",
+                "RESULTS",
+            ),
+            (
+                "RESULTS and at least 75% on each side, measured over 50 evaluation trials, where a successful "
+                "trial means the agent makes five clean returns within an episode: level serve speed angle opponent "
+                "domain rand. 1-3 slow to fast narrow to wide ball launcher no 4 mixed wide scripted returner no. "
+                "The reward is intentionally lean and event-based.",
+                "RESULTS",
+            ),
+            (
+                "RESULTS produced the final agent, which retained balanced, near-ceiling performance across the curriculum.",
+                "RESULTS",
+            ),
+        ],
+    )
+
+    result = answer_for("What results are reported?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert "A replay gate validated the result: simulated free flight" in result.answer.summary
+    assert "The final agent retained balanced, near-ceiling performance" in result.answer.summary
+    assert "and at least 75%" not in result.answer.summary
+    assert "1-3 slow to fast" not in result.answer.summary
+    assert "The reward is intentionally lean" not in result.answer.summary
+    assert "produced the final agent" not in result.answer.summary
+
+
 def test_research_limitations_answer_prefers_future_work_over_generic_challenges():
     document = make_document(
         "paper.pdf",
@@ -336,6 +432,41 @@ def test_research_future_work_answer_uses_following_unheaded_section_continuatio
     assert result.answer is not None
     assert "future research directions include language-conditioned robotic policy learning" in result.answer.summary
     assert "This paper presents advancements" not in result.answer.summary
+
+
+def test_academic_report_limitations_question_requires_explicit_future_work_evidence():
+    document = make_document(
+        "DRL Final Report.pdf",
+        (
+            "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+            "Lecturer : Goh Sim Kuan Assessment Title : Project Submission Prepared by : Student Name. "
+            "Own Work Declaration I/We acknowledge the digital copy of the work may be retained for future comparisons. "
+            "Overview & Objective dPickleBall is a two-player Unity pickleball game. "
+            "Development Pipeline Phase 0: Measuring the environment Before writing any learning code, "
+            "the environment was characterised empirically."
+        ),
+        [
+            (
+                "OWN WORK DECLARATION I/We acknowledge the digital copy of the work may be retained for future comparisons.",
+                None,
+            ),
+            (
+                "OVERVIEW Overview & Objective dPickleBall is a two-player Unity pickleball game.",
+                "OVERVIEW",
+            ),
+            (
+                "METHOD Development Pipeline Phase 0: Measuring the environment Before writing any learning code, "
+                "the environment was characterised empirically.",
+                "METHOD",
+            ),
+        ],
+    )
+
+    result = answer_for("What limitations or future work are discussed?", document)
+
+    assert result is not None
+    assert result.answer is None
+    assert result.quality.status == "insufficient_evidence"
 
 
 def test_research_dataset_answer_lists_multiple_detected_benchmarks():
