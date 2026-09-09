@@ -75,6 +75,20 @@ def test_marks_contract_question_as_mismatch_for_research_paper():
     assert "contract" in route.mismatch_reason.lower()
 
 
+def test_routes_academic_report_questions_without_contract_mismatch():
+    methods_route = route_query("What methods were used?", "academic_report")
+    results_route = route_query("What results are reported?", "academic_report")
+    amount_route = route_query("What total amount is due?", "academic_report")
+
+    assert methods_route.intent == "methods"
+    assert methods_route.mismatch_reason is None
+    assert results_route.intent == "results"
+    assert results_route.mismatch_reason is None
+    assert amount_route.intent == "amounts"
+    assert amount_route.mismatch_reason is not None
+    assert "academic report" in amount_route.mismatch_reason.lower()
+
+
 def test_routes_all_generated_profile_suggestions():
     questions = {
         "research_paper": [
@@ -101,6 +115,13 @@ def test_routes_all_generated_profile_suggestions():
             "What are the key findings?",
             "What recommendations are listed?",
             "What risks are mentioned?",
+        ],
+        "academic_report": [
+            "What is this project report about?",
+            "What design or methodology is used?",
+            "What results are reported?",
+            "What limitations or future work are discussed?",
+            "Who prepared this project report?",
         ],
         "resume": [
             "What technical skills are mentioned?",

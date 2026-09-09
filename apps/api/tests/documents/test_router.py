@@ -91,8 +91,8 @@ def test_embedding_provider_is_cached_by_model_settings(monkeypatch):
     created = []
 
     class StubEmbeddingProvider:
-        def __init__(self, model_name: str, dimension: int) -> None:
-            created.append((model_name, dimension))
+        def __init__(self, model_name: str, dimension: int, device: str = "cpu") -> None:
+            created.append((model_name, dimension, device))
 
     monkeypatch.setattr(router, "LocalEmbeddingProvider", StubEmbeddingProvider)
     router.get_cached_embedding_provider.cache_clear()
@@ -104,7 +104,7 @@ def test_embedding_provider_is_cached_by_model_settings(monkeypatch):
         router.get_cached_embedding_provider.cache_clear()
 
     assert first is second
-    assert created == [("BAAI/bge-small-en-v1.5", 384)]
+    assert created == [("BAAI/bge-small-en-v1.5", 384, "cpu")]
 
 
 @pytest.mark.integration

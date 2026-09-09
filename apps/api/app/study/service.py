@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import Chunk, Document, DocumentStatus, DocumentSummary, StudyAnswer, StudyQuestion
-from app.documents.intelligence import build_document_profile, chunk_heading, clean_text, ordered_chunks, strip_leading_heading
+from app.documents.intelligence import (
+    build_document_profile,
+    chunk_heading,
+    clean_text,
+    is_table_of_contents_like_text,
+    ordered_chunks,
+    strip_leading_heading,
+)
 from app.llm.providers import LlmProvider, LocalHeuristicLlmProvider, get_llm_provider
 from app.retrieval.document_answers import build_document_aware_answer
 from app.retrieval.embeddings import EmbeddingProvider
@@ -50,6 +57,7 @@ _SUMMARY_HEADING_WEIGHTS = {
     "ABSTRACT": 80,
     "EXECUTIVE SUMMARY": 80,
     "SUMMARY": 75,
+    "OBJECTIVES": 72,
     "OVERVIEW": 70,
     "INTRODUCTION": 65,
     "PROFESSIONAL SUMMARY": 65,
@@ -163,16 +171,42 @@ def _first_sentence(text: str, max_chars: int = 360) -> str:
     return selected[: max_chars - 3].rstrip() + "..."
 
 
+def _usable_summary_text(text: str, heading: str | None) -> str:
+    cleaned = clean_text(strip_leading_heading(text, heading))
+    cleaned = re.sub(r"\bPage\s+\d+(?:\s+[A-Z][A-Z &/-]{1,40})?\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = clean_text(cleaned)
+    if not cleaned or is_table_of_contents_like_text(cleaned):
+        return ""
+    return cleaned
+
+
+def _is_usable_summary_hit(hit: SearchHit) -> bool:
+    return bool(_usable_summary_text(hit.text, hit.section_heading))
+
+
+def _is_usable_summary_chunk(chunk: Chunk) -> bool:
+    return bool(_usable_summary_text(chunk.text, chunk_heading(chunk)))
+
+
+def _is_meaningful_expected_answer(text: str) -> bool:
+    cleaned = clean_text(text)
+    if not cleaned or len(_words(cleaned)) < 4:
+        return False
+    return not is_table_of_contents_like_text(cleaned)
+
+
 def _summary_chunk_score(chunk: Chunk) -> tuple[int, int]:
     heading = chunk_heading(chunk)
     weight = _SUMMARY_HEADING_WEIGHTS.get(heading or "", 10)
     if heading == "REFERENCES":
         weight = -100
+    if not _is_usable_summary_chunk(chunk):
+        weight = -100
     return (weight, -chunk.chunk_index)
 
 
 def _summary_chunks(document: Document, limit: int = 3) -> list[Chunk]:
-    chunks = [chunk for chunk in ordered_chunks(document) if clean_text(chunk.text)]
+    chunks = [chunk for chunk in ordered_chunks(document) if _is_usable_summary_chunk(chunk)]
     ranked = sorted(chunks, key=_summary_chunk_score, reverse=True)
     selected = ranked[:limit]
     return sorted(selected, key=lambda chunk: chunk.chunk_index)
@@ -180,7 +214,7 @@ def _summary_chunks(document: Document, limit: int = 3) -> list[Chunk]:
 
 def _retrieval_chunk_score(chunk: Chunk, query: str) -> tuple[int, int, int]:
     heading = chunk_heading(chunk)
-    if heading == "REFERENCES":
+    if heading == "REFERENCES" or not _is_usable_summary_chunk(chunk):
         return (-1, -100, -chunk.chunk_index)
     query_words = _words(query)
     chunk_words = _words(f"{heading} {chunk.text}")
@@ -189,7 +223,7 @@ def _retrieval_chunk_score(chunk: Chunk, query: str) -> tuple[int, int, int]:
 
 
 def _retrieved_chunks(document: Document, query: str, limit: int = 3) -> list[Chunk]:
-    chunks = [chunk for chunk in ordered_chunks(document) if clean_text(chunk.text)]
+    chunks = [chunk for chunk in ordered_chunks(document) if _is_usable_summary_chunk(chunk)]
     scored = [(chunk, _retrieval_chunk_score(chunk, query)) for chunk in chunks]
     matches = [item for item in scored if item[1][0] > 0]
     if not matches:
@@ -202,7 +236,9 @@ def _chunks_context(chunks: list[Chunk]) -> str:
     context_parts: list[str] = []
     for chunk in chunks:
         heading = chunk_heading(chunk)
-        text = strip_leading_heading(chunk.text, heading)
+        text = _usable_summary_text(chunk.text, heading)
+        if not text:
+            continue
         prefix = f"Page {chunk.page.page_number}"
         if heading:
             prefix = f"{prefix} {heading}"
@@ -213,7 +249,9 @@ def _chunks_context(chunks: list[Chunk]) -> str:
 def _hits_context(hits: list[SearchHit]) -> str:
     context_parts: list[str] = []
     for hit in hits:
-        text = strip_leading_heading(hit.text, hit.section_heading)
+        text = _usable_summary_text(hit.text, hit.section_heading)
+        if not text:
+            continue
         prefix = f"Page {hit.page_number}"
         if hit.section_heading:
             prefix = f"{prefix} {hit.section_heading}"
@@ -258,18 +296,19 @@ def build_document_summary(
     retrieval_hits: list[SearchHit] | None = None,
 ) -> GeneratedSummary:
     if retrieval_hits is not None:
-        if not retrieval_hits:
+        selected_hits = [hit for hit in retrieval_hits if _is_usable_summary_hit(hit)]
+        if not selected_hits:
             raise StudyDocumentNotReadyError("This document has no indexed evidence chunks to summarize.")
         if provider is not None:
-            summary = clean_text(provider.summarize(_hits_context(retrieval_hits)))
+            summary = clean_text(provider.summarize(_hits_context(selected_hits)))
             if not summary:
                 raise StudyDocumentNotReadyError("This document has no usable text to summarize.")
-            return GeneratedSummary(content=summary, citations=[_citation_from_hit(hit) for hit in retrieval_hits])
-        sentences = [_first_sentence(strip_leading_heading(hit.text, hit.section_heading)) for hit in retrieval_hits]
+            return GeneratedSummary(content=summary, citations=[_citation_from_hit(hit) for hit in selected_hits])
+        sentences = [_first_sentence(_usable_summary_text(hit.text, hit.section_heading)) for hit in selected_hits]
         sentences = [sentence for sentence in sentences if sentence]
         if not sentences:
             raise StudyDocumentNotReadyError("This document has no usable text to summarize.")
-        return GeneratedSummary(content=" ".join(sentences), citations=[_citation_from_hit(hit) for hit in retrieval_hits])
+        return GeneratedSummary(content=" ".join(sentences), citations=[_citation_from_hit(hit) for hit in selected_hits])
 
     selected_chunks = (
         _retrieved_chunks(document, "document overview summary main topics key points", limit=3)
@@ -289,7 +328,7 @@ def build_document_summary(
 
     for chunk in selected_chunks:
         heading = chunk_heading(chunk)
-        sentence = _first_sentence(strip_leading_heading(chunk.text, heading))
+        sentence = _first_sentence(_usable_summary_text(chunk.text, heading))
         if sentence:
             sentences.append(sentence)
             citations.append(_citation(document, chunk))
@@ -329,8 +368,9 @@ def build_study_questions(
     generated: list[GeneratedQuestion] = []
     if provider is not None:
         if retrieval_hits is not None:
-            citations = [_citation_from_hit(hit) for hit in retrieval_hits]
-            context = _hits_context(retrieval_hits)
+            selected_hits = [hit for hit in retrieval_hits if _is_usable_summary_hit(hit)]
+            citations = [_citation_from_hit(hit) for hit in selected_hits]
+            context = _hits_context(selected_hits)
         else:
             retrieved_chunks = _retrieved_chunks(
                 document,
@@ -339,7 +379,13 @@ def build_study_questions(
             )
             citations = [_citation(document, chunk) for chunk in retrieved_chunks]
             context = _chunks_context(retrieved_chunks)
-        for provider_question in provider.generate_questions(context, count=count):
+        if context:
+            provider_questions = provider.generate_questions(context, count=count)
+        else:
+            provider_questions = []
+        for provider_question in provider_questions:
+            if not _is_meaningful_expected_answer(provider_question.expected_answer):
+                continue
             if any(_similar_enough(provider_question.question, existing.question) for existing in generated):
                 continue
             generated.append(
@@ -358,6 +404,8 @@ def build_study_questions(
         route = route_query(question, profile.document_type)
         result = build_document_aware_answer(question, document, profile, route)
         if result is None or result.answer is None or result.quality.status != "answerable":
+            continue
+        if not _is_meaningful_expected_answer(result.answer.summary):
             continue
 
         citations: list[dict[str, object]] = []
@@ -459,9 +507,17 @@ def generate_study_questions(
     count: int = 5,
     provider: LlmProvider | None = None,
     embedder_factory: EmbeddingProviderFactory | None = None,
+    replace_existing: bool = False,
 ) -> list[StudyQuestion]:
     document = _get_ready_document(db, document_id)
-    existing_questions = [question.question for question in list_study_questions(db, document_id)]
+    existing_question_rows = list_study_questions(db, document_id)
+    if replace_existing:
+        for question in existing_question_rows:
+            db.delete(question)
+        db.flush()
+        existing_questions: list[str] = []
+    else:
+        existing_questions = [question.question for question in existing_question_rows]
     retrieval_hits = _study_retrieval_hits(
         db,
         document,

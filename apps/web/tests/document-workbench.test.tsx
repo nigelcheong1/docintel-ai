@@ -216,7 +216,7 @@ describe("DocumentWorkbench", () => {
     const pageEvidence = screen.getByRole("region", { name: "Page evidence" });
     const pagePreview = screen.getByRole("img", { name: "Page 2 source preview" });
 
-    expect(pagePreview).toHaveAttribute("src", "/documents/doc-1/pages/2/image");
+    expect(pagePreview).toHaveAttribute("src", "http://localhost:8000/documents/doc-1/pages/2/image");
     expect(within(pageEvidence).getByText("Table 1 compares HRI30 and InHARD.")).toBeInTheDocument();
     expect(within(pageEvidence).queryByText("Abstract introduces human robot collaboration.")).not.toBeInTheDocument();
 
@@ -331,7 +331,7 @@ describe("DocumentWorkbench", () => {
     expect(screen.getByRole("dialog", { name: "Source viewer" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Page 1 source preview for research-paper.pdf" })).toHaveAttribute(
       "src",
-      "/documents/doc-1/pages/1/image",
+      "http://localhost:8000/documents/doc-1/pages/1/image",
     );
     expect(generateDocumentStudySummary).toHaveBeenCalledWith("doc-1");
   });
@@ -352,6 +352,33 @@ describe("DocumentWorkbench", () => {
     await waitFor(() => expect(submitStudyAnswer).toHaveBeenCalledWith("doc-1", "question-1", "It uses OCR and embeddings."));
     expect(await screen.findByText("Strong answer. You covered the main cited points.")).toBeInTheDocument();
     expect(screen.getByText("82%")).toBeInTheDocument();
+  });
+
+  it("replaces stale study questions when generating a fresh study set", async () => {
+    vi.mocked(getStudyQuestions).mockResolvedValueOnce([
+      {
+        id: "question-stale",
+        document_id: "doc-1",
+        question: "What does the document say about 1 contents?",
+        expected_answer: "XIAMEN UNIVERSITY MALAYSIA Table of Contents 1.",
+        created_at: "2026-09-07T00:00:00Z",
+        latest_answer: null,
+        answer_count: 0,
+        recent_answers: [],
+        citations: [],
+      },
+    ]);
+
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Study" }));
+    expect(await screen.findByText("What does the document say about 1 contents?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate study set" }));
+
+    expect(await screen.findByText("What methods are used?")).toBeInTheDocument();
+    expect(screen.queryByText("What does the document say about 1 contents?")).not.toBeInTheDocument();
+    expect(generateStudyQuestions).toHaveBeenCalledWith("doc-1", 5, { replaceExisting: true });
   });
 
   it("shows study attempt history and citation snippets in the source viewer", async () => {

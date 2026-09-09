@@ -127,7 +127,13 @@ def generate_questions(
     try:
         return [
             _question_read(question)
-            for question in generate_study_questions(db, document_id, count=request.count, embedder_factory=embedder_factory)
+            for question in generate_study_questions(
+                db,
+                document_id,
+                count=request.count,
+                embedder_factory=embedder_factory,
+                replace_existing=request.replace_existing,
+            )
         ]
     except Exception as exc:  # noqa: BLE001 - API boundary converts typed study errors to HTTP responses.
         _raise_study_error(exc)

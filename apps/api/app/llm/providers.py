@@ -11,7 +11,8 @@ from app.core.config import Settings
 
 _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
-_PAGE_MARKER_PATTERN = re.compile(r"^\s*page\s+\d+\s*$", re.IGNORECASE)
+_PAGE_MARKER_PATTERN = re.compile(r"^\s*page\s+\d+(?:\s+[A-Za-z &/-]{1,40})?\s*$", re.IGNORECASE)
+_DOTTED_LEADER_PATTERN = re.compile(r"\.{4,}")
 
 _STOPWORDS = {
     "a",
@@ -40,6 +41,10 @@ _STOPWORDS = {
 }
 
 _QUESTION_TOPICS = (
+    "overview objective",
+    "design approach",
+    "development pipeline",
+    "training pipeline",
     "payment terms",
     "confidentiality obligations",
     "total amount",
@@ -81,6 +86,9 @@ def _normalize_context(context: str) -> str:
     for line in context.splitlines():
         stripped = line.strip()
         if not stripped or _PAGE_MARKER_PATTERN.match(stripped):
+            continue
+        lower = stripped.lower()
+        if "table of contents" in lower or _DOTTED_LEADER_PATTERN.search(stripped):
             continue
         lines.append(stripped)
     return " ".join(lines)

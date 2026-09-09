@@ -145,6 +145,36 @@ def test_chunk_pages_maps_numbered_research_headings_to_canonical_intents():
     assert headings == ["METHOD", "RESULTS", "DATASET"]
 
 
+def test_chunk_pages_skips_toc_entries_and_maps_academic_project_sections():
+    pages = [
+        ParsedPage(
+            page_number=1,
+            text="\n".join(
+                [
+                    "Table of Contents",
+                    "1. Overview & Objective ......................................................... 1",
+                    "2. Design Approach .............................................................. 1",
+                    "3. Observation: the 16-Dimensional Feature Contract ............................. 2",
+                    "Overview & Objective",
+                    "The project trains a PPO tennis agent to control rallies in Unity ML-Agents.",
+                    "Design Approach",
+                    "The implementation uses a 16-dimensional observation vector and shaped rewards.",
+                    "Results & Verification",
+                    "The final policy keeps rallies alive and reduces residual side asymmetry.",
+                ]
+            ),
+            width=600,
+            height=800,
+        )
+    ]
+
+    chunks = chunk_pages(pages, chunk_size=40, overlap=0)
+
+    headings = [chunk.layout.get("section_heading") for chunk in chunks]
+    assert headings == ["OVERVIEW", "METHOD", "RESULTS"]
+    assert not any("................................" in chunk.text for chunk in chunks)
+
+
 def test_chunk_pages_does_not_promote_research_keywords_to_method_headings():
     pages = [
         ParsedPage(

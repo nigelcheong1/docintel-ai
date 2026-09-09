@@ -77,11 +77,19 @@ export async function getStudyQuestions(documentId: string): Promise<StudyQuesti
   return parseJsonResponse<StudyQuestion[]>(response);
 }
 
-export async function generateStudyQuestions(documentId: string, count = 5): Promise<StudyQuestion[]> {
+export type GenerateStudyQuestionsOptions = {
+  replaceExisting?: boolean;
+};
+
+export async function generateStudyQuestions(
+  documentId: string,
+  count = 5,
+  options: GenerateStudyQuestionsOptions = {},
+): Promise<StudyQuestion[]> {
   const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ count }),
+    body: JSON.stringify({ count, replace_existing: options.replaceExisting ?? false }),
   });
   return parseJsonResponse<StudyQuestion[]>(response);
 }

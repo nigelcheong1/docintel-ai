@@ -218,7 +218,7 @@ describe("api client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const fetched = await getStudyQuestions("doc-1");
-    const generated = await generateStudyQuestions("doc-1", 3);
+    const generated = await generateStudyQuestions("doc-1", 3, { replaceExisting: true });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8000/documents/doc-1/study/questions", {
       cache: "no-store",
@@ -226,7 +226,7 @@ describe("api client", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8000/documents/doc-1/study/questions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ count: 3 }),
+      body: JSON.stringify({ count: 3, replace_existing: true }),
     });
     expect(fetched[0].question).toBe("What methods are used?");
     expect(generated[0].expected_answer).toBe("OCR and embeddings.");

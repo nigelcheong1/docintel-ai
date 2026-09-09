@@ -41,18 +41,22 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @lru_cache
-def get_cached_embedding_provider(model_name: str, dimension: int) -> LocalEmbeddingProvider:
-    return LocalEmbeddingProvider(model_name, dimension)
+def get_cached_embedding_provider(model_name: str, dimension: int, device: str = "cpu") -> LocalEmbeddingProvider:
+    return LocalEmbeddingProvider(model_name, dimension, device=device)
 
 
 def get_embedding_provider(settings: Annotated[Settings, Depends(get_settings)]) -> LocalEmbeddingProvider:
-    return get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
+    return get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension, settings.embedding_device)
 
 
 def get_embedding_provider_factory(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> EmbeddingProviderFactory:
-    return lambda: get_cached_embedding_provider(settings.embedding_model_name, settings.embedding_dimension)
+    return lambda: get_cached_embedding_provider(
+        settings.embedding_model_name,
+        settings.embedding_dimension,
+        settings.embedding_device,
+    )
 
 
 def get_ocr_provider_factory(settings: Annotated[Settings, Depends(get_settings)]) -> OcrProviderFactory:

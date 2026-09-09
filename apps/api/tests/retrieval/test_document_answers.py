@@ -569,3 +569,86 @@ def test_abstains_with_type_aware_reason_for_contract_question_on_research_paper
     assert result.quality.status == "insufficient_evidence"
     assert "research paper" in result.quality.reason.lower()
     assert "What methods are used?" in result.quality.suggested_questions
+
+
+def test_academic_report_answers_methods_and_results_despite_feature_contract_phrase():
+    document = make_document(
+        "DRL Final Report.pdf",
+        "\n".join(
+            [
+                "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning",
+                "Prepared by : Student ID Student Name AIT2309628 Nigel Cheong Tze Hock",
+                "Observation: the 16-Dimensional Feature Contract",
+                "Design Approach",
+                "The project uses Unity ML-Agents with a PPO trainer and a shaped reward function.",
+                "Results & Verification",
+                "The trained tennis agent keeps rallies alive and reduces the residual side asymmetry.",
+            ]
+        ),
+        [
+            (
+                "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+                "Prepared by : Student ID Student Name AIT2309628 Nigel Cheong Tze Hock",
+                None,
+            ),
+            (
+                "METHOD Design Approach The project uses Unity ML-Agents with a PPO trainer and a shaped reward function.",
+                "METHOD",
+            ),
+            (
+                "RESULTS Results & Verification The trained tennis agent keeps rallies alive and reduces the residual side asymmetry.",
+                "RESULTS",
+            ),
+        ],
+    )
+    profile = build_document_profile(document)
+
+    methods = build_document_aware_answer("What methods were used?", document, profile, route_query("What methods were used?", profile.document_type))
+    results = build_document_aware_answer("What results are reported?", document, profile, route_query("What results are reported?", profile.document_type))
+    amounts = build_document_aware_answer("What total amount is due?", document, profile, route_query("What total amount is due?", profile.document_type))
+
+    assert profile.document_type == "academic_report"
+    assert methods is not None and methods.answer is not None
+    assert "PPO trainer" in methods.answer.summary
+    assert results is not None and results.answer is not None
+    assert "keeps rallies alive" in results.answer.summary
+    assert amounts is not None and amounts.answer is None
+    assert amounts.quality.status == "insufficient_evidence"
+    assert "academic report" in amounts.quality.reason.lower()
+
+
+def test_academic_report_parties_query_returns_contributors_not_contract_entities():
+    document = make_document(
+        "DRL Final Report.pdf",
+        "\n".join(
+            [
+                "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning",
+                "Lecturer : Goh Sim Kuan",
+                "Prepared by : Student ID Student Name AIT2309628 Nigel Cheong Tze Hock AIT2309970 Sean Ooi",
+                "Observation: the 16-Dimensional Feature Contract",
+                "Results & Verification The final policy keeps rallies alive.",
+            ]
+        ),
+        [
+            (
+                "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+                "Lecturer : Goh Sim Kuan Prepared by : Student ID Student Name AIT2309628 Nigel Cheong Tze Hock AIT2309970 Sean Ooi",
+                None,
+            ),
+            ("RESULTS Results & Verification The final policy keeps rallies alive.", "RESULTS"),
+        ],
+    )
+    profile = build_document_profile(document)
+
+    result = build_document_aware_answer(
+        "Who are the parties involved?",
+        document,
+        profile,
+        route_query("Who are the parties involved?", profile.document_type),
+    )
+
+    assert profile.document_type == "academic_report"
+    assert result is not None and result.answer is not None
+    assert "Prepared by: Student ID Student Name AIT2309628 Nigel Cheong Tze Hock AIT2309970 Sean Ooi" in result.answer.summary
+    assert "Lecturer: Goh Sim Kuan" in result.answer.summary
+    assert "Deep Reinforcement Learning Lecturer" not in result.answer.summary

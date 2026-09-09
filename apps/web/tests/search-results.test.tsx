@@ -336,7 +336,7 @@ describe("SearchResults", () => {
 
     expect(screen.getByRole("img", { name: "Page 2 source preview for invoice.pdf" })).toHaveAttribute(
       "src",
-      "/documents/doc-1/pages/2/image",
+      "http://localhost:8000/documents/doc-1/pages/2/image",
     );
     expect(screen.getByText("100%")).toBeInTheDocument();
 
@@ -384,7 +384,7 @@ describe("SearchResults", () => {
     expect(sourceViewer).toBeInTheDocument();
     expect(within(sourceViewer).getByRole("img", { name: "Page 2 source preview for invoice.pdf" })).toHaveAttribute(
       "src",
-      "/documents/doc-1/pages/2/image",
+      "http://localhost:8000/documents/doc-1/pages/2/image",
     );
     expect(within(sourceViewer).getByText("Invoice total is 1250 Malaysian Ringgit.")).toBeInTheDocument();
     expect(within(sourceViewer).getByRole("link", { name: "Open in workbench" })).toHaveAttribute(

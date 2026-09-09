@@ -33,6 +33,7 @@ import {
   getStudyQuestions,
   submitStudyAnswer,
 } from "@/lib/api";
+import { apiAssetUrl } from "@/lib/api-assets";
 import type {
   DocumentChunk,
   DocumentDetail,
@@ -340,11 +341,9 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
     setIsGeneratingQuestions(true);
     setStudyMessage("");
     try {
-      const generated = await generateStudyQuestions(document.id, 5);
-      setStudyQuestions((current) => {
-        const seen = new Set(current.map((question) => question.id));
-        return [...current, ...generated.filter((question) => !seen.has(question.id))];
-      });
+      const generated = await generateStudyQuestions(document.id, 5, { replaceExisting: true });
+      setStudyQuestions(generated);
+      setAnswerDrafts({});
     } catch (error) {
       setStudyMessage(error instanceof Error ? error.message : "Could not generate study questions.");
     } finally {
@@ -556,7 +555,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                   </p>
                 </div>
                 <Button type="button" onClick={handleGenerateQuestions} isLoading={isGeneratingQuestions}>
-                  Generate study set
+                  {studyQuestions.length > 0 ? "Regenerate study set" : "Generate study set"}
                 </Button>
               </div>
               {studyMessage ? (
@@ -715,7 +714,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                     <div className="mt-3 max-h-[32rem] overflow-auto rounded-md border border-line bg-white p-2">
                       {/* eslint-disable-next-line @next/next/no-img-element -- Source previews come from the local API with document-specific dimensions. */}
                       <img
-                        src={selectedPage.image_url}
+                        src={apiAssetUrl(selectedPage.image_url)}
                         alt={`Page ${selectedPage.page_number} source preview`}
                         className="mx-auto block h-auto max-w-none rounded-sm border border-slate-200 bg-white shadow-sm"
                         style={{ width: `${previewZoom}%`, minWidth: `${previewZoom}%` }}

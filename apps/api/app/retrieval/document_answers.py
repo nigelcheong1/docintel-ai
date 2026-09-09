@@ -9,6 +9,7 @@ from app.documents.intelligence import (
     chunk_heading,
     clean_research_text,
     clean_text,
+    is_table_of_contents_like_text,
     is_research_table_like_text,
     is_research_noise_sentence,
     ordered_chunks,
@@ -205,7 +206,7 @@ def _snippet(text: str, query: str, *, prefer_first: bool = False) -> str:
 
 def _answer_text_for_chunk(chunk: Chunk, profile: DocumentProfileRead, route: QueryRoute) -> str:
     heading = chunk_heading(chunk)
-    if profile.document_type != "research_paper":
+    if profile.document_type not in {"academic_report", "research_paper"}:
         return strip_leading_heading(chunk.text, heading)
 
     target_heading = heading
@@ -298,7 +299,7 @@ def _build_answer(
         answer_text = _answer_text_for_chunk(chunk, profile, route)
         snippet = (
             _research_snippet(answer_text, query, intent=route.intent, prefer_first=prefer_first_sentence)
-            if profile.document_type == "research_paper"
+            if profile.document_type in {"academic_report", "research_paper"}
             else _snippet(answer_text, query, prefer_first=prefer_first_sentence)
         )
         if not snippet:
@@ -343,6 +344,9 @@ def _chunks_by_heading_or_terms(
     for chunk in ordered_chunks(document):
         heading = chunk_heading(chunk)
         if exclude_references and (heading == "REFERENCES" or _chunk_text(chunk).startswith("references")):
+            carry_heading_match = False
+            continue
+        if is_table_of_contents_like_text(chunk.text):
             carry_heading_match = False
             continue
         if exclude_table_like and is_research_table_like_text(chunk.text):
@@ -406,7 +410,9 @@ def _fallback_opening_chunks(document: Document) -> list[Chunk]:
     return [
         chunk
         for chunk in ordered_chunks(document)
-        if chunk_heading(chunk) != "REFERENCES" and not _chunk_text(chunk).startswith("references")
+        if chunk_heading(chunk) != "REFERENCES"
+        and not _chunk_text(chunk).startswith("references")
+        and not is_table_of_contents_like_text(chunk.text)
     ][:_MAX_ANSWER_CHUNKS]
 
 
@@ -631,12 +637,19 @@ def _date_answer(query: str, document: Document, profile: DocumentProfileRead, r
 
 def _amount_answer(query: str, document: Document, profile: DocumentProfileRead, route: QueryRoute) -> DocumentAwareAnswer | None:
     normalized_query = _normalized(query)
-    if profile.document_type == "research_paper" and any(
+    if profile.document_type in {"academic_report", "research_paper"} and any(
         pattern in normalized_query for pattern in _INVOICE_AMOUNT_QUERY_PATTERNS
     ):
+        document_type_name = "academic report" if profile.document_type == "academic_report" else "research paper"
+        suggested_topics = (
+            "objectives, methods, results, contributors, or limitations"
+            if profile.document_type == "academic_report"
+            else "metrics, datasets, results, methods, or limitations"
+        )
+        article = "an" if profile.document_type == "academic_report" else "a"
         return _no_answer(
-            "This document is classified as a research paper, so invoice totals or payment due amounts are not expected. "
-            "Ask about metrics, datasets, results, methods, or limitations instead.",
+            f"This document is classified as {article} {document_type_name}, so invoice totals or payment due amounts are not expected. "
+            f"Ask about {suggested_topics} instead.",
             profile,
             route,
         )
@@ -654,7 +667,58 @@ def _amount_answer(query: str, document: Document, profile: DocumentProfileRead,
     )
 
 
+def _academic_people_answer(
+    _query: str,
+    document: Document,
+    profile: DocumentProfileRead,
+    route: QueryRoute,
+) -> DocumentAwareAnswer | None:
+    order = {"Prepared by": 0, "Lecturer": 1}
+    people_facts = [
+        fact
+        for fact in profile.key_entities
+        if fact.kind == "academic_metadata" and fact.label in {"Prepared by", "Lecturer"}
+    ]
+    people_facts = sorted(people_facts, key=lambda fact: order[fact.label])
+    if not people_facts:
+        return None
+
+    citations: list[AnswerCitation] = []
+    cited_facts: list[DocumentFactRead] = []
+    seen_chunk_ids: set[str] = set()
+    for fact in people_facts:
+        chunk = _chunk_for_fact(document, fact)
+        if chunk is None:
+            continue
+        cited_facts.append(fact)
+        if chunk.id not in seen_chunk_ids:
+            seen_chunk_ids.add(chunk.id)
+            citations.append(_citation(chunk))
+
+    if not citations:
+        return None
+
+    fact_text = "Contributors mentioned: " + ", ".join(
+        f"{_fact_label(fact)}: {fact.value}" for fact in cited_facts
+    ) + "."
+    return DocumentAwareAnswer(
+        answer=ExtractiveAnswer(summary=fact_text, citations=citations),
+        quality=_quality(
+            status="answerable",
+            confidence="strong",
+            reason=f"Document-aware {route.intent} answer built from academic contributor metadata.",
+            evidence_count=len(citations),
+            suggested_questions=profile.suggested_questions,
+        ),
+        query_intent=route.intent,
+        document_type=profile.document_type,
+    )
+
+
 def _party_answer(query: str, document: Document, profile: DocumentProfileRead, route: QueryRoute) -> DocumentAwareAnswer | None:
+    if profile.document_type == "academic_report":
+        return _academic_people_answer(query, document, profile, route)
+
     party_facts = [
         fact
         for fact in profile.key_entities
@@ -833,6 +897,9 @@ def build_document_aware_answer(
 
     if route.intent == "overview":
         return _overview_answer(query, document, profile, route)
+    if route.intent == "authors" and profile.document_type == "academic_report":
+        result = _academic_people_answer(query, document, profile, route)
+        return result or _no_answer("No lecturer or prepared-by evidence was detected in this document.", profile, route)
     if route.intent == "dates":
         result = _date_answer(query, document, profile, route)
         return result or _no_answer("No dates were detected in this document.", profile, route)
