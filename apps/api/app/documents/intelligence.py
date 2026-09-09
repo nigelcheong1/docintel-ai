@@ -164,7 +164,8 @@ _SPACED_HEADING_REPLACEMENTS = tuple(
 )
 _SECTION_LINE_PATTERN = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?\s+)?([A-Za-z][A-Za-z &/-]{2,60})\s*:?\s*$")
 _ACADEMIC_NUMBERED_HEADING_PATTERN = re.compile(
-    r"^\s*(?P<number>\d+(?:\.\d+)*\.)\s*(?P<title>[A-Za-z][A-Za-z0-9 /&,\-–]{2,90})\s*:?\s*$"
+    r"^\s*(?P<number>\d+(?:\.\d+)*\.)\s*"
+    r"(?P<title>[A-Za-z][A-Za-z0-9 /&:,\-–]{2,90})\s*:?\s*$"
 )
 _ACADEMIC_HEADING_SKIP_PATTERN = re.compile(r"^(?:fig|figure|table)\.?\s+\d+", re.IGNORECASE)
 _ACADEMIC_DATASET_TERMS = {"dataset", "datasets", "benchmark", "benchmarks", "corpus"}
@@ -180,6 +181,7 @@ _ACADEMIC_METHOD_TERMS = {
     "methodology",
     "model",
     "module",
+    "observation",
     "pipeline",
     "task formulation",
     "textual supervision",
@@ -212,6 +214,8 @@ _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
 _RESEARCH_CONTENT_HEADINGS = {
     "ABSTRACT",
     "INTRODUCTION",
+    "OVERVIEW",
+    "OBJECTIVES",
     "RELATED WORK",
     "LITERATURE REVIEW",
     "METHODOLOGY",
@@ -300,7 +304,50 @@ _RESEARCH_METHOD_TABLE_PENALTIES = {
     "top1",
     "top5",
 }
+_TOC_DOTTED_LEADER_PATTERN = re.compile(r"\.{4,}")
+_TOC_NUMBERED_ENTRY_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)*\.?\s+[A-Za-z][A-Za-z0-9 &:/,\-–]{2,90}\s+\.{4,}\s+\d+\b"
+)
+_TECHNICAL_CONTRACT_PATTERN = re.compile(
+    r"\b(?:feature|interface|state|data|observation|schema|api|dimensional|reward|action)\s+contract\b",
+    re.IGNORECASE,
+)
+_ACADEMIC_REPORT_SIGNAL_PATTERNS = (
+    re.compile(r"\bcourse\s+code\b", re.IGNORECASE),
+    re.compile(r"\bcourse\s+name\b", re.IGNORECASE),
+    re.compile(r"\bacademic\s+session\b", re.IGNORECASE),
+    re.compile(r"\bassessment\s+title\b", re.IGNORECASE),
+    re.compile(r"\bprepared\s+by\b", re.IGNORECASE),
+    re.compile(r"\bstudent\s+id\b", re.IGNORECASE),
+    re.compile(r"\bproject\s+submission\b", re.IGNORECASE),
+    re.compile(r"\bfinal\s+report\b", re.IGNORECASE),
+    re.compile(r"\blecturer\b", re.IGNORECASE),
+)
+_ACADEMIC_LABELS = {
+    "course code": "Course code",
+    "course name": "Course name",
+    "lecturer": "Lecturer",
+    "academic session": "Academic session",
+    "assessment title": "Assessment title",
+    "prepared by": "Prepared by",
+}
+_ACADEMIC_LABEL_PATTERN = re.compile(
+    r"\b(Course\s+Code|Course\s+Name|Lecturer|Academic\s+Session|Assessment\s+Title|Prepared\s+by)\s*:?\s*",
+    re.IGNORECASE,
+)
 _DOCUMENT_TYPE_KEYWORDS = {
+    "academic_report": {
+        "academic session": 5,
+        "assessment title": 5,
+        "course code": 5,
+        "course name": 5,
+        "deep reinforcement learning": 2,
+        "final report": 4,
+        "lecturer": 4,
+        "prepared by": 5,
+        "project submission": 5,
+        "student id": 4,
+    },
     "research_paper": {
         "abstract": 4,
         "references": 3,
@@ -360,6 +407,13 @@ _DOCUMENT_TYPE_KEYWORDS = {
 }
 
 _SUGGESTED_QUESTIONS = {
+    "academic_report": [
+        "What is this project report about?",
+        "What design or methodology is used?",
+        "What results are reported?",
+        "What limitations or future work are discussed?",
+        "Who prepared this project report?",
+    ],
     "research_paper": [
         "What is this document about?",
         "What methods are used?",
@@ -409,6 +463,29 @@ def normalize_spaced_headings(text: str) -> str:
 def clean_text(text: str) -> str:
     dehyphenated = re.sub(r"(?<=\w)-\s+(?=\w)", "", normalize_spaced_headings(text))
     return " ".join(dehyphenated.split())
+
+
+def is_table_of_contents_like_text(text: str) -> bool:
+    cleaned = clean_text(text)
+    if not cleaned:
+        return False
+    lower = cleaned.lower()
+    dotted_count = len(_TOC_DOTTED_LEADER_PATTERN.findall(cleaned))
+    entry_count = len(_TOC_NUMBERED_ENTRY_PATTERN.findall(cleaned))
+    if "table of contents" in lower and (dotted_count > 0 or entry_count > 0):
+        return True
+    if entry_count >= 2:
+        return True
+    if dotted_count >= 2 and re.search(
+        r"\b(?:contents|overview|objective|design|method|result|pipeline|verification)\b",
+        lower,
+    ):
+        return True
+    return False
+
+
+def _academic_report_signal_count(text: str) -> int:
+    return sum(1 for pattern in _ACADEMIC_REPORT_SIGNAL_PATTERNS if pattern.search(text))
 
 
 def strip_leading_heading(text: str, heading: str | None) -> str:
@@ -512,17 +589,27 @@ def _academic_heading_alias(line: str) -> str | None:
     normalized_line = clean_text(line)
     if not normalized_line or len(normalized_line) > 110:
         return None
+    if is_table_of_contents_like_text(normalized_line) or _TOC_DOTTED_LEADER_PATTERN.search(normalized_line):
+        return None
     if _ACADEMIC_HEADING_SKIP_PATTERN.match(normalized_line):
         return None
 
     number_match = _ACADEMIC_NUMBERED_HEADING_PATTERN.match(normalized_line)
-    if number_match is None:
+    if number_match is None and re.search(r"[.!?]$", normalized_line):
         return None
-
     title = number_match.group("title") if number_match else normalized_line
     normalized_title = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
-    title_words = normalized_title.split()
-    words = set(title_words)
+    words = set(normalized_title.split())
+
+    if number_match is None:
+        if "overview" in words or "objective" in words:
+            return "OVERVIEW"
+        if "design approach" in normalized_title or "development pipeline" in normalized_title:
+            return "METHOD"
+        if "results verification" in normalized_title or words.intersection(_ACADEMIC_RESULT_TERMS):
+            return "RESULTS"
+        return None
+
     major_section = number_match.group("number").split(".")[0] if number_match else None
 
     if words.intersection(_ACADEMIC_DATASET_TERMS):
@@ -531,15 +618,19 @@ def _academic_heading_alias(line: str) -> str | None:
         term in normalized_title for term in _ACADEMIC_LIMITATION_TERMS
     ):
         return "FUTURE WORK" if "future" in normalized_title else "CONCLUSION"
+    if "overview" in words or "objective" in words:
+        return "OVERVIEW"
+    if "design approach" in normalized_title or "development pipeline" in normalized_title:
+        return "METHOD"
     if "implementation setting" in normalized_title:
         return "METHOD"
-    if major_section == "3":
-        return "METHOD"
-    if major_section == "4":
-        return "RESULTS"
     if any(term in normalized_title for term in _ACADEMIC_METHOD_TERMS):
         return "METHOD"
     if any(term in normalized_title for term in _ACADEMIC_RESULT_TERMS):
+        return "RESULTS"
+    if major_section == "3":
+        return "METHOD"
+    if major_section == "4":
         return "RESULTS"
     return None
 
@@ -557,6 +648,8 @@ def _line_heading(line: str) -> str | None:
 def _section_from_chunk(chunk: Chunk) -> DocumentSectionRead | None:
     heading = chunk_heading(chunk)
     if heading is None:
+        return None
+    if is_table_of_contents_like_text(chunk.text):
         return None
     if heading in {"METHOD", "METHODS"} and is_research_table_like_text(chunk.text):
         return None
@@ -577,6 +670,8 @@ def _sections_from_page_lines(pages: Iterable[Page]) -> list[DocumentSectionRead
     for page in pages:
         lines = [line.strip() for line in page.text.splitlines() if line.strip()]
         for index, line in enumerate(lines):
+            if is_table_of_contents_like_text(line):
+                continue
             heading = _line_heading(line)
             if heading not in _KNOWN_HEADINGS:
                 continue
@@ -647,11 +742,22 @@ def infer_document_type(filename: str, text: str, sections: Iterable[DocumentSec
     searchable_text = f"{filename} {text}".lower()
     scores = Counter({"generic": 1})
     for document_type, keywords in _DOCUMENT_TYPE_KEYWORDS.items():
+        candidate_text = (
+            _TECHNICAL_CONTRACT_PATTERN.sub(" ", searchable_text)
+            if document_type == "contract"
+            else searchable_text
+        )
         for keyword, weight in keywords.items():
-            if keyword in searchable_text:
+            if keyword in candidate_text:
                 scores[document_type] += weight
 
+    academic_signal_count = _academic_report_signal_count(searchable_text)
+    if academic_signal_count >= 2:
+        scores["academic_report"] += 6 + academic_signal_count * 2
+
     section_headings = {section.heading for section in sections}
+    if {"OVERVIEW", "METHOD", "RESULTS"}.intersection(section_headings) and academic_signal_count >= 2:
+        scores["academic_report"] += 3
     if "ABSTRACT" in section_headings:
         scores["research_paper"] += 4
     if "KEYWORDS" in section_headings:
@@ -664,6 +770,8 @@ def infer_document_type(filename: str, text: str, sections: Iterable[DocumentSec
         scores["invoice"] += 4
     if {"OBLIGATIONS", "TERMINATION", "PARTIES"}.intersection(section_headings):
         scores["contract"] += 4
+    if academic_signal_count >= 3:
+        scores["contract"] -= 4
     if {"TECHNICAL SKILLS", "CORE SKILLS", "PROJECTS", "EDUCATION"}.intersection(section_headings):
         scores["resume"] += 3
     if {"EXECUTIVE SUMMARY", "FINDINGS", "RECOMMENDATIONS"}.intersection(section_headings):
@@ -706,6 +814,11 @@ def _research_title_continuation(line: str) -> str | None:
 
 
 def infer_title(document: Document, sections: Iterable[DocumentSectionRead], document_type: str | None = None) -> str | None:
+    if document_type == "academic_report":
+        stem = re.sub(r"\.[A-Za-z0-9]+$", "", document.filename).replace("_", " ").strip()
+        if stem:
+            return clean_text(stem)
+
     known_headings = {section.heading for section in sections}.union(_KNOWN_HEADINGS)
     for page in _ordered_pages(document)[:2]:
         raw_lines = page.text.splitlines()
@@ -737,6 +850,7 @@ def infer_title(document: Document, sections: Iterable[DocumentSectionRead], doc
 
 def _overview(document_type: str, sections: list[DocumentSectionRead], chunks: list[Chunk]) -> str | None:
     preferred_headings = {
+        "academic_report": {"OVERVIEW", "OBJECTIVES", "INTRODUCTION", "EXECUTIVE SUMMARY", "SUMMARY"},
         "research_paper": {"ABSTRACT", "INTRODUCTION", "CONCLUSION"},
         "resume": {"PROFESSIONAL SUMMARY", "SUMMARY", "ABOUT ME"},
         "invoice": {"INVOICE", "INVOICE DETAILS", "PAYMENT SUMMARY"},
@@ -746,11 +860,23 @@ def _overview(document_type: str, sections: list[DocumentSectionRead], chunks: l
 
     for section in sections:
         if section.heading in preferred_headings:
-            preview = clean_research_text(section.text_preview) if document_type == "research_paper" else section.text_preview
+            if is_table_of_contents_like_text(section.text_preview):
+                continue
+            preview = (
+                clean_research_text(section.text_preview)
+                if document_type in {"academic_report", "research_paper"}
+                else section.text_preview
+            )
             if preview:
                 return preview
     for chunk in chunks[:2]:
-        preview_text = clean_research_text(chunk.text) if document_type == "research_paper" else chunk.text
+        if is_table_of_contents_like_text(chunk.text):
+            continue
+        preview_text = (
+            clean_research_text(chunk.text)
+            if document_type in {"academic_report", "research_paper"}
+            else chunk.text
+        )
         preview = _truncate(preview_text)
         if preview:
             return preview
@@ -778,7 +904,7 @@ def _research_sentence_candidates(text: str) -> list[str]:
 def _research_chunks(document: Document) -> Iterable[Chunk]:
     for chunk in ordered_chunks(document):
         heading = chunk_heading(chunk)
-        if heading == "REFERENCES":
+        if heading == "REFERENCES" or is_table_of_contents_like_text(chunk.text):
             continue
         yield chunk
 
@@ -898,6 +1024,67 @@ def _extract_research_entities(document: Document) -> list[DocumentFactRead]:
         terms={"achieve", "achieves", "result", "results", "accuracy", "top1", "top5", "f1"},
     )
     return facts[:_MAX_FACTS_PER_GROUP]
+
+
+def _academic_label_key(label: str) -> str:
+    return re.sub(r"\s+", " ", label.lower()).strip()
+
+
+def _academic_metadata_value(label_key: str, raw_value: str) -> str:
+    stop_pattern = re.compile(
+        r"\b(?:Date\s+Received|Feedback\s+from|Mark|Table\s+of\s+Contents|"
+        r"Observation\s*:|Design\s+Approach|Results\s*&\s*Verification)",
+        re.IGNORECASE,
+    )
+    cleaned = clean_text(raw_value)
+    if label_key == "assessment title":
+        cleaned = re.split(r"\bDue\s+Date\b", cleaned, maxsplit=1, flags=re.IGNORECASE)[0]
+    if label_key == "prepared by":
+        cleaned = stop_pattern.split(cleaned, maxsplit=1)[0]
+    return clean_text(cleaned).strip(" ,;:.")
+
+
+def _extract_academic_report_entities(document: Document) -> list[DocumentFactRead]:
+    facts: list[DocumentFactRead] = []
+    seen: set[tuple[str, str]] = set()
+    for page in _ordered_pages(document):
+        text = clean_text(
+            re.split(r"\bTable\s+of\s+Contents\b", page.text, maxsplit=1, flags=re.IGNORECASE)[0]
+        )
+        matches = list(_ACADEMIC_LABEL_PATTERN.finditer(text))
+        for index, match in enumerate(matches):
+            label_key = _academic_label_key(match.group(1))
+            label = _ACADEMIC_LABELS.get(label_key)
+            if label is None:
+                continue
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            value = _academic_metadata_value(label_key, text[start:end])
+            _add_fact(
+                facts,
+                seen,
+                kind="academic_metadata",
+                label=label,
+                value=value,
+                page_number=page.page_number,
+                source_text=page.text,
+            )
+            if len(facts) >= _MAX_FACTS_PER_GROUP:
+                return facts
+
+    for fact in _extract_research_entities(document):
+        if len(facts) >= _MAX_FACTS_PER_GROUP:
+            break
+        _add_fact(
+            facts,
+            seen,
+            kind=fact.kind,
+            label=fact.label,
+            value=fact.value,
+            page_number=fact.page_number,
+            source_text=fact.source_text,
+        )
+    return facts
 
 
 def _label_from_context(text: str, match_start: int, labels: tuple[tuple[str, str], ...], default: str) -> str:
@@ -1027,7 +1214,7 @@ def _extract_research_numbers(document: Document) -> list[DocumentFactRead]:
 
 
 def extract_numbers(document: Document, document_type: str | None = None) -> list[DocumentFactRead]:
-    if document_type == "research_paper":
+    if document_type in {"academic_report", "research_paper"}:
         return _extract_research_numbers(document)
     pages = _ordered_pages(document)
     facts: list[DocumentFactRead] = []
@@ -1098,6 +1285,8 @@ def _entity_candidates(text: str) -> Iterable[tuple[str, str]]:
 def extract_entities(document: Document, document_type: str | None = None) -> list[DocumentFactRead]:
     if document_type == "research_paper":
         return _extract_research_entities(document)
+    if document_type == "academic_report":
+        return _extract_academic_report_entities(document)
     pages = _ordered_pages(document)
     facts: list[DocumentFactRead] = []
     seen: set[tuple[str, str]] = set()

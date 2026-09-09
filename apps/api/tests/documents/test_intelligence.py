@@ -446,3 +446,58 @@ def test_profile_detects_reports_with_findings_recommendations_and_risks():
     assert profile.document_type == "report"
     assert "What recommendations are listed?" in profile.suggested_questions
     assert any(section.heading == "FINDINGS" for section in profile.sections)
+
+
+def test_profile_detects_academic_project_report_without_legal_contract_false_positive():
+    document = make_document(
+        "DRL Final Report.pdf",
+        "\n".join(
+            [
+                "XIAMEN UNIVERSITY MALAYSIA",
+                "Course Code : AIT306 Course Name : Deep Reinforcement Learning",
+                "Lecturer : Goh Sim Kuan Academic Session : 2026/04",
+                "Assessment Title : Project Submission Due Date : 17th July 2026",
+                "Prepared by : Student ID Student Name AIT2309628 Nigel Cheong Tze Hock",
+                "Table of Contents",
+                "1. Overview & Objective ......................................................... 1",
+                "2. Design Approach .............................................................. 1",
+                "3. Observation: the 16-Dimensional Feature Contract ............................. 2",
+                "4. Development Pipeline ......................................................... 3",
+                "Results & Verification",
+                "The trained PPO tennis agent keeps rallies alive and corrects the residual side asymmetry.",
+            ]
+        ),
+        [
+            (
+                "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+                "Lecturer : Goh Sim Kuan Academic Session : 2026/04 Assessment Title : Project Submission "
+                "Prepared by : Student ID Student Name AIT2309628 Nigel Cheong Tze Hock",
+                None,
+            ),
+            (
+                "Table of Contents 1. Overview & Objective ......................................................... 1 "
+                "2. Design Approach .............................................................. 1 "
+                "3. Observation: the 16-Dimensional Feature Contract ............................. 2",
+                None,
+            ),
+            (
+                "OVERVIEW The project trains a deep reinforcement learning agent for tennis rally control in Unity ML-Agents.",
+                "OVERVIEW",
+            ),
+            (
+                "RESULTS The trained PPO tennis agent keeps rallies alive and corrects the residual side asymmetry.",
+                "RESULTS",
+            ),
+        ],
+    )
+
+    profile = build_document_profile(document)
+
+    assert profile.document_type == "academic_report"
+    assert profile.title == "DRL Final Report"
+    assert "What is this project report about?" in profile.suggested_questions
+    assert "Who are the parties involved?" not in profile.suggested_questions
+    assert "What obligations are mentioned?" not in profile.suggested_questions
+    assert not any(fact.value == "1" and "Table of Contents" in fact.source_text for fact in profile.key_numbers)
+    assert any(fact.label == "Lecturer" and fact.value == "Goh Sim Kuan" for fact in profile.key_entities)
+    assert any(fact.label == "Prepared by" and "Nigel Cheong Tze Hock" in fact.value for fact in profile.key_entities)

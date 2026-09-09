@@ -115,9 +115,14 @@ _SPACED_HEADING_REPLACEMENTS = tuple(
     if len(re.sub(r"[^A-Z0-9]+", "", heading)) >= 4
 )
 _ACADEMIC_NUMBERED_HEADING_PATTERN = re.compile(
-    r"^\s*(?P<number>\d+(?:\.\d+)*\.)\s*(?P<title>[A-Za-z][A-Za-z0-9 /&,\-–]{2,90})\s*:?\s*$"
+    r"^\s*(?P<number>\d+(?:\.\d+)*\.)\s*"
+    r"(?P<title>[A-Za-z][A-Za-z0-9 /&:,\-–]{2,90})\s*:?\s*$"
 )
 _ACADEMIC_HEADING_SKIP_PATTERN = re.compile(r"^(?:fig|figure|table)\.?\s+\d+", re.IGNORECASE)
+_TOC_DOTTED_LEADER_PATTERN = re.compile(r"\.{4,}")
+_TOC_NUMBERED_ENTRY_PATTERN = re.compile(
+    r"\b\d+(?:\.\d+)*\.?\s+[A-Za-z][A-Za-z0-9 &:/,\-–]{2,90}\s+\.{4,}\s+\d+\b"
+)
 _ACADEMIC_DATASET_TERMS = {"dataset", "datasets", "benchmark", "benchmarks", "corpus"}
 _ACADEMIC_METHOD_TERMS = {
     "architecture",
@@ -131,6 +136,7 @@ _ACADEMIC_METHOD_TERMS = {
     "methodology",
     "model",
     "module",
+    "observation",
     "pipeline",
     "task formulation",
     "textual supervision",
@@ -186,6 +192,25 @@ def _normalize_text(text: str) -> str:
     return " ".join(normalized.split())
 
 
+def _is_table_of_contents_like_text(text: str) -> bool:
+    cleaned = _normalize_text(text)
+    if not cleaned:
+        return False
+    lower = cleaned.lower()
+    dotted_count = len(_TOC_DOTTED_LEADER_PATTERN.findall(cleaned))
+    entry_count = len(_TOC_NUMBERED_ENTRY_PATTERN.findall(cleaned))
+    if "table of contents" in lower and (dotted_count > 0 or entry_count > 0):
+        return True
+    if entry_count >= 2:
+        return True
+    if dotted_count >= 2 and re.search(
+        r"\b(?:contents|overview|objective|design|method|result|pipeline|verification)\b",
+        lower,
+    ):
+        return True
+    return False
+
+
 def is_usable_chunk_text(text: str) -> bool:
     words = _WORD_PATTERN.findall(text)
     alpha_count = len(_ALPHA_PATTERN.findall(text))
@@ -210,17 +235,27 @@ def _academic_heading_alias(line: str) -> str | None:
     normalized_line = _normalize_text(line).strip()
     if not normalized_line or len(normalized_line) > 110:
         return None
+    if _is_table_of_contents_like_text(normalized_line) or _TOC_DOTTED_LEADER_PATTERN.search(normalized_line):
+        return None
     if _ACADEMIC_HEADING_SKIP_PATTERN.match(normalized_line):
         return None
 
     number_match = _ACADEMIC_NUMBERED_HEADING_PATTERN.match(normalized_line)
-    if number_match is None:
+    if number_match is None and re.search(r"[.!?]$", normalized_line):
         return None
-
     title = number_match.group("title") if number_match else normalized_line
     normalized_title = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
-    title_words = normalized_title.split()
-    words = set(title_words)
+    words = set(normalized_title.split())
+
+    if number_match is None:
+        if "overview" in words or "objective" in words:
+            return "OVERVIEW"
+        if "design approach" in normalized_title or "development pipeline" in normalized_title:
+            return "METHOD"
+        if "results verification" in normalized_title or words.intersection(_ACADEMIC_RESULT_TERMS):
+            return "RESULTS"
+        return None
+
     major_section = number_match.group("number").split(".")[0] if number_match else None
 
     if words.intersection(_ACADEMIC_DATASET_TERMS):
@@ -229,15 +264,19 @@ def _academic_heading_alias(line: str) -> str | None:
         term in normalized_title for term in _ACADEMIC_LIMITATION_TERMS
     ):
         return "FUTURE WORK" if "future" in normalized_title else "CONCLUSION"
+    if "overview" in words or "objective" in words:
+        return "OVERVIEW"
+    if "design approach" in normalized_title or "development pipeline" in normalized_title:
+        return "METHOD"
     if "implementation setting" in normalized_title:
         return "METHOD"
-    if major_section == "3":
-        return "METHOD"
-    if major_section == "4":
-        return "RESULTS"
     if any(term in normalized_title for term in _ACADEMIC_METHOD_TERMS):
         return "METHOD"
     if any(term in normalized_title for term in _ACADEMIC_RESULT_TERMS):
+        return "RESULTS"
+    if major_section == "3":
+        return "METHOD"
+    if major_section == "4":
         return "RESULTS"
     return None
 
@@ -410,6 +449,8 @@ def chunk_pages(
                     continue
                 chunk_text = " ".join(window)
                 if not is_usable_chunk_text(chunk_text):
+                    continue
+                if _is_table_of_contents_like_text(chunk_text):
                     continue
                 word_start = section.word_start + start
                 layout: dict[str, object] = {

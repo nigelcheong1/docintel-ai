@@ -152,6 +152,113 @@ def make_postgres_document() -> Document:
     return document
 
 
+def make_academic_report_document() -> Document:
+    document = Document(
+        id="academic-report-1",
+        filename="DRL Final Report.pdf",
+        stored_filename="DRL Final Report.pdf",
+        mime_type="application/pdf",
+        file_path="/tmp/DRL Final Report.pdf",
+        status=DocumentStatus.INDEXED,
+    )
+    page_one = Page(
+        id="academic-page-1",
+        document_id=document.id,
+        page_number=1,
+        text=(
+            "XIAMEN UNIVERSITY MALAYSIA Course Code : AIT306 Course Name : Deep Reinforcement Learning "
+            "Lecturer : Goh Sim Kuan Assessment Title : Project Submission Prepared by : AIT2309628 Nigel Cheong Tze Hock"
+        ),
+        width=612,
+        height=792,
+    )
+    page_three = Page(
+        id="academic-page-3",
+        document_id=document.id,
+        page_number=3,
+        text=(
+            "Table of Contents 1. Overview & Objective ......................................................... 1 "
+            "2. Design Approach .............................................................. 1 "
+            "3. Observation: the 16-Dimensional Feature Contract ............................. 2"
+        ),
+        width=612,
+        height=792,
+    )
+    page_four = Page(
+        id="academic-page-4",
+        document_id=document.id,
+        page_number=4,
+        text="Overview & Objective The project trains a PPO tennis agent to control rallies in Unity ML-Agents.",
+        width=612,
+        height=792,
+    )
+    page_five = Page(
+        id="academic-page-5",
+        document_id=document.id,
+        page_number=5,
+        text=(
+            "Design Approach The implementation uses a 16-dimensional observation vector, shaped rewards, and PPO training. "
+            "Results & Verification The final policy keeps rallies alive and reduces residual side asymmetry."
+        ),
+        width=612,
+        height=792,
+    )
+    document.pages = [page_one, page_three, page_four, page_five]
+    document.chunks = [
+        Chunk(
+            id="academic-front",
+            document_id=document.id,
+            page_id=page_one.id,
+            page=page_one,
+            chunk_index=0,
+            text=page_one.text,
+            token_estimate=len(page_one.text.split()),
+            layout={},
+        ),
+        Chunk(
+            id="academic-toc",
+            document_id=document.id,
+            page_id=page_three.id,
+            page=page_three,
+            chunk_index=1,
+            text=page_three.text,
+            token_estimate=len(page_three.text.split()),
+            layout={},
+        ),
+        Chunk(
+            id="academic-overview",
+            document_id=document.id,
+            page_id=page_four.id,
+            page=page_four,
+            chunk_index=2,
+            text=page_four.text,
+            token_estimate=len(page_four.text.split()),
+            layout={"section_heading": "OVERVIEW"},
+        ),
+        Chunk(
+            id="academic-method",
+            document_id=document.id,
+            page_id=page_five.id,
+            page=page_five,
+            chunk_index=3,
+            text="METHOD " + page_five.text.split("Results & Verification")[0].strip(),
+            token_estimate=15,
+            layout={"section_heading": "METHOD"},
+        ),
+        Chunk(
+            id="academic-results",
+            document_id=document.id,
+            page_id=page_five.id,
+            page=page_five,
+            chunk_index=4,
+            text="RESULTS Results & Verification The final policy keeps rallies alive and reduces residual side asymmetry.",
+            token_estimate=13,
+            layout={"section_heading": "RESULTS"},
+        ),
+    ]
+    return document
+
+
 def test_build_document_summary_uses_cited_high_signal_chunks():
     summary = build_document_summary(make_document())
 
@@ -163,6 +270,57 @@ def test_build_document_summary_uses_cited_high_signal_chunks():
     assert summary.citations[0]["snippet"].startswith("ABSTRACT This paper introduces")
     assert summary.citations[0]["score"] == 1.0
     assert summary.citations[0]["source_score"] == 1.0
+
+
+def test_build_document_summary_filters_toc_fragments_for_academic_reports():
+    document = make_academic_report_document()
+    retrieval_hits = [
+        SearchHit(
+            chunk_id="academic-toc",
+            document_id=document.id,
+            document_filename=document.filename,
+            page_number=3,
+            chunk_index=1,
+            text=document.chunks[1].text,
+            score=0.9,
+            source_score=0.9,
+            ranking_signals={"lexical_score": 0.9},
+            section_heading=None,
+        ),
+        SearchHit(
+            chunk_id="academic-overview",
+            document_id=document.id,
+            document_filename=document.filename,
+            page_number=4,
+            chunk_index=2,
+            text=document.chunks[2].text,
+            score=0.8,
+            source_score=0.8,
+            ranking_signals={"lexical_score": 0.8},
+            section_heading="OVERVIEW",
+        ),
+        SearchHit(
+            chunk_id="academic-results",
+            document_id=document.id,
+            document_filename=document.filename,
+            page_number=5,
+            chunk_index=4,
+            text=document.chunks[4].text,
+            score=0.7,
+            source_score=0.7,
+            ranking_signals={"lexical_score": 0.7},
+            section_heading="RESULTS",
+        ),
+    ]
+
+    summary = build_document_summary(document, retrieval_hits=retrieval_hits)
+
+    assert "PPO tennis agent" in summary.content
+    assert "keeps rallies alive" in summary.content
+    assert "Table of Contents" not in summary.content
+    assert "................................" not in summary.content
+    assert "Page 5 RESULTS" not in summary.content
+    assert [citation["chunk_id"] for citation in summary.citations] == ["academic-overview", "academic-results"]
 
 
 def test_build_document_summary_can_use_provider_with_retrieved_context():
@@ -255,6 +413,20 @@ def test_build_study_questions_reuses_document_aware_answers_and_deduplicates():
     assert methods.citations[0]["chunk_id"] == "chunk-method"
 
 
+def test_build_study_questions_for_academic_report_use_meaningful_evidence_not_headings():
+    questions = build_study_questions(make_academic_report_document(), count=4)
+
+    assert questions
+    combined_expected = " ".join(question.expected_answer for question in questions)
+    combined_questions = " ".join(question.question for question in questions)
+
+    assert "Table of Contents" not in combined_expected
+    assert "................................" not in combined_expected
+    assert "1 contents" not in combined_questions
+    assert any("PPO" in question.expected_answer or "16-dimensional observation" in question.expected_answer for question in questions)
+    assert any("rallies alive" in question.expected_answer for question in questions)
+
+
 def test_build_study_questions_dedupes_provider_generated_questions():
     document = make_document()
     add_retrieval_only_chunk(document)
@@ -290,6 +462,40 @@ def test_generate_study_questions_falls_back_to_ranked_chunks_when_retrieval_has
 
     assert "faster search" in provider.question_context
     assert questions[0].citations[0]["chunk_id"] == "00000000-0000-0000-0000-000000000303"
+
+
+def test_generate_study_questions_can_replace_stale_existing_questions(monkeypatch, db_session):
+    document = make_postgres_document()
+    stale_question = StudyQuestion(
+        id="00000000-0000-0000-0000-000000000401",
+        document_id=document.id,
+        question="What does the document say about 1 contents?",
+        expected_answer="XIAMEN UNIVERSITY MALAYSIA Table of Contents 1.",
+        citations=[],
+    )
+    document.study_questions = [stale_question]
+    db_session.add(document)
+    db_session.commit()
+
+    def fake_hybrid_search(db, query_embedding, query, top_k, document_id, **kwargs):
+        return [], RetrievalMode(mode="lexical", fallback_reason="No matching lexical hits.")
+
+    monkeypatch.setattr("app.study.service.hybrid_search_chunks", fake_hybrid_search)
+
+    questions = generate_study_questions(
+        db_session,
+        document.id,
+        count=2,
+        provider=RecordingProvider(),
+        embedder_factory=lambda: ConstantEmbeddingProvider(),
+        replace_existing=True,
+    )
+
+    saved_questions = db_session.query(StudyQuestion).filter_by(document_id=document.id).all()
+    assert len(saved_questions) == len(questions)
+    assert stale_question.id not in {question.id for question in saved_questions}
+    assert not any("1 contents" in question.question for question in saved_questions)
+    assert not any("Table of Contents" in question.expected_answer for question in saved_questions)
 
 
 def test_score_study_answer_rewards_overlap_with_expected_answer():

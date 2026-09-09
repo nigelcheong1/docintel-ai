@@ -40,6 +40,13 @@ def _mismatch_reason(intent: str, document_type: str | None, normalized_query: s
     is_research_invoice_amount_query = intent == "amounts" and any(
         pattern in normalized_query for pattern in _INVOICE_AMOUNT_QUERY_PATTERNS
     )
+    if document_type == "academic_report" and (
+        intent in {"payment_due", "payment_terms"} or is_research_invoice_amount_query
+    ):
+        return (
+            "This document is classified as an academic report, so invoice totals or payment due amounts are not expected. "
+            "Ask about objectives, methods, results, contributors, or limitations instead."
+        )
     if document_type == "research_paper" and (
         intent in {"payment_due", "payment_terms"} or is_research_invoice_amount_query
     ):
@@ -80,7 +87,20 @@ def route_query(query: str, document_type: str | None = None) -> QueryRoute:
         return QueryRoute("overview", {"overview", "background", "summary"})
 
     intent_rules: list[tuple[str, set[str], set[str]]] = [
-        ("authors", {"author", "authors", "who wrote", "written by"}, {"overview"}),
+        (
+            "authors",
+            {
+                "author",
+                "authors",
+                "who wrote",
+                "written by",
+                "who prepared",
+                "prepared by",
+                "contributors",
+                "team members",
+            },
+            {"overview", "party"},
+        ),
         (
             "contributions",
             {"contribution", "contributions", "main contribution", "novel", "propose", "proposed", "introduce", "introduced"},

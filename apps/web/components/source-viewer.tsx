@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiAssetUrl } from "@/lib/api-assets";
 
 export type SourceViewerSource = {
   chunk_id: string;
@@ -55,14 +57,15 @@ export function SourceViewer({
 }) {
   const [previewZoom, setPreviewZoom] = useState(100);
   const documentPageUrl = source.document_page_url ?? `/documents/${source.document_id}?page=${source.page_number}`;
+  const sourceImageUrl = apiAssetUrl(source.page_image_url);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 px-4 py-8 backdrop-blur-sm">
+  const viewer = (
+    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-ink/50 px-4 py-6 backdrop-blur-sm">
       <section
         role="dialog"
         aria-label="Source viewer"
         aria-modal="true"
-        className="w-full max-w-5xl overflow-hidden rounded-lg border border-teal-100 bg-white shadow-2xl shadow-ink/20"
+        className="w-full max-w-6xl overflow-hidden rounded-lg border border-teal-100 bg-white shadow-2xl shadow-ink/20"
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line bg-teal-50/70 px-4 py-3">
           <div className="min-w-0">
@@ -117,10 +120,10 @@ export function SourceViewer({
               </div>
             </div>
             <div className="mt-3 max-h-[34rem] overflow-auto rounded-md border border-line bg-slate-50 p-2">
-              {source.page_image_url ? (
+              {sourceImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- Source previews are served by the local document API.
                 <img
-                  src={source.page_image_url}
+                  src={sourceImageUrl}
                   alt={`Page ${source.page_number} source preview for ${source.document_filename}`}
                   className="mx-auto block h-auto max-w-none rounded-sm border border-slate-200 bg-white shadow-sm"
                   style={{ width: `${previewZoom}%`, minWidth: `${previewZoom}%` }}
@@ -151,4 +154,9 @@ export function SourceViewer({
       </section>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return viewer;
+  }
+  return createPortal(viewer, document.body);
 }

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
+    embedding_device: str = "cpu"
     llm_provider: str = "local"
     llm_model_name: str = "llama-3.1-8b-instant"
     llm_timeout_seconds: int = 30

@@ -120,7 +120,10 @@ def test_generate_summary_endpoint_returns_400_when_document_is_not_ready(monkey
 
 
 def test_generate_questions_endpoint_returns_questions(monkeypatch):
-    def fake_generate_questions(_db, document_id: str, count: int, embedder_factory=None):
+    captured = {}
+
+    def fake_generate_questions(_db, document_id: str, count: int, embedder_factory=None, replace_existing: bool = False):
+        captured["replace_existing"] = replace_existing
         return [
             StudyQuestion(
                 id="question-1",
@@ -133,12 +136,16 @@ def test_generate_questions_endpoint_returns_questions(monkeypatch):
         ][:count]
 
     monkeypatch.setattr(study_router, "generate_study_questions", fake_generate_questions)
-    response = client_with_fake_db().post("/documents/document-1/study/questions", json={"count": 1})
+    response = client_with_fake_db().post(
+        "/documents/document-1/study/questions",
+        json={"count": 1, "replace_existing": True},
+    )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload[0]["question"] == "What methods are used?"
     assert payload[0]["citations"][0]["chunk_id"] == "chunk-1"
+    assert captured["replace_existing"] is True
 
 
 def test_submit_answer_endpoint_returns_score_and_feedback(monkeypatch):
