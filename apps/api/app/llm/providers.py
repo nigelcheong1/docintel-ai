@@ -13,6 +13,7 @@ _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _PAGE_MARKER_PATTERN = re.compile(r"^\s*page\s+\d+(?:\s+[A-Za-z &/-]{1,40})?\s*$", re.IGNORECASE)
 _DOTTED_LEADER_PATTERN = re.compile(r"\.{4,}")
+_JSON_FENCE_PATTERN = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.IGNORECASE | re.DOTALL)
 
 _STOPWORDS = {
     "a",
@@ -103,6 +104,24 @@ def _sentences(context: str) -> list[str]:
 
 def _words(text: str) -> set[str]:
     return {word for word in _WORD_PATTERN.findall(text.lower()) if word not in _STOPWORDS}
+
+
+def _json_candidate(raw: str) -> str:
+    cleaned = raw.strip()
+    fence_match = _JSON_FENCE_PATTERN.match(cleaned)
+    if fence_match is not None:
+        cleaned = fence_match.group("body").strip()
+    if cleaned.startswith(("[", "{")):
+        return cleaned
+
+    starts = [index for index in (cleaned.find("["), cleaned.find("{")) if index >= 0]
+    if not starts:
+        return cleaned
+    start = min(starts)
+    end = max(cleaned.rfind("]"), cleaned.rfind("}"))
+    if end <= start:
+        return cleaned
+    return cleaned[start : end + 1]
 
 
 def _sentence_for_topic(sentences: list[str], topic: str) -> str | None:
@@ -199,27 +218,33 @@ class GroqLlmProvider:
 
     def summarize(self, context: str) -> str:
         prompt = (
-            "Summarize the document context in two concise sentences. "
-            "Use only facts present in the context.\n\n"
+            "Write a natural-language summary of the cited document context in two concise sentences. "
+            "Paraphrase instead of copying long spans, but use only facts, numbers, and entities present in the context. "
+            "Do not use reference-list text, keyword lists, table fragments, or incomplete sentences.\n\n"
             f"Context:\n{context}"
         )
         return self._chat(prompt).strip()
 
     def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
         prompt = (
-            "Generate JSON for study questions from this context. "
-            'Return only an array of objects with "question" and "expected_answer". '
+            "Generate study questions from the cited context. "
+            "Each question must be clear, useful for revision, and answerable from the context. "
+            "Each expected_answer must be a complete natural-language answer grounded only in the context. "
+            "Do not use reference-list text, keyword lists, table rows, orphaned numbers, or incomplete sentence fragments. "
+            "Do not ask about datasets unless the context explicitly names datasets, databases, benchmarks, corpora, or data sources. "
+            'Return only JSON as {"questions":[{"question":"...","expected_answer":"..."}]}. '
             f"Return {count} items.\n\nContext:\n{context}"
         )
-        raw = self._chat(prompt)
+        raw = self._chat(prompt, response_format={"type": "json_object"})
         try:
-            payload = json.loads(raw)
+            payload = json.loads(_json_candidate(raw))
         except json.JSONDecodeError:
             return self._local_fallback.generate_questions(context, count)
 
         questions: list[GeneratedQuestionResult] = []
-        if isinstance(payload, list):
-            for item in payload:
+        items = payload.get("questions", []) if isinstance(payload, dict) else payload
+        if isinstance(items, list):
+            for item in items:
                 if not isinstance(item, dict):
                     continue
                 question = str(item.get("question", "")).strip()
@@ -236,9 +261,9 @@ class GroqLlmProvider:
             'Return only JSON like {"score": 0.0, "feedback": "..."}.\n\n'
             f"Question: {question}\nExpected answer: {expected_answer}\nUser answer: {user_answer}"
         )
-        raw = self._chat(prompt)
+        raw = self._chat(prompt, response_format={"type": "json_object"})
         try:
-            payload = json.loads(raw)
+            payload = json.loads(_json_candidate(raw))
         except json.JSONDecodeError:
             return self._local_fallback.evaluate_answer(question, expected_answer, user_answer)
 
@@ -249,13 +274,15 @@ class GroqLlmProvider:
         feedback = str(payload.get("feedback", "")).strip()
         return AnswerEvaluationResult(score=max(0.0, min(1.0, score)), feedback=feedback or "Answer evaluated.")
 
-    def _chat(self, prompt: str) -> str:
+    def _chat(self, prompt: str, *, response_format: dict[str, str] | None = None) -> str:
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model_name,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
+            "temperature": 0.0,
         }
+        if response_format is not None:
+            payload["response_format"] = response_format
         headers = {"Authorization": f"Bearer {self.api_key}"}
         with httpx.Client(timeout=self.timeout_seconds) as client:
             response = client.post(url, headers=headers, json=payload)

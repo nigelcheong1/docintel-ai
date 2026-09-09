@@ -22,6 +22,8 @@ const documentSummary = {
   error_message: null,
   created_at: "2026-08-28T03:30:00Z",
   updated_at: "2026-08-28T03:30:00Z",
+  page_count: 12,
+  chunk_count: 48,
 };
 
 const documentDetail = {
@@ -45,12 +47,12 @@ describe("DocumentsPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("hydrates the document list with metadata from each detail request", async () => {
+  it("renders document-list metadata without per-row detail requests", async () => {
     render(<DocumentsPage />);
 
     expect(await screen.findAllByText("12")).toHaveLength(2);
     expect(apiMocks.getDocuments).toHaveBeenCalledTimes(1);
-    expect(apiMocks.getDocument).toHaveBeenCalledWith("doc-1");
+    expect(apiMocks.getDocument).not.toHaveBeenCalled();
   });
 
   it("refreshes the hydrated list after deleting a document", async () => {
@@ -61,7 +63,7 @@ describe("DocumentsPage", () => {
 
     await waitFor(() => expect(apiMocks.deleteDocument).toHaveBeenCalledWith("doc-1"));
     await waitFor(() => expect(apiMocks.getDocuments).toHaveBeenCalledTimes(2));
-    expect(apiMocks.getDocument).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getDocument).not.toHaveBeenCalled();
   });
 
   it("refreshes the hydrated list after reindexing a document", async () => {
@@ -72,7 +74,7 @@ describe("DocumentsPage", () => {
 
     await waitFor(() => expect(apiMocks.reindexDocument).toHaveBeenCalledWith("doc-1"));
     await waitFor(() => expect(apiMocks.getDocuments).toHaveBeenCalledTimes(2));
-    expect(apiMocks.getDocument).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getDocument).not.toHaveBeenCalled();
   });
 
   it("polls for updates while a document is processing", async () => {
@@ -96,6 +98,7 @@ describe("DocumentsPage", () => {
 
     expect(await screen.findAllByText("Embedding evidence chunks for semantic search.")).toHaveLength(2);
     expect(apiMocks.getDocumentStatus).toHaveBeenCalledWith("doc-1");
+    expect(apiMocks.getDocument).not.toHaveBeenCalled();
 
     await waitFor(() => expect(apiMocks.getDocuments).toHaveBeenCalledTimes(2), { timeout: 2500 });
   }, 5000);

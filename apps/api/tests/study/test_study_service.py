@@ -145,6 +145,64 @@ class NoisyAcademicQuestionProvider(RecordingProvider):
         ][:count]
 
 
+class NoisyResearchQuestionProvider(RecordingProvider):
+    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+        self.question_context = context
+        return [
+            GeneratedQuestionResult(
+                question="What datasets are mentioned?",
+                expected_answer=(
+                    "2025 v v Video description: A survey of methods, datasets, and evaluation metrics "
+                    "ACM Computing Surveys 35 25 26 15 15 123 152 [45] Tell me Dave: Context-sensitive "
+                    "grounding of natural language to manipulation instructions International Journal "
+                    "of Robotics Research 14 16 10 18 6 109 151 [46] The body talks: Sensorimotor "
+                    "communication and its brain and kinematic signatures Physics of Life Reviews 19 16 19 "
+                    "13 12 106 107 [47] Survey of emotions in human-robot interactions."
+                ),
+            ),
+            GeneratedQuestionResult(
+                question="What does the document say about 1180 1351?",
+                expected_answer="From Scopus, an aggregate of 2366 results were obtained, including 1180 papers and 1351 conference proceedings.",
+            ),
+            GeneratedQuestionResult(
+                question="What does the document say about employed extract?",
+                expected_answer="To screen and extract valuable insights from the targeted literature, this study employed a three-tiered fine screening process.",
+            ),
+            GeneratedQuestionResult(
+                question="What is this document about?",
+                expected_answer=(
+                    "The integration of large language models into human-robot collaboration represents "
+                    "a paradigm shift toward cognitive manufacturing under Industry 5.0."
+                ),
+            ),
+            GeneratedQuestionResult(
+                question="What methods are used?",
+                expected_answer=(
+                    "Human-robot collaboration Large language models Resilient manufacturing systems "
+                    "Embodied intelligence Furthermore, we propose a layered training framework combining "
+                    "domain-adaptive pre-training and scenario-"
+                ),
+            ),
+        ][:count]
+
+
+class UnsupportedSummaryProvider(RecordingProvider):
+    def summarize(self, context: str) -> str:
+        self.summary_context = context
+        return "The study analyzed 9999 papers and created a robot benchmark that is not in the cited evidence."
+
+
+class DistortedResearchSummaryProvider(RecordingProvider):
+    def summarize(self, context: str) -> str:
+        self.summary_context = context
+        return (
+            "The study screened 2,366 Scopus results, reducing an initial 4,364 papers to 2,092 after "
+            "deduplication and 1,665 empirical papers after keyword screening. It presents a literature table "
+            "covering task planning, decision making, perception, and embodied execution, and argues for standards "
+            "that define rights, responsibilities, and transparency."
+        )
+
+
 class ConstantEmbeddingProvider:
     model_name = "constant-study-embedding"
     dimension = 384
@@ -297,6 +355,175 @@ def make_academic_report_document() -> Document:
     return document
 
 
+def make_research_review_document() -> Document:
+    document = Document(
+        id="research-review-1",
+        filename="Paper 10.pdf",
+        stored_filename="Paper 10.pdf",
+        mime_type="application/pdf",
+        file_path="/tmp/Paper 10.pdf",
+        status=DocumentStatus.INDEXED,
+    )
+    page_one = Page(
+        id="research-page-1",
+        document_id=document.id,
+        page_number=1,
+        text=(
+            "ABSTRACT The integration of large language models (LLMs) into human-robot collaboration "
+            "(HRC) represents a paradigm shift toward cognitive manufacturing under Industry 5.0. "
+            "This systematic review analyzes 1278 publications to identify enabling mechanisms, "
+            "application hierarchies, and persistent challenges of LLM-enhanced HRC."
+        ),
+        width=612,
+        height=792,
+    )
+    page_three = Page(
+        id="research-page-3",
+        document_id=document.id,
+        page_number=3,
+        text=(
+            "RESULTS From Scopus, an aggregate of 2366 results were obtained, including 1180 papers "
+            "and 1351 conference proceedings. After database harmonization, 4364 entries were reduced "
+            "to 2092 works after duplicate removal and to 1665 relevant entries after title-and-abstract "
+            "screening; all selected works were subsequently read in full. Publications that engaged with "
+            "the topic but did not present empirical experimental research were excluded."
+        ),
+        width=612,
+        height=792,
+    )
+    page_five = Page(
+        id="research-page-5",
+        document_id=document.id,
+        page_number=5,
+        text=(
+            "METHOD The review used database harmonization, de-duplication, and a three-tiered "
+            "screening workflow to narrow Scopus records into empirical HRC studies."
+        ),
+        width=612,
+        height=792,
+    )
+    page_ten = Page(
+        id="research-page-10",
+        document_id=document.id,
+        page_number=10,
+        text=(
+            "Table 4 Key literature review for HRC cognitive hierarchy lists 109 references from 2015-2026 "
+            "and maps task planning and decision making, environmental perception and understanding, "
+            "and embodied execution and interaction."
+        ),
+        width=612,
+        height=792,
+    )
+    page_sixteen = Page(
+        id="research-page-16",
+        document_id=document.id,
+        page_number=16,
+        text=(
+            "CONCLUSION The review emphasizes standards that delineate rights, responsibilities, "
+            "ethical safeguards, transparency, value alignment, and scalability in HRC deployments."
+        ),
+        width=612,
+        height=792,
+    )
+    page_twenty = Page(
+        id="research-page-20",
+        document_id=document.id,
+        page_number=20,
+        text="REFERENCES Lou et al. Tell me Dave. The body talks.",
+        width=612,
+        height=792,
+    )
+    document.pages = [page_one, page_three, page_five, page_ten, page_sixteen, page_twenty]
+    document.chunks = [
+        Chunk(
+            id="research-abstract",
+            document_id=document.id,
+            page_id=page_one.id,
+            page=page_one,
+            chunk_index=0,
+            text=page_one.text,
+            token_estimate=len(page_one.text.split()),
+            layout={"section_heading": "ABSTRACT"},
+        ),
+        Chunk(
+            id="research-results",
+            document_id=document.id,
+            page_id=page_three.id,
+            page=page_three,
+            chunk_index=1,
+            text=page_three.text,
+            token_estimate=len(page_three.text.split()),
+            layout={"section_heading": "RESULTS"},
+        ),
+        Chunk(
+            id="research-method",
+            document_id=document.id,
+            page_id=page_five.id,
+            page=page_five,
+            chunk_index=2,
+            text=page_five.text,
+            token_estimate=len(page_five.text.split()),
+            layout={"section_heading": "METHOD"},
+        ),
+        Chunk(
+            id="research-literature-table",
+            document_id=document.id,
+            page_id=page_ten.id,
+            page=page_ten,
+            chunk_index=3,
+            text=page_ten.text,
+            token_estimate=len(page_ten.text.split()),
+            layout={},
+        ),
+        Chunk(
+            id="research-conclusion",
+            document_id=document.id,
+            page_id=page_sixteen.id,
+            page=page_sixteen,
+            chunk_index=4,
+            text=page_sixteen.text,
+            token_estimate=len(page_sixteen.text.split()),
+            layout={"section_heading": "CONCLUSION"},
+        ),
+        Chunk(
+            id="research-references",
+            document_id=document.id,
+            page_id=page_twenty.id,
+            page=page_twenty,
+            chunk_index=5,
+            text=page_twenty.text,
+            token_estimate=len(page_twenty.text.split()),
+            layout={"section_heading": "REFERENCES"},
+        ),
+    ]
+    return document
+
+
+def research_review_summary_hits(document: Document) -> list[SearchHit]:
+    chunks = {chunk.id: chunk for chunk in document.chunks}
+
+    def hit(chunk_id: str, score: float, heading: str | None = None) -> SearchHit:
+        chunk = chunks[chunk_id]
+        return SearchHit(
+            chunk_id=chunk.id,
+            document_id=document.id,
+            document_filename=document.filename,
+            page_number=chunk.page.page_number,
+            chunk_index=chunk.chunk_index,
+            text=chunk.text,
+            score=score,
+            source_score=score,
+            ranking_signals={"lexical_score": score},
+            section_heading=heading,
+        )
+
+    return [
+        hit("research-literature-table", 0.9),
+        hit("research-results", 0.86, "RESULTS"),
+        hit("research-conclusion", 0.8),
+    ]
+
+
 def test_build_document_summary_uses_cited_high_signal_chunks():
     summary = build_document_summary(make_document())
 
@@ -418,6 +645,38 @@ def test_build_document_summary_can_use_provider_with_retrieved_context():
     assert "export controls" in provider.summary_context
     assert summary.citations[0]["chunk_id"] == "chunk-retrieved"
     assert "export controls" in summary.citations[0]["snippet"]
+
+
+def test_build_document_summary_rejects_provider_claims_not_supported_by_citations():
+    summary = build_document_summary(make_research_review_document(), provider=UnsupportedSummaryProvider())
+
+    assert "9999" not in summary.content
+    assert "robot benchmark" not in summary.content
+    assert "large language models" in summary.content.lower()
+    assert summary.citations[0]["chunk_id"] == "research-abstract"
+
+
+def test_build_document_summary_normalizes_research_screening_count_wording():
+    document = make_research_review_document()
+
+    summary = build_document_summary(
+        document,
+        provider=DistortedResearchSummaryProvider(),
+        retrieval_hits=research_review_summary_hits(document),
+    )
+
+    assert summary.content == (
+        "The study reviews human-robot collaboration, beginning with 2,366 Scopus results and "
+        "narrowing the literature through database harmonization, deduplication, title-and-abstract screening, "
+        "and full-text review. It maps HRC cognitive-hierarchy tasks such as planning, decision making, "
+        "perception, and embodied execution, and argues for standards around rights, responsibilities, "
+        "transparency, ethics, and scalable deployment."
+    )
+    assert [citation["chunk_id"] for citation in summary.citations] == [
+        "research-literature-table",
+        "research-results",
+        "research-conclusion",
+    ]
 
 
 def test_generate_document_summary_uses_hybrid_retrieval_hits(monkeypatch, db_session):
@@ -570,6 +829,28 @@ def test_build_study_questions_filters_provider_fragment_questions_for_academic_
     assert "14 controlling" not in combined_questions
     assert "agent both" not in combined_questions
     assert "action both" not in combined_questions
+
+
+def test_build_study_questions_rejects_noisy_research_provider_answers():
+    questions = build_study_questions(
+        make_research_review_document(),
+        count=5,
+        provider=NoisyResearchQuestionProvider(),
+    )
+
+    expected_answers = " ".join(question.expected_answer for question in questions)
+    question_texts = [question.question for question in questions]
+    combined_questions = " ".join(question_texts)
+    method_answer = next(question.expected_answer for question in questions if question.question == "What methods are used?")
+
+    assert "What is this document about?" in question_texts
+    assert "1180 1351" not in combined_questions
+    assert "employed extract" not in combined_questions
+    assert "ACM Computing Surveys" not in expected_answers
+    assert "[45]" not in expected_answers
+    assert "scenario-" not in expected_answers
+    assert "three-tiered" in method_answer
+    assert "screening" in method_answer
 
 
 def test_build_study_questions_dedupes_provider_generated_questions():

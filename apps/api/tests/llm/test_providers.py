@@ -1,5 +1,5 @@
 from app.core.config import Settings
-from app.llm.providers import LocalHeuristicLlmProvider, get_llm_provider
+from app.llm.providers import GroqLlmProvider, LocalHeuristicLlmProvider, get_llm_provider
 
 
 def test_local_provider_summarizes_context_with_concise_sentences():
@@ -46,3 +46,64 @@ def test_groq_provider_without_key_falls_back_to_local_provider():
 
     assert isinstance(provider, LocalHeuristicLlmProvider)
     assert provider.provider_name == "local"
+
+
+def test_groq_provider_parses_json_object_wrapped_in_markdown_fence():
+    provider = GroqLlmProvider(
+        api_key="test-key",
+        model_name="test-model",
+        base_url="https://groq.example.test/openai/v1",
+        timeout_seconds=30,
+    )
+
+    provider._chat = lambda _prompt, **_kwargs: (
+        "```json\n"
+        '{"questions":[{"question":"What methods are used?",'
+        '"expected_answer":"The study uses a systematic review and three-tiered screening."}]}'
+        "\n```"
+    )
+
+    questions = provider.generate_questions("Context", count=1)
+
+    assert questions[0].question == "What methods are used?"
+    assert questions[0].expected_answer == "The study uses a systematic review and three-tiered screening."
+
+
+def test_groq_provider_requests_deterministic_json_payload(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"questions":[]}'}}]}
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def post(self, url, headers, json):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr("app.llm.providers.httpx.Client", FakeClient)
+    provider = GroqLlmProvider(
+        api_key="test-key",
+        model_name="test-model",
+        base_url="https://groq.example.test/openai/v1",
+        timeout_seconds=30,
+    )
+
+    provider.generate_questions("Context", count=1)
+
+    assert captured["json"]["temperature"] == 0.0
+    assert captured["json"]["response_format"] == {"type": "json_object"}
