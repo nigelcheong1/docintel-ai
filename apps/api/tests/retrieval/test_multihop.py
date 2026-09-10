@@ -22,5 +22,7 @@ def test_build_query_plan_marks_multi_hop_only_for_distinct_subqueries():
 
     assert simple.subqueries == ["methods"]
     assert simple.is_multi_hop is False
+    assert compound.original_query == "What methods are used and what results are reported?"
+    assert compound.rewritten_query == "What methods are used and what results are reported"
     assert compound.subqueries == ["What methods are used?", "what results are reported?"]
     assert compound.is_multi_hop is True

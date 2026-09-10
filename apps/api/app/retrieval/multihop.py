@@ -14,6 +14,7 @@ _WHAT_FACT_PATTERN = re.compile(
     r"^what (?P<topic>.+?) (?:is|are|was|were) (?:used|reported|described|mentioned)$",
     re.IGNORECASE,
 )
+_COMPOUND_SEPARATORS = (", and ", " and what ", " and how ", " and which ", ";")
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,8 @@ def rewrite_query(question: str) -> str:
         if lowered.startswith(prefix):
             cleaned = cleaned[len(prefix) :]
             break
-    match = _WHAT_FACT_PATTERN.match(cleaned)
+    is_compound = any(separator in lowered for separator in _COMPOUND_SEPARATORS)
+    match = None if is_compound else _WHAT_FACT_PATTERN.match(cleaned)
     if match:
         cleaned = match.group("topic")
     return cleaned.strip(" ?:;,.") or _clean_question(question)
@@ -48,8 +50,7 @@ def _with_question_mark(text: str) -> str:
 
 def split_subqueries(question: str) -> list[str]:
     cleaned = _clean_question(question)
-    separators = [", and ", " and what ", " and how ", " and which ", ";"]
-    for separator in separators:
+    for separator in _COMPOUND_SEPARATORS:
         if separator in cleaned.lower():
             lowered = cleaned.lower()
             split_at = lowered.find(separator)
