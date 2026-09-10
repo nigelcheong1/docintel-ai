@@ -765,18 +765,24 @@ def build_document_summary(
     document: Document,
     provider: LlmProvider | None = None,
     retrieval_hits: list[SearchHit] | None = None,
+    mode: str = "concise",
 ) -> GeneratedSummary:
     profile = build_document_profile(document)
+    summary_limit = _summary_chunk_limit(mode)
     if retrieval_hits is not None:
         selected_hits = [hit for hit in retrieval_hits if _is_usable_summary_hit(hit)]
         if not selected_hits:
             raise StudyDocumentNotReadyError("This document has no indexed evidence chunks to summarize.")
-        balanced_chunks = _balanced_academic_summary_chunks(document) if profile.document_type == "academic_report" else []
+        balanced_chunks = (
+            _balanced_academic_summary_chunks(document, limit=summary_limit)
+            if profile.document_type == "academic_report"
+            else []
+        )
         if len(_summary_hit_groups(selected_hits)) < 2 and len(_summary_chunk_groups(balanced_chunks)) >= 2:
             citations = [_citation(document, chunk) for chunk in balanced_chunks]
             if provider is not None and not isinstance(provider, LocalHeuristicLlmProvider):
                 context = _chunks_context(balanced_chunks)
-                summary = _prepare_generated_summary(provider.summarize(context), context, profile.document_type)
+                summary = _prepare_generated_summary(provider.summarize(context, mode=mode), context, profile.document_type)
                 if summary and _is_supported_generated_text(
                     summary,
                     context,
@@ -790,7 +796,7 @@ def build_document_summary(
             return GeneratedSummary(content=" ".join(sentences), citations=citations)
         if provider is not None:
             context = _hits_context(selected_hits)
-            summary = _prepare_generated_summary(provider.summarize(context), context, profile.document_type)
+            summary = _prepare_generated_summary(provider.summarize(context, mode=mode), context, profile.document_type)
             if summary and _is_supported_generated_text(
                 summary,
                 context,
@@ -804,9 +810,9 @@ def build_document_summary(
         return GeneratedSummary(content=" ".join(sentences), citations=[_citation_from_hit(hit) for hit in selected_hits])
 
     selected_chunks = (
-        _retrieved_chunks(document, "document overview summary main topics key points", limit=3)
+        _retrieved_chunks(document, "document overview summary main topics key points", limit=summary_limit)
         if provider is not None
-        else _summary_chunks(document)
+        else _summary_chunks(document, limit=summary_limit)
     )
     if not selected_chunks:
         raise StudyDocumentNotReadyError("This document has no indexed evidence chunks to summarize.")
@@ -815,7 +821,7 @@ def build_document_summary(
     citations: list[dict[str, object]] = []
     if provider is not None:
         context = _chunks_context(selected_chunks)
-        summary = _prepare_generated_summary(provider.summarize(context), context, profile.document_type)
+        summary = _prepare_generated_summary(provider.summarize(context, mode=mode), context, profile.document_type)
         if summary and _is_supported_generated_text(
             summary,
             context,
@@ -823,7 +829,7 @@ def build_document_summary(
         ):
             return GeneratedSummary(content=summary, citations=[_citation(document, chunk) for chunk in selected_chunks])
 
-    fallback_chunks = _summary_chunks(document) if provider is not None else selected_chunks
+    fallback_chunks = _summary_chunks(document, limit=summary_limit) if provider is not None else selected_chunks
     for chunk in fallback_chunks:
         heading = chunk_heading(chunk)
         sentence = _summary_excerpt(chunk.text, heading)
@@ -877,6 +883,7 @@ def build_study_questions(
     count: int = 5,
     provider: LlmProvider | None = None,
     retrieval_hits: list[SearchHit] | None = None,
+    mode: str = "balanced",
 ) -> list[GeneratedQuestion]:
     profile = build_document_profile(document)
     candidate_questions = _dedupe_questions([*profile.suggested_questions, *_DEFAULT_STUDY_QUESTIONS])
@@ -895,7 +902,7 @@ def build_study_questions(
             citations = [_citation(document, chunk) for chunk in retrieved_chunks]
             context = _chunks_context(retrieved_chunks)
         if context:
-            provider_questions = provider.generate_questions(context, count=count)
+            provider_questions = provider.generate_questions(context, count=count, mode=mode)
         else:
             provider_questions = []
         for provider_question in provider_questions:
@@ -1004,21 +1011,43 @@ def _default_provider() -> LlmProvider:
     return get_llm_provider(get_settings())
 
 
-def generate_document_summary(
+def _summary_chunk_limit(mode: str) -> int:
+    return 5 if mode == "detailed" else 3
+
+
+def default_study_generation_provider_name() -> str:
+    return getattr(_default_provider(), "provider_name", "local")
+
+
+def preview_document_summary(
     db: Session,
     document_id: str,
     provider: LlmProvider | None = None,
     embedder_factory: EmbeddingProviderFactory | None = None,
-) -> DocumentSummary:
+    mode: str = "concise",
+) -> GeneratedSummary:
     document = _get_ready_document(db, document_id)
     retrieval_hits = _study_retrieval_hits(
         db,
         document,
         "document overview summary main topics key points",
-        3,
+        _summary_chunk_limit(mode),
         embedder_factory,
     )
-    generated = build_document_summary(document, provider=provider or _default_provider(), retrieval_hits=retrieval_hits or None)
+    return build_document_summary(
+        document,
+        provider=provider or _default_provider(),
+        retrieval_hits=retrieval_hits or None,
+        mode=mode,
+    )
+
+
+def save_generated_document_summary(
+    db: Session,
+    document_id: str,
+    generated: GeneratedSummary,
+) -> DocumentSummary:
+    document = _get_ready_document(db, document_id)
     summary = DocumentSummary(
         id=str(uuid4()),
         document_id=document.id,
@@ -1031,12 +1060,52 @@ def generate_document_summary(
     return summary
 
 
-def generate_study_questions(
+def generate_document_summary(
+    db: Session,
+    document_id: str,
+    provider: LlmProvider | None = None,
+    embedder_factory: EmbeddingProviderFactory | None = None,
+    mode: str = "concise",
+) -> DocumentSummary:
+    generated = preview_document_summary(
+        db,
+        document_id,
+        provider=provider,
+        embedder_factory=embedder_factory,
+        mode=mode,
+    )
+    return save_generated_document_summary(db, document_id, generated)
+
+
+def preview_study_questions(
     db: Session,
     document_id: str,
     count: int = 5,
     provider: LlmProvider | None = None,
     embedder_factory: EmbeddingProviderFactory | None = None,
+    mode: str = "balanced",
+) -> list[GeneratedQuestion]:
+    document = _get_ready_document(db, document_id)
+    retrieval_hits = _study_retrieval_hits(
+        db,
+        document,
+        "study questions main topics key facts methods results datasets limitations payment terms parties export controls",
+        3,
+        embedder_factory,
+    )
+    return build_study_questions(
+        document,
+        count=count,
+        provider=provider or _default_provider(),
+        retrieval_hits=retrieval_hits or None,
+        mode=mode,
+    )[:count]
+
+
+def save_generated_study_questions(
+    db: Session,
+    document_id: str,
+    generated_questions: list[GeneratedQuestion],
     replace_existing: bool = False,
 ) -> list[StudyQuestion]:
     document = _get_ready_document(db, document_id)
@@ -1045,26 +1114,6 @@ def generate_study_questions(
         for question in existing_question_rows:
             db.delete(question)
         db.flush()
-        existing_questions: list[str] = []
-    else:
-        existing_questions = [question.question for question in existing_question_rows]
-    retrieval_hits = _study_retrieval_hits(
-        db,
-        document,
-        "study questions main topics key facts methods results datasets limitations payment terms parties export controls",
-        3,
-        embedder_factory,
-    )
-    generated_questions = [
-        generated
-        for generated in build_study_questions(
-            document,
-            count=count + len(existing_questions),
-            provider=provider or _default_provider(),
-            retrieval_hits=retrieval_hits or None,
-        )
-        if not any(_similar_enough(generated.question, existing) for existing in existing_questions)
-    ][:count]
     questions = [
         StudyQuestion(
             id=str(uuid4()),
@@ -1081,6 +1130,44 @@ def generate_study_questions(
     for question in questions:
         db.refresh(question)
     return questions
+
+
+def generate_study_questions(
+    db: Session,
+    document_id: str,
+    count: int = 5,
+    provider: LlmProvider | None = None,
+    embedder_factory: EmbeddingProviderFactory | None = None,
+    replace_existing: bool = False,
+    mode: str = "balanced",
+) -> list[StudyQuestion]:
+    document = _get_ready_document(db, document_id)
+    existing_question_rows = list_study_questions(db, document_id)
+    existing_questions: list[str] = [] if replace_existing else [question.question for question in existing_question_rows]
+    retrieval_hits = _study_retrieval_hits(
+        db,
+        document,
+        "study questions main topics key facts methods results datasets limitations payment terms parties export controls",
+        3,
+        embedder_factory,
+    )
+    generated_questions = [
+        generated
+        for generated in build_study_questions(
+            document,
+            count=count + len(existing_questions),
+            provider=provider or _default_provider(),
+            retrieval_hits=retrieval_hits or None,
+            mode=mode,
+        )
+        if not any(_similar_enough(generated.question, existing) for existing in existing_questions)
+    ][:count]
+    return save_generated_study_questions(
+        db,
+        document_id,
+        generated_questions,
+        replace_existing=replace_existing,
+    )
 
 
 def grade_study_answer(

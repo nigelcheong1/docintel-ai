@@ -56,6 +56,17 @@ _QUESTION_TOPICS = (
     "limitations",
 )
 
+_SUMMARY_MODE_INSTRUCTIONS = {
+    "concise": "Write two concise sentences.",
+    "detailed": "Write one detailed paragraph of three to four sentences.",
+}
+
+_STUDY_MODE_INSTRUCTIONS = {
+    "balanced": "Use a balanced mix of overview, method, result, and detail questions.",
+    "exam": "Use exam-style clear, testable questions that ask for specific evidence, counts, stages, or comparisons when supported.",
+    "revision": "Use simple revision questions with plain wording and short expected answers.",
+}
+
 
 @dataclass(frozen=True)
 class GeneratedQuestionResult:
@@ -72,10 +83,10 @@ class AnswerEvaluationResult:
 class LlmProvider(Protocol):
     provider_name: str
 
-    def summarize(self, context: str) -> str:
+    def summarize(self, context: str, mode: str = "concise") -> str:
         """Return a concise summary grounded in the provided context."""
 
-    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+    def generate_questions(self, context: str, count: int, mode: str = "balanced") -> list[GeneratedQuestionResult]:
         """Generate study questions from the provided context."""
 
     def evaluate_answer(self, question: str, expected_answer: str, user_answer: str) -> AnswerEvaluationResult:
@@ -136,16 +147,25 @@ def _sentence_for_topic(sentences: list[str], topic: str) -> str | None:
     return None
 
 
+def _study_question_for_topic(topic: str, mode: str) -> str:
+    if mode == "exam":
+        return f"Which evidence does the document give about {topic}?"
+    if mode == "revision":
+        return f"What should you remember about {topic}?"
+    return f"What does the document say about {topic}?"
+
+
 class LocalHeuristicLlmProvider:
     provider_name = "local"
 
-    def summarize(self, context: str) -> str:
-        selected = _sentences(context)[:2]
+    def summarize(self, context: str, mode: str = "concise") -> str:
+        sentence_count = 3 if mode == "detailed" else 2
+        selected = _sentences(context)[:sentence_count]
         if not selected:
             return "No usable context was available for summarization."
         return " ".join(selected)
 
-    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+    def generate_questions(self, context: str, count: int, mode: str = "balanced") -> list[GeneratedQuestionResult]:
         if count <= 0:
             return []
 
@@ -157,7 +177,7 @@ class LocalHeuristicLlmProvider:
             evidence = _sentence_for_topic(sentences, topic)
             if not evidence:
                 continue
-            question = f"What does the document say about {topic}?"
+            question = _study_question_for_topic(topic, mode)
             if question in seen:
                 continue
             questions.append(GeneratedQuestionResult(question=question, expected_answer=evidence))
@@ -170,7 +190,7 @@ class LocalHeuristicLlmProvider:
             if not terms:
                 continue
             topic = " ".join(terms[:2])
-            question = f"What does the document say about {topic}?"
+            question = _study_question_for_topic(topic, mode)
             if question in seen:
                 continue
             questions.append(GeneratedQuestionResult(question=question, expected_answer=sentence))
@@ -216,18 +236,22 @@ class GroqLlmProvider:
         self.timeout_seconds = timeout_seconds
         self._local_fallback = LocalHeuristicLlmProvider()
 
-    def summarize(self, context: str) -> str:
+    def summarize(self, context: str, mode: str = "concise") -> str:
+        mode_instruction = _SUMMARY_MODE_INSTRUCTIONS.get(mode, _SUMMARY_MODE_INSTRUCTIONS["concise"])
         prompt = (
-            "Write a natural-language summary of the cited document context in two concise sentences. "
+            "Write a natural-language summary of the cited document context. "
+            f"{mode_instruction} "
             "Paraphrase instead of copying long spans, but use only facts, numbers, and entities present in the context. "
             "Do not use reference-list text, keyword lists, table fragments, or incomplete sentences.\n\n"
             f"Context:\n{context}"
         )
         return self._chat(prompt).strip()
 
-    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+    def generate_questions(self, context: str, count: int, mode: str = "balanced") -> list[GeneratedQuestionResult]:
+        mode_instruction = _STUDY_MODE_INSTRUCTIONS.get(mode, _STUDY_MODE_INSTRUCTIONS["balanced"])
         prompt = (
             "Generate study questions from the cited context. "
+            f"Mode: {mode_instruction} "
             "Each question must be clear, useful for revision, and answerable from the context. "
             "Each expected_answer must be a complete natural-language answer grounded only in the context. "
             "Do not use reference-list text, keyword lists, table rows, orphaned numbers, or incomplete sentence fragments. "
@@ -239,7 +263,7 @@ class GroqLlmProvider:
         try:
             payload = json.loads(_json_candidate(raw))
         except json.JSONDecodeError:
-            return self._local_fallback.generate_questions(context, count)
+            return self._local_fallback.generate_questions(context, count, mode=mode)
 
         questions: list[GeneratedQuestionResult] = []
         items = payload.get("questions", []) if isinstance(payload, dict) else payload
@@ -253,7 +277,7 @@ class GroqLlmProvider:
                     questions.append(GeneratedQuestionResult(question=question, expected_answer=expected_answer))
                 if len(questions) >= count:
                     break
-        return questions or self._local_fallback.generate_questions(context, count)
+        return questions or self._local_fallback.generate_questions(context, count, mode=mode)
 
     def evaluate_answer(self, question: str, expected_answer: str, user_answer: str) -> AnswerEvaluationResult:
         prompt = (

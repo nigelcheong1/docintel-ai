@@ -124,6 +124,12 @@ export type StudyCitation = {
   ranking_signals?: Record<string, number>;
 };
 
+export type GenerationQualityStatus = "grounded" | "needs_review";
+
+export type SummaryGenerationMode = "concise" | "detailed";
+
+export type StudyGenerationMode = "balanced" | "exam" | "revision";
+
 export type StudyAnswer = {
   id: string;
   question_id: string;
@@ -140,6 +146,11 @@ export type StudyQuestion = {
   expected_answer: string;
   citations: StudyCitation[];
   created_at: string;
+  is_preview?: boolean;
+  generation_mode?: StudyGenerationMode | null;
+  generation_provider?: string | null;
+  citation_count?: number;
+  quality_status?: GenerationQualityStatus;
   latest_answer?: StudyAnswer | null;
   answer_count?: number;
   recent_answers?: StudyAnswer[];
@@ -151,6 +162,11 @@ export type DocumentStudySummary = {
   content: string;
   citations: StudyCitation[];
   created_at: string;
+  is_preview?: boolean;
+  generation_mode?: SummaryGenerationMode | null;
+  generation_provider?: string | null;
+  citation_count?: number;
+  quality_status?: GenerationQualityStatus;
 };
 
 export type SearchHit = {

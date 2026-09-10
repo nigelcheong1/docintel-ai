@@ -1,6 +1,8 @@
+from datetime import UTC, datetime
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.models import Document, DocumentSummary, StudyAnswer, StudyQuestion
@@ -9,6 +11,7 @@ from app.documents.router import get_embedding_provider_factory
 from app.documents.service import EmbeddingProviderFactory
 from app.study.schemas import (
     DocumentStudySummaryRead,
+    GenerateStudySummaryRequest,
     GenerateStudyQuestionsRequest,
     StudyAnswerRead,
     StudyCitationRead,
@@ -16,14 +19,21 @@ from app.study.schemas import (
     SubmitStudyAnswerRequest,
 )
 from app.study.service import (
+    GeneratedQuestion,
+    GeneratedSummary,
     StudyDocumentNotFoundError,
     StudyDocumentNotReadyError,
     StudyQuestionNotFoundError,
+    default_study_generation_provider_name,
     generate_document_summary,
     generate_study_questions,
     get_latest_summary,
     grade_study_answer,
     list_study_questions,
+    preview_document_summary,
+    preview_study_questions,
+    save_generated_document_summary,
+    save_generated_study_questions,
 )
 
 router = APIRouter(prefix="/documents/{document_id}/study", tags=["study"])
@@ -39,13 +49,55 @@ def _raise_study_error(exc: Exception) -> None:
     raise HTTPException(status_code=500, detail="Study generation failed.") from exc
 
 
-def _summary_read(summary: DocumentSummary) -> DocumentStudySummaryRead:
+def _citation_quality(citations: list[StudyCitationRead]) -> str:
+    return "grounded" if citations else "needs_review"
+
+
+def _provider_name() -> str:
+    return default_study_generation_provider_name()
+
+
+def _summary_read(
+    summary: DocumentSummary,
+    *,
+    generation_mode: str | None = None,
+    generation_provider: str | None = None,
+    is_preview: bool = False,
+) -> DocumentStudySummaryRead:
+    citations = _citation_reads(summary.citations)
     return DocumentStudySummaryRead(
         id=summary.id,
         document_id=summary.document_id,
         content=summary.content,
-        citations=_citation_reads(summary.citations),
+        citations=citations,
         created_at=summary.created_at,
+        is_preview=is_preview,
+        generation_mode=generation_mode,
+        generation_provider=generation_provider,
+        citation_count=len(citations),
+        quality_status=_citation_quality(citations),
+    )
+
+
+def _summary_preview_read(
+    document_id: str,
+    generated: GeneratedSummary,
+    *,
+    generation_mode: str,
+    generation_provider: str,
+) -> DocumentStudySummaryRead:
+    citations = _citation_reads(generated.citations)
+    return DocumentStudySummaryRead(
+        id=f"preview-summary-{uuid4()}",
+        document_id=document_id,
+        content=generated.content,
+        citations=citations,
+        created_at=datetime.now(UTC),
+        is_preview=True,
+        generation_mode=generation_mode,
+        generation_provider=generation_provider,
+        citation_count=len(citations),
+        quality_status=_citation_quality(citations),
     )
 
 
@@ -70,20 +122,63 @@ def _citation_reads(citations: list[dict[str, object]]) -> list[StudyCitationRea
     return [_citation_read(citation) for citation in citations]
 
 
-def _question_read(question: StudyQuestion) -> StudyQuestionRead:
+def _question_read(
+    question: StudyQuestion,
+    *,
+    generation_mode: str | None = None,
+    generation_provider: str | None = None,
+    is_preview: bool = False,
+) -> StudyQuestionRead:
     recent_answers = sorted(question.answers, key=lambda answer: answer.created_at, reverse=True)
     latest_answer = recent_answers[0] if recent_answers else None
+    citations = _citation_reads(question.citations)
     return StudyQuestionRead(
         id=question.id,
         document_id=question.document_id,
         question=question.question,
         expected_answer=question.expected_answer,
-        citations=_citation_reads(question.citations),
+        citations=citations,
         created_at=question.created_at,
+        is_preview=is_preview,
+        generation_mode=generation_mode,
+        generation_provider=generation_provider,
+        citation_count=len(citations),
+        quality_status=_citation_quality(citations),
         latest_answer=_answer_read(latest_answer) if latest_answer is not None else None,
         answer_count=len(question.answers),
         recent_answers=[_answer_read(answer) for answer in recent_answers[:3]],
     )
+
+
+def _question_preview_read(
+    document_id: str,
+    generated: GeneratedQuestion,
+    *,
+    generation_mode: str,
+    generation_provider: str,
+    index: int,
+) -> StudyQuestionRead:
+    citations = _citation_reads(generated.citations)
+    return StudyQuestionRead(
+        id=f"preview-question-{index}-{uuid4()}",
+        document_id=document_id,
+        question=generated.question,
+        expected_answer=generated.expected_answer,
+        citations=citations,
+        created_at=datetime.now(UTC),
+        is_preview=True,
+        generation_mode=generation_mode,
+        generation_provider=generation_provider,
+        citation_count=len(citations),
+        quality_status=_citation_quality(citations),
+        latest_answer=None,
+        answer_count=0,
+        recent_answers=[],
+    )
+
+
+def _citation_payloads(citations: list[StudyCitationRead] | None) -> list[dict[str, object]]:
+    return [citation.model_dump(exclude_none=True) for citation in citations or []]
 
 
 def _ensure_document_exists(db: Session, document_id: str) -> None:
@@ -101,11 +196,47 @@ def study_summary(document_id: str, db: Annotated[Session, Depends(get_db)]) -> 
 @router.post("/summary", response_model=DocumentStudySummaryRead)
 def generate_study_summary(
     document_id: str,
+    request: Annotated[GenerateStudySummaryRequest, Body(default_factory=GenerateStudySummaryRequest)],
     db: Annotated[Session, Depends(get_db)],
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
 ) -> DocumentStudySummaryRead:
+    generation_provider = _provider_name()
     try:
-        return _summary_read(generate_document_summary(db, document_id, embedder_factory=embedder_factory))
+        if request.content is not None:
+            return _summary_read(
+                save_generated_document_summary(
+                    db,
+                    document_id,
+                    GeneratedSummary(
+                        content=request.content,
+                        citations=_citation_payloads(request.citations),
+                    ),
+                ),
+                generation_mode=request.mode,
+                generation_provider=generation_provider,
+            )
+        if request.preview:
+            return _summary_preview_read(
+                document_id,
+                preview_document_summary(
+                    db,
+                    document_id,
+                    embedder_factory=embedder_factory,
+                    mode=request.mode,
+                ),
+                generation_mode=request.mode,
+                generation_provider=generation_provider,
+            )
+        return _summary_read(
+            generate_document_summary(
+                db,
+                document_id,
+                embedder_factory=embedder_factory,
+                mode=request.mode,
+            ),
+            generation_mode=request.mode,
+            generation_provider=generation_provider,
+        )
     except Exception as exc:  # noqa: BLE001 - API boundary converts typed study errors to HTTP responses.
         _raise_study_error(exc)
     raise HTTPException(status_code=500, detail="Study generation failed.")
@@ -124,15 +255,63 @@ def generate_questions(
     db: Annotated[Session, Depends(get_db)],
     embedder_factory: Annotated[EmbeddingProviderFactory, Depends(get_embedding_provider_factory)],
 ) -> list[StudyQuestionRead]:
+    generation_provider = _provider_name()
     try:
+        if request.questions is not None:
+            generated_questions = [
+                GeneratedQuestion(
+                    question=question.question,
+                    expected_answer=question.expected_answer,
+                    citations=_citation_payloads(question.citations),
+                )
+                for question in request.questions
+            ]
+            return [
+                _question_read(
+                    question,
+                    generation_mode=request.mode,
+                    generation_provider=generation_provider,
+                )
+                for question in save_generated_study_questions(
+                    db,
+                    document_id,
+                    generated_questions,
+                    replace_existing=request.replace_existing,
+                )
+            ]
+        if request.preview:
+            return [
+                _question_preview_read(
+                    document_id,
+                    question,
+                    generation_mode=request.mode,
+                    generation_provider=generation_provider,
+                    index=index,
+                )
+                for index, question in enumerate(
+                    preview_study_questions(
+                        db,
+                        document_id,
+                        count=request.count,
+                        embedder_factory=embedder_factory,
+                        mode=request.mode,
+                    ),
+                    start=1,
+                )
+            ]
         return [
-            _question_read(question)
+            _question_read(
+                question,
+                generation_mode=request.mode,
+                generation_provider=generation_provider,
+            )
             for question in generate_study_questions(
                 db,
                 document_id,
                 count=request.count,
                 embedder_factory=embedder_factory,
                 replace_existing=request.replace_existing,
+                mode=request.mode,
             )
         ]
     except Exception as exc:  # noqa: BLE001 - API boundary converts typed study errors to HTTP responses.

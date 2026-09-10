@@ -31,6 +31,10 @@ import {
   generateStudyQuestions,
   getDocumentStudySummary,
   getStudyQuestions,
+  previewDocumentStudySummary,
+  previewStudyQuestions,
+  saveDocumentStudySummary,
+  saveStudyQuestions,
   submitStudyAnswer,
 } from "@/lib/api";
 import { apiAssetUrl } from "@/lib/api-assets";
@@ -41,8 +45,11 @@ import type {
   DocumentPage,
   DocumentProfile,
   DocumentStudySummary,
+  GenerationQualityStatus,
+  StudyGenerationMode,
   StudyCitation,
   StudyQuestion,
+  SummaryGenerationMode,
 } from "@/lib/types";
 
 type WorkbenchTab = "overview" | "summary" | "study" | "evidence" | "quality";
@@ -96,6 +103,30 @@ function formatCount(value: number, singular: string, plural: string) {
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
+function formatSummaryMode(value?: SummaryGenerationMode | null) {
+  if (value === "detailed") {
+    return "Detailed";
+  }
+  return "Concise";
+}
+
+function formatStudyMode(value?: StudyGenerationMode | null) {
+  if (value === "exam") {
+    return "Exam-style";
+  }
+  if (value === "revision") {
+    return "Simple revision";
+  }
+  return "Balanced";
+}
+
+function generationQualityStatus(
+  qualityStatus: GenerationQualityStatus | undefined,
+  citationCount: number,
+): GenerationQualityStatus {
+  return qualityStatus ?? (citationCount > 0 ? "grounded" : "needs_review");
+}
+
 function formatScore(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -106,6 +137,17 @@ const workbenchTabs: Array<{ id: WorkbenchTab; label: string }> = [
   { id: "study", label: "Study" },
   { id: "evidence", label: "Evidence" },
   { id: "quality", label: "Quality" },
+];
+
+const summaryModeOptions: Array<{ id: SummaryGenerationMode; label: string }> = [
+  { id: "concise", label: "Concise" },
+  { id: "detailed", label: "Detailed" },
+];
+
+const studyModeOptions: Array<{ id: StudyGenerationMode; label: string }> = [
+  { id: "balanced", label: "Balanced" },
+  { id: "exam", label: "Exam-style" },
+  { id: "revision", label: "Simple revision" },
 ];
 
 function selectedPageFrom(pages: DocumentPage[], initialPageNumber?: number) {
@@ -259,6 +301,110 @@ function WorkflowStep({ label, active }: { label: string; active: boolean }) {
   );
 }
 
+function ModeSelector<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: Array<{ id: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase tracking-normal text-slate-500">{label}</p>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={value === option.id}
+            className={[
+              "min-h-8 rounded-md border px-2.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2",
+              value === option.id
+                ? "border-teal-600 bg-teal-700 text-white shadow-sm shadow-teal-900/10"
+                : "border-line bg-white text-slate-600 hover:border-teal-400 hover:text-teal-800",
+            ].join(" ")}
+            onClick={() => onChange(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GenerationBadges({
+  isPreview,
+  modeLabel,
+  provider,
+  citationCount,
+  qualityStatus,
+}: {
+  isPreview?: boolean;
+  modeLabel: string;
+  provider?: string | null;
+  citationCount: number;
+  qualityStatus: GenerationQualityStatus;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {isPreview ? <Badge tone="amber">Preview</Badge> : <Badge tone="neutral">Current</Badge>}
+      <Badge tone="teal">{modeLabel}</Badge>
+      <Badge tone="neutral">{formatCount(citationCount, "citation", "citations")}</Badge>
+      <Badge tone={qualityStatus === "grounded" ? "success" : "amber"}>
+        {qualityStatus === "grounded" ? "Grounded" : "Needs review"}
+      </Badge>
+      {provider ? <Badge tone="neutral">{provider}</Badge> : null}
+    </div>
+  );
+}
+
+function SummaryGenerationBadges({
+  summary,
+  fallbackMode,
+  isPreview,
+}: {
+  summary: DocumentStudySummary;
+  fallbackMode: SummaryGenerationMode;
+  isPreview?: boolean;
+}) {
+  const citationCount = summary.citation_count ?? summary.citations.length;
+  return (
+    <GenerationBadges
+      isPreview={isPreview ?? summary.is_preview}
+      modeLabel={formatSummaryMode(summary.generation_mode ?? fallbackMode)}
+      provider={summary.generation_provider}
+      citationCount={citationCount}
+      qualityStatus={generationQualityStatus(summary.quality_status, citationCount)}
+    />
+  );
+}
+
+function StudyQuestionGenerationBadges({
+  question,
+  fallbackMode,
+  isPreview,
+}: {
+  question: StudyQuestion;
+  fallbackMode: StudyGenerationMode;
+  isPreview?: boolean;
+}) {
+  const citationCount = question.citation_count ?? question.citations.length;
+  return (
+    <GenerationBadges
+      isPreview={isPreview ?? question.is_preview}
+      modeLabel={formatStudyMode(question.generation_mode ?? fallbackMode)}
+      provider={question.generation_provider}
+      citationCount={citationCount}
+      qualityStatus={generationQualityStatus(question.quality_status, citationCount)}
+    />
+  );
+}
+
 export function DocumentWorkbench(props: DocumentWorkbenchProps) {
   return (
     <DocumentWorkbenchContent
@@ -276,10 +422,16 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
   const [activeTab, setActiveTab] = useState<WorkbenchTab>(initialPageNumber || initialChunkId ? "evidence" : "overview");
   const [previewZoom, setPreviewZoom] = useState(100);
   const [studySummary, setStudySummary] = useState<DocumentStudySummary | null>(null);
+  const [summaryPreview, setSummaryPreview] = useState<DocumentStudySummary | null>(null);
   const [studyQuestions, setStudyQuestions] = useState<StudyQuestion[]>([]);
+  const [questionPreview, setQuestionPreview] = useState<StudyQuestion[]>([]);
+  const [summaryMode, setSummaryMode] = useState<SummaryGenerationMode>("concise");
+  const [studyMode, setStudyMode] = useState<StudyGenerationMode>("balanced");
   const [studyMessage, setStudyMessage] = useState("");
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isSavingSummaryPreview, setIsSavingSummaryPreview] = useState(false);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [isSavingQuestionPreview, setIsSavingQuestionPreview] = useState(false);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
   const [checkingQuestionId, setCheckingQuestionId] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<SourceViewerSource | null>(null);
@@ -329,7 +481,8 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
     setIsGeneratingSummary(true);
     setStudyMessage("");
     try {
-      setStudySummary(await generateDocumentStudySummary(document.id));
+      setStudySummary(await generateDocumentStudySummary(document.id, { mode: summaryMode }));
+      setSummaryPreview(null);
     } catch (error) {
       setStudyMessage(error instanceof Error ? error.message : "Could not generate summary.");
     } finally {
@@ -337,17 +490,87 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
     }
   }
 
+  async function handlePreviewSummary() {
+    setIsGeneratingSummary(true);
+    setStudyMessage("");
+    try {
+      setSummaryPreview(await previewDocumentStudySummary(document.id, { mode: summaryMode }));
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not preview summary.");
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  }
+
+  async function handleSaveSummaryPreview() {
+    if (!summaryPreview) {
+      return;
+    }
+    setIsSavingSummaryPreview(true);
+    setStudyMessage("");
+    try {
+      setStudySummary(await saveDocumentStudySummary(document.id, summaryPreview));
+      setSummaryPreview(null);
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not save summary preview.");
+    } finally {
+      setIsSavingSummaryPreview(false);
+    }
+  }
+
   async function handleGenerateQuestions() {
     setIsGeneratingQuestions(true);
     setStudyMessage("");
     try {
-      const generated = await generateStudyQuestions(document.id, 5, { replaceExisting: true });
+      const generated = await generateStudyQuestions(document.id, 5, {
+        mode: studyMode,
+        replaceExisting: true,
+      });
       setStudyQuestions(generated);
+      setQuestionPreview([]);
       setAnswerDrafts({});
     } catch (error) {
       setStudyMessage(error instanceof Error ? error.message : "Could not generate study questions.");
     } finally {
       setIsGeneratingQuestions(false);
+    }
+  }
+
+  async function handlePreviewQuestions() {
+    setIsGeneratingQuestions(true);
+    setStudyMessage("");
+    try {
+      setQuestionPreview(
+        await previewStudyQuestions(document.id, 5, {
+          mode: studyMode,
+          replaceExisting: true,
+        }),
+      );
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not preview study questions.");
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  }
+
+  async function handleSaveQuestionPreview() {
+    if (questionPreview.length === 0) {
+      return;
+    }
+    setIsSavingQuestionPreview(true);
+    setStudyMessage("");
+    try {
+      const savedQuestions = await saveStudyQuestions(document.id, questionPreview, {
+        mode: studyMode,
+        replaceExisting: true,
+      });
+      setStudyQuestions(savedQuestions);
+      setQuestionPreview([]);
+      setAnswerDrafts({});
+    } catch (error) {
+      setStudyMessage(error instanceof Error ? error.message : "Could not save study question preview.");
+    } finally {
+      setIsSavingQuestionPreview(false);
     }
   }
 
@@ -515,13 +738,19 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                     Generate a reusable overview from the strongest indexed evidence.
                   </p>
                 </div>
+                <ModeSelector
+                  label="Summary style"
+                  options={summaryModeOptions}
+                  value={summaryMode}
+                  onChange={setSummaryMode}
+                />
                 <Button
                   type="button"
-                  onClick={handleGenerateSummary}
+                  onClick={studySummary ? handlePreviewSummary : handleGenerateSummary}
                   isLoading={isGeneratingSummary}
                   variant={studySummary ? "secondary" : "primary"}
                 >
-                  {studySummary ? "Regenerate summary" : "Generate summary"}
+                  {studySummary ? "Preview new summary" : "Generate summary"}
                 </Button>
               </div>
               {studyMessage ? (
@@ -529,9 +758,40 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                   {studyMessage}
                 </p>
               ) : null}
+              {summaryPreview ? (
+                <article className="rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-ink">Preview candidate</h3>
+                      <p className="mt-1 text-xs leading-5 text-amber-900">
+                        Review this before replacing the saved summary.
+                      </p>
+                    </div>
+                    <SummaryGenerationBadges summary={summaryPreview} fallbackMode={summaryMode} isPreview />
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-ink">{summaryPreview.content}</p>
+                  <CitationLinks citations={summaryPreview.citations} onPreviewCitation={setSelectedSource} />
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => void handleSaveSummaryPreview()}
+                      isLoading={isSavingSummaryPreview}
+                    >
+                      Replace current
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setSummaryPreview(null)}>
+                      Keep current
+                    </Button>
+                  </div>
+                </article>
+              ) : null}
               {studySummary ? (
                 <article className="rounded-lg border border-teal-100 bg-teal-50/40 p-4">
-                  <p className="text-sm leading-7 text-ink">{studySummary.content}</p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <h3 className="text-sm font-bold text-ink">Current summary</h3>
+                    <SummaryGenerationBadges summary={studySummary} fallbackMode={summaryMode} />
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-ink">{studySummary.content}</p>
                   <CitationLinks citations={studySummary.citations} onPreviewCitation={setSelectedSource} />
                 </article>
               ) : (
@@ -554,14 +814,75 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                     Generate practice questions, answer them, and get feedback grounded in citations.
                   </p>
                 </div>
-                <Button type="button" onClick={handleGenerateQuestions} isLoading={isGeneratingQuestions}>
-                  {studyQuestions.length > 0 ? "Regenerate study set" : "Generate study set"}
+                <ModeSelector
+                  label="Study style"
+                  options={studyModeOptions}
+                  value={studyMode}
+                  onChange={setStudyMode}
+                />
+                <Button
+                  type="button"
+                  onClick={studyQuestions.length > 0 ? handlePreviewQuestions : handleGenerateQuestions}
+                  isLoading={isGeneratingQuestions}
+                >
+                  {studyQuestions.length > 0 ? "Preview new study set" : "Generate study set"}
                 </Button>
               </div>
               {studyMessage ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
                   {studyMessage}
                 </p>
+              ) : null}
+              {questionPreview.length > 0 ? (
+                <section className="rounded-lg border border-amber-200 bg-amber-50/60 p-4" aria-label="Study set preview">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-ink">Preview study set</h3>
+                      <p className="mt-1 text-xs leading-5 text-amber-900">
+                        Replacing will clear answer history for the current questions.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Badge tone="amber">Preview</Badge>
+                      <Badge tone="teal">{formatStudyMode(questionPreview[0]?.generation_mode ?? studyMode)}</Badge>
+                      <Badge tone="neutral">{formatCount(questionPreview.length, "question", "questions")}</Badge>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {questionPreview.map((question, index) => (
+                      <article key={question.id} className="rounded-lg border border-amber-200 bg-white/80 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-normal text-amber-700">
+                              Candidate {index + 1}
+                            </p>
+                            <h4 className="mt-1 break-words text-base font-bold text-ink">{question.question}</h4>
+                          </div>
+                          <StudyQuestionGenerationBadges question={question} fallbackMode={studyMode} isPreview />
+                        </div>
+                        <details className="mt-3 rounded-md border border-amber-100 bg-amber-50/50 p-3">
+                          <summary className="cursor-pointer text-sm font-semibold text-amber-900">
+                            Expected answer
+                          </summary>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">{question.expected_answer}</p>
+                        </details>
+                        <CitationLinks citations={question.citations} onPreviewCitation={setSelectedSource} />
+                      </article>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => void handleSaveQuestionPreview()}
+                      isLoading={isSavingQuestionPreview}
+                    >
+                      Replace current
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setQuestionPreview([])}>
+                      Keep current
+                    </Button>
+                  </div>
+                </section>
               ) : null}
               {studyQuestions.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-line bg-slate-50 p-5 text-sm leading-6 text-slate-600">
@@ -587,6 +908,7 @@ function DocumentWorkbenchContent({ document, profile, pages, chunks, initialPag
                             <h3 className="mt-1 break-words text-base font-bold text-ink">{question.question}</h3>
                           </div>
                           <div className="flex flex-wrap justify-end gap-2">
+                            <StudyQuestionGenerationBadges question={question} fallbackMode={studyMode} />
                             {answerCount > 0 ? (
                               <Badge tone="neutral">{formatCount(answerCount, "attempt", "attempts")}</Badge>
                             ) : null}

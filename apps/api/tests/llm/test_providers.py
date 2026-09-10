@@ -12,6 +12,19 @@ def test_local_provider_summarizes_context_with_concise_sentences():
     assert summary == "DocIntel extracts cited evidence. It generates study questions."
 
 
+def test_local_provider_detailed_summary_includes_more_context():
+    provider = LocalHeuristicLlmProvider()
+
+    summary = provider.summarize(
+        "Page 1\nDocIntel extracts cited evidence. It generates study questions. It records quality metadata.",
+        mode="detailed",
+    )
+
+    assert summary == (
+        "DocIntel extracts cited evidence. It generates study questions. It records quality metadata."
+    )
+
+
 def test_local_provider_generates_unique_questions_from_context():
     provider = LocalHeuristicLlmProvider()
 
@@ -67,6 +80,30 @@ def test_groq_provider_parses_json_object_wrapped_in_markdown_fence():
 
     assert questions[0].question == "What methods are used?"
     assert questions[0].expected_answer == "The study uses a systematic review and three-tiered screening."
+
+
+def test_groq_provider_includes_selected_study_mode_in_question_prompt():
+    captured = {}
+    provider = GroqLlmProvider(
+        api_key="test-key",
+        model_name="test-model",
+        base_url="https://groq.example.test/openai/v1",
+        timeout_seconds=30,
+    )
+
+    def fake_chat(prompt, **_kwargs):
+        captured["prompt"] = prompt
+        return (
+            '{"questions":[{"question":"Which method detail matters most?",'
+            '"expected_answer":"The cited context describes the method detail."}]}'
+        )
+
+    provider._chat = fake_chat
+
+    provider.generate_questions("Context", count=1, mode="exam")
+
+    assert "exam-style" in captured["prompt"].lower()
+    assert "clear, testable questions" in captured["prompt"].lower()
 
 
 def test_groq_provider_requests_deterministic_json_payload(monkeypatch):
