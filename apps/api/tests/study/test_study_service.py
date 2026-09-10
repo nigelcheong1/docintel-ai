@@ -85,13 +85,17 @@ class RecordingProvider:
     def __init__(self) -> None:
         self.summary_context = ""
         self.question_context = ""
+        self.summary_mode = ""
+        self.question_mode = ""
 
-    def summarize(self, context: str) -> str:
+    def summarize(self, context: str, mode: str = "concise") -> str:
         self.summary_context = context
+        self.summary_mode = mode
         return "Provider summary from retrieved evidence."
 
-    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+    def generate_questions(self, context: str, count: int, mode: str = "balanced") -> list[GeneratedQuestionResult]:
         self.question_context = context
+        self.question_mode = mode
         return [
             GeneratedQuestionResult(
                 question="What is this document about?",
@@ -108,8 +112,9 @@ class RecordingProvider:
 
 
 class NoisyAcademicQuestionProvider(RecordingProvider):
-    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+    def generate_questions(self, context: str, count: int, mode: str = "balanced") -> list[GeneratedQuestionResult]:
         self.question_context = context
+        self.question_mode = mode
         return [
             GeneratedQuestionResult(
                 question="What does the document say about 0 1?",
@@ -146,8 +151,9 @@ class NoisyAcademicQuestionProvider(RecordingProvider):
 
 
 class NoisyResearchQuestionProvider(RecordingProvider):
-    def generate_questions(self, context: str, count: int) -> list[GeneratedQuestionResult]:
+    def generate_questions(self, context: str, count: int, mode: str = "balanced") -> list[GeneratedQuestionResult]:
         self.question_context = context
+        self.question_mode = mode
         return [
             GeneratedQuestionResult(
                 question="What datasets are mentioned?",
@@ -187,14 +193,16 @@ class NoisyResearchQuestionProvider(RecordingProvider):
 
 
 class UnsupportedSummaryProvider(RecordingProvider):
-    def summarize(self, context: str) -> str:
+    def summarize(self, context: str, mode: str = "concise") -> str:
         self.summary_context = context
+        self.summary_mode = mode
         return "The study analyzed 9999 papers and created a robot benchmark that is not in the cited evidence."
 
 
 class DistortedResearchSummaryProvider(RecordingProvider):
-    def summarize(self, context: str) -> str:
+    def summarize(self, context: str, mode: str = "concise") -> str:
         self.summary_context = context
+        self.summary_mode = mode
         return (
             "The study screened 2,366 Scopus results, reducing an initial 4,364 papers to 2,092 after "
             "deduplication and 1,665 empirical papers after keyword screening. It presents a literature table "

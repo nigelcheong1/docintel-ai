@@ -9,7 +9,9 @@ import type {
   EvalRunSummary,
   GoldenEvalResponse,
   SearchResponse,
+  SummaryGenerationMode,
   StudyAnswer,
+  StudyGenerationMode,
   StudyQuestion,
 } from "@/lib/types";
 
@@ -67,8 +69,47 @@ export async function getDocumentStudySummary(documentId: string): Promise<Docum
   return parseJsonResponse<DocumentStudySummary | null>(response);
 }
 
-export async function generateDocumentStudySummary(documentId: string): Promise<DocumentStudySummary> {
-  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/summary`, { method: "POST" });
+export type GenerateStudySummaryOptions = {
+  mode?: SummaryGenerationMode;
+};
+
+export async function generateDocumentStudySummary(
+  documentId: string,
+  options: GenerateStudySummaryOptions = {},
+): Promise<DocumentStudySummary> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preview: false, mode: options.mode ?? "concise" }),
+  });
+  return parseJsonResponse<DocumentStudySummary>(response);
+}
+
+export async function previewDocumentStudySummary(
+  documentId: string,
+  options: GenerateStudySummaryOptions = {},
+): Promise<DocumentStudySummary> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preview: true, mode: options.mode ?? "concise" }),
+  });
+  return parseJsonResponse<DocumentStudySummary>(response);
+}
+
+export async function saveDocumentStudySummary(
+  documentId: string,
+  summary: DocumentStudySummary,
+): Promise<DocumentStudySummary> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content: summary.content,
+      citations: summary.citations,
+      mode: summary.generation_mode ?? "concise",
+    }),
+  });
   return parseJsonResponse<DocumentStudySummary>(response);
 }
 
@@ -79,6 +120,8 @@ export async function getStudyQuestions(documentId: string): Promise<StudyQuesti
 
 export type GenerateStudyQuestionsOptions = {
   replaceExisting?: boolean;
+  preview?: boolean;
+  mode?: StudyGenerationMode;
 };
 
 export async function generateStudyQuestions(
@@ -89,7 +132,46 @@ export async function generateStudyQuestions(
   const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ count, replace_existing: options.replaceExisting ?? false }),
+    body: JSON.stringify({
+      count,
+      replace_existing: options.replaceExisting ?? false,
+      preview: options.preview ?? false,
+      mode: options.mode ?? "balanced",
+    }),
+  });
+  return parseJsonResponse<StudyQuestion[]>(response);
+}
+
+export async function previewStudyQuestions(
+  documentId: string,
+  count = 5,
+  options: GenerateStudyQuestionsOptions = {},
+): Promise<StudyQuestion[]> {
+  return generateStudyQuestions(documentId, count, {
+    ...options,
+    replaceExisting: options.replaceExisting ?? true,
+    preview: true,
+  });
+}
+
+export async function saveStudyQuestions(
+  documentId: string,
+  questions: StudyQuestion[],
+  options: GenerateStudyQuestionsOptions = {},
+): Promise<StudyQuestion[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/study/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      count: questions.length,
+      replace_existing: options.replaceExisting ?? true,
+      mode: options.mode ?? questions[0]?.generation_mode ?? "balanced",
+      questions: questions.map((question) => ({
+        question: question.question,
+        expected_answer: question.expected_answer,
+        citations: question.citations,
+      })),
+    }),
   });
   return parseJsonResponse<StudyQuestion[]>(response);
 }

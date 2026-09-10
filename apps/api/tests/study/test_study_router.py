@@ -6,7 +6,12 @@ import app.study.router as study_router
 from app.db.models import DocumentSummary, StudyAnswer, StudyQuestion
 from app.db.session import get_db
 from app.main import create_app
-from app.study.service import StudyDocumentNotReadyError, StudyQuestionNotFoundError
+from app.study.service import (
+    GeneratedQuestion,
+    GeneratedSummary,
+    StudyDocumentNotReadyError,
+    StudyQuestionNotFoundError,
+)
 
 
 def client_with_fake_db():
@@ -90,7 +95,10 @@ def test_question_read_includes_answer_attempt_history():
 
 
 def test_generate_summary_endpoint_returns_cited_summary(monkeypatch):
-    def fake_generate_summary(_db, document_id: str, embedder_factory=None):
+    captured = {}
+
+    def fake_generate_summary(_db, document_id: str, embedder_factory=None, mode: str = "concise"):
+        captured["mode"] = mode
         return DocumentSummary(
             id="summary-1",
             document_id=document_id,
@@ -106,10 +114,77 @@ def test_generate_summary_endpoint_returns_cited_summary(monkeypatch):
     payload = response.json()
     assert payload["content"] == "DocIntel AI summarizes cited evidence."
     assert payload["citations"][0]["document_page_url"] == "/documents/document-1?page=2&chunk=chunk-1"
+    assert captured["mode"] == "concise"
+
+
+def test_generate_summary_endpoint_can_return_an_unsaved_preview(monkeypatch):
+    captured = {}
+
+    def fake_preview_summary(_db, document_id: str, embedder_factory=None, mode: str = "concise"):
+        captured["mode"] = mode
+        return GeneratedSummary(
+            content=f"Preview summary for {document_id}.",
+            citations=[sample_citation()],
+        )
+
+    def fail_persisted_generation(*_args, **_kwargs):
+        raise AssertionError("Preview generation must not persist a new summary.")
+
+    monkeypatch.setattr(study_router, "preview_document_summary", fake_preview_summary, raising=False)
+    monkeypatch.setattr(study_router, "generate_document_summary", fail_persisted_generation)
+
+    response = client_with_fake_db().post(
+        "/documents/document-1/study/summary",
+        json={"preview": True, "mode": "detailed"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["content"] == "Preview summary for document-1."
+    assert payload["is_preview"] is True
+    assert payload["generation_mode"] == "detailed"
+    assert payload["citation_count"] == 1
+    assert payload["quality_status"] == "grounded"
+    assert captured["mode"] == "detailed"
+
+
+def test_generate_summary_endpoint_can_save_the_reviewed_preview(monkeypatch):
+    captured = {}
+
+    def fake_save_summary(_db, document_id: str, generated: GeneratedSummary):
+        captured["document_id"] = document_id
+        captured["generated"] = generated
+        return DocumentSummary(
+            id="summary-saved",
+            document_id=document_id,
+            content=generated.content,
+            citations=generated.citations,
+            created_at=datetime(2026, 9, 7, tzinfo=UTC),
+        )
+
+    def fail_generated_summary(*_args, **_kwargs):
+        raise AssertionError("Saving a preview should not regenerate different text.")
+
+    monkeypatch.setattr(study_router, "save_generated_document_summary", fake_save_summary, raising=False)
+    monkeypatch.setattr(study_router, "generate_document_summary", fail_generated_summary)
+
+    response = client_with_fake_db().post(
+        "/documents/document-1/study/summary",
+        json={"content": "Reviewed preview summary.", "citations": [sample_citation()], "mode": "concise"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "summary-saved"
+    assert payload["content"] == "Reviewed preview summary."
+    assert payload["is_preview"] is False
+    assert captured["document_id"] == "document-1"
+    assert captured["generated"].content == "Reviewed preview summary."
+    assert captured["generated"].citations[0]["chunk_id"] == "chunk-1"
 
 
 def test_generate_summary_endpoint_returns_400_when_document_is_not_ready(monkeypatch):
-    def fake_generate_summary(_db, _document_id: str, embedder_factory=None):
+    def fake_generate_summary(_db, _document_id: str, embedder_factory=None, mode: str = "concise"):
         raise StudyDocumentNotReadyError("Document must be indexed before study features can be generated.")
 
     monkeypatch.setattr(study_router, "generate_document_summary", fake_generate_summary)
@@ -122,8 +197,16 @@ def test_generate_summary_endpoint_returns_400_when_document_is_not_ready(monkey
 def test_generate_questions_endpoint_returns_questions(monkeypatch):
     captured = {}
 
-    def fake_generate_questions(_db, document_id: str, count: int, embedder_factory=None, replace_existing: bool = False):
+    def fake_generate_questions(
+        _db,
+        document_id: str,
+        count: int,
+        embedder_factory=None,
+        replace_existing: bool = False,
+        mode: str = "balanced",
+    ):
         captured["replace_existing"] = replace_existing
+        captured["mode"] = mode
         return [
             StudyQuestion(
                 id="question-1",
@@ -138,7 +221,7 @@ def test_generate_questions_endpoint_returns_questions(monkeypatch):
     monkeypatch.setattr(study_router, "generate_study_questions", fake_generate_questions)
     response = client_with_fake_db().post(
         "/documents/document-1/study/questions",
-        json={"count": 1, "replace_existing": True},
+        json={"count": 1, "replace_existing": True, "mode": "exam"},
     )
 
     assert response.status_code == 200
@@ -146,6 +229,97 @@ def test_generate_questions_endpoint_returns_questions(monkeypatch):
     assert payload[0]["question"] == "What methods are used?"
     assert payload[0]["citations"][0]["chunk_id"] == "chunk-1"
     assert captured["replace_existing"] is True
+    assert captured["mode"] == "exam"
+
+
+def test_generate_questions_endpoint_can_return_an_unsaved_preview(monkeypatch):
+    captured = {}
+
+    def fake_preview_questions(_db, document_id: str, count: int, embedder_factory=None, mode: str = "balanced"):
+        captured["document_id"] = document_id
+        captured["count"] = count
+        captured["mode"] = mode
+        return [
+            GeneratedQuestion(
+                question="Which screening stages are used?",
+                expected_answer="The study uses duplicate removal, title-and-abstract screening, and full-text review.",
+                citations=[sample_citation()],
+            )
+        ]
+
+    def fail_persisted_generation(*_args, **_kwargs):
+        raise AssertionError("Preview generation must not replace existing questions.")
+
+    monkeypatch.setattr(study_router, "preview_study_questions", fake_preview_questions, raising=False)
+    monkeypatch.setattr(study_router, "generate_study_questions", fail_persisted_generation)
+
+    response = client_with_fake_db().post(
+        "/documents/document-1/study/questions",
+        json={"count": 1, "preview": True, "replace_existing": True, "mode": "exam"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["question"] == "Which screening stages are used?"
+    assert payload[0]["is_preview"] is True
+    assert payload[0]["generation_mode"] == "exam"
+    assert payload[0]["citation_count"] == 1
+    assert payload[0]["quality_status"] == "grounded"
+    assert captured == {"document_id": "document-1", "count": 1, "mode": "exam"}
+
+
+def test_generate_questions_endpoint_can_save_reviewed_preview_questions(monkeypatch):
+    captured = {}
+
+    def fake_save_questions(
+        _db,
+        document_id: str,
+        generated_questions: list[GeneratedQuestion],
+        replace_existing: bool = False,
+    ):
+        captured["document_id"] = document_id
+        captured["generated_questions"] = generated_questions
+        captured["replace_existing"] = replace_existing
+        return [
+            StudyQuestion(
+                id="question-saved",
+                document_id=document_id,
+                question=generated_questions[0].question,
+                expected_answer=generated_questions[0].expected_answer,
+                citations=generated_questions[0].citations,
+                created_at=datetime(2026, 9, 7, tzinfo=UTC),
+            )
+        ]
+
+    def fail_generated_questions(*_args, **_kwargs):
+        raise AssertionError("Saving preview questions should not generate a different study set.")
+
+    monkeypatch.setattr(study_router, "save_generated_study_questions", fake_save_questions, raising=False)
+    monkeypatch.setattr(study_router, "generate_study_questions", fail_generated_questions)
+
+    response = client_with_fake_db().post(
+        "/documents/document-1/study/questions",
+        json={
+            "replace_existing": True,
+            "mode": "revision",
+            "questions": [
+                {
+                    "question": "Which screening stages are used?",
+                    "expected_answer": "The study uses duplicate removal, title-and-abstract screening, and full-text review.",
+                    "citations": [sample_citation()],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["id"] == "question-saved"
+    assert payload[0]["is_preview"] is False
+    assert payload[0]["generation_mode"] == "revision"
+    assert captured["document_id"] == "document-1"
+    assert captured["replace_existing"] is True
+    assert captured["generated_questions"][0].question == "Which screening stages are used?"
 
 
 def test_submit_answer_endpoint_returns_score_and_feedback(monkeypatch):

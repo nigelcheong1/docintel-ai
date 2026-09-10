@@ -7,6 +7,10 @@ import {
   generateStudyQuestions,
   getDocumentStudySummary,
   getStudyQuestions,
+  previewDocumentStudySummary,
+  previewStudyQuestions,
+  saveDocumentStudySummary,
+  saveStudyQuestions,
   submitStudyAnswer,
 } from "@/lib/api";
 import type { DocumentChunk, DocumentDetail, DocumentPage, DocumentProfile } from "@/lib/types";
@@ -16,6 +20,10 @@ vi.mock("@/lib/api", () => ({
   generateStudyQuestions: vi.fn(),
   getDocumentStudySummary: vi.fn(),
   getStudyQuestions: vi.fn(),
+  previewDocumentStudySummary: vi.fn(),
+  previewStudyQuestions: vi.fn(),
+  saveDocumentStudySummary: vi.fn(),
+  saveStudyQuestions: vi.fn(),
   submitStudyAnswer: vi.fn(),
 }));
 
@@ -144,6 +152,7 @@ const chunks: DocumentChunk[] = [
 
 describe("DocumentWorkbench", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(getDocumentStudySummary).mockResolvedValue(null);
     vi.mocked(getStudyQuestions).mockResolvedValue([]);
     vi.mocked(generateDocumentStudySummary).mockResolvedValue({
@@ -151,6 +160,48 @@ describe("DocumentWorkbench", () => {
       document_id: "doc-1",
       content: "DocIntel AI summarizes cited evidence and prepares study material.",
       created_at: "2026-09-07T00:00:00Z",
+      citations: [
+        {
+          chunk_id: "chunk-1",
+          document_id: "doc-1",
+          document_filename: "research-paper.pdf",
+          page_number: 1,
+          section_heading: "ABSTRACT",
+          page_image_url: "/documents/doc-1/pages/1/image",
+          document_page_url: "/documents/doc-1?page=1&chunk=chunk-1",
+        },
+      ],
+    });
+    vi.mocked(previewDocumentStudySummary).mockResolvedValue({
+      id: "summary-preview",
+      document_id: "doc-1",
+      content: "Preview replacement summary.",
+      created_at: "2026-09-07T00:00:00Z",
+      is_preview: true,
+      generation_mode: "detailed",
+      citation_count: 1,
+      quality_status: "grounded",
+      citations: [
+        {
+          chunk_id: "chunk-1",
+          document_id: "doc-1",
+          document_filename: "research-paper.pdf",
+          page_number: 1,
+          section_heading: "ABSTRACT",
+          page_image_url: "/documents/doc-1/pages/1/image",
+          document_page_url: "/documents/doc-1?page=1&chunk=chunk-1",
+        },
+      ],
+    });
+    vi.mocked(saveDocumentStudySummary).mockResolvedValue({
+      id: "summary-saved",
+      document_id: "doc-1",
+      content: "Preview replacement summary.",
+      created_at: "2026-09-07T00:00:00Z",
+      is_preview: false,
+      generation_mode: "detailed",
+      citation_count: 1,
+      quality_status: "grounded",
       citations: [
         {
           chunk_id: "chunk-1",
@@ -171,6 +222,60 @@ describe("DocumentWorkbench", () => {
         expected_answer: "The system uses OCR and embeddings.",
         created_at: "2026-09-07T00:00:00Z",
         latest_answer: null,
+        citations: [
+          {
+            chunk_id: "chunk-2",
+            document_id: "doc-1",
+            document_filename: "research-paper.pdf",
+            page_number: 2,
+            section_heading: "METHOD",
+            page_image_url: "/documents/doc-1/pages/2/image",
+            document_page_url: "/documents/doc-1?page=2&chunk=chunk-2",
+          },
+        ],
+      },
+    ]);
+    vi.mocked(previewStudyQuestions).mockResolvedValue([
+      {
+        id: "question-preview",
+        document_id: "doc-1",
+        question: "Which evidence supports the method?",
+        expected_answer: "The cited method evidence mentions OCR and embeddings.",
+        created_at: "2026-09-07T00:00:00Z",
+        latest_answer: null,
+        answer_count: 0,
+        recent_answers: [],
+        is_preview: true,
+        generation_mode: "exam",
+        citation_count: 1,
+        quality_status: "grounded",
+        citations: [
+          {
+            chunk_id: "chunk-2",
+            document_id: "doc-1",
+            document_filename: "research-paper.pdf",
+            page_number: 2,
+            section_heading: "METHOD",
+            page_image_url: "/documents/doc-1/pages/2/image",
+            document_page_url: "/documents/doc-1?page=2&chunk=chunk-2",
+          },
+        ],
+      },
+    ]);
+    vi.mocked(saveStudyQuestions).mockResolvedValue([
+      {
+        id: "question-saved",
+        document_id: "doc-1",
+        question: "Which evidence supports the method?",
+        expected_answer: "The cited method evidence mentions OCR and embeddings.",
+        created_at: "2026-09-07T00:00:00Z",
+        latest_answer: null,
+        answer_count: 0,
+        recent_answers: [],
+        is_preview: false,
+        generation_mode: "exam",
+        citation_count: 1,
+        quality_status: "grounded",
         citations: [
           {
             chunk_id: "chunk-2",
@@ -333,7 +438,41 @@ describe("DocumentWorkbench", () => {
       "src",
       "http://localhost:8000/documents/doc-1/pages/1/image",
     );
-    expect(generateDocumentStudySummary).toHaveBeenCalledWith("doc-1");
+    expect(generateDocumentStudySummary).toHaveBeenCalledWith("doc-1", { mode: "concise" });
+  });
+
+  it("previews a regenerated summary before replacing the current one", async () => {
+    vi.mocked(getDocumentStudySummary).mockResolvedValueOnce({
+      id: "summary-current",
+      document_id: "doc-1",
+      content: "Current cited summary.",
+      created_at: "2026-09-07T00:00:00Z",
+      citations: [],
+    });
+
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Summary" }));
+    expect(await screen.findByText("Current cited summary.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Detailed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview new summary" }));
+
+    expect(await screen.findByText("Preview replacement summary.")).toBeInTheDocument();
+    expect(screen.getByText("Current cited summary.")).toBeInTheDocument();
+    expect(saveDocumentStudySummary).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace current" }));
+
+    await waitFor(() =>
+      expect(saveDocumentStudySummary).toHaveBeenCalledWith(
+        "doc-1",
+        expect.objectContaining({ content: "Preview replacement summary." }),
+      ),
+    );
+    expect(screen.getByText("Preview replacement summary.")).toBeInTheDocument();
+    expect(screen.queryByText("Current cited summary.")).not.toBeInTheDocument();
+    expect(previewDocumentStudySummary).toHaveBeenCalledWith("doc-1", { mode: "detailed" });
   });
 
   it("generates study questions and submits an answer for feedback", async () => {
@@ -354,7 +493,7 @@ describe("DocumentWorkbench", () => {
     expect(screen.getByText("82%")).toBeInTheDocument();
   });
 
-  it("replaces stale study questions when generating a fresh study set", async () => {
+  it("lets reviewers discard a replacement study-set preview", async () => {
     vi.mocked(getStudyQuestions).mockResolvedValueOnce([
       {
         id: "question-stale",
@@ -374,11 +513,66 @@ describe("DocumentWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Study" }));
     expect(await screen.findByText("What does the document say about 1 contents?")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Regenerate study set" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview new study set" }));
 
-    expect(await screen.findByText("What methods are used?")).toBeInTheDocument();
-    expect(screen.queryByText("What does the document say about 1 contents?")).not.toBeInTheDocument();
-    expect(generateStudyQuestions).toHaveBeenCalledWith("doc-1", 5, { replaceExisting: true });
+    expect(await screen.findByText("Which evidence supports the method?")).toBeInTheDocument();
+    expect(screen.getByText("What does the document say about 1 contents?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep current" }));
+
+    expect(screen.queryByText("Which evidence supports the method?")).not.toBeInTheDocument();
+    expect(screen.getByText("What does the document say about 1 contents?")).toBeInTheDocument();
+    expect(previewStudyQuestions).toHaveBeenCalledWith("doc-1", 5, { mode: "balanced", replaceExisting: true });
+    expect(generateStudyQuestions).not.toHaveBeenCalled();
+  });
+
+  it("previews a replacement study set before clearing existing answers", async () => {
+    vi.mocked(getStudyQuestions).mockResolvedValueOnce([
+      {
+        id: "question-current",
+        document_id: "doc-1",
+        question: "What is the stale question?",
+        expected_answer: "Old expected answer.",
+        created_at: "2026-09-07T00:00:00Z",
+        latest_answer: {
+          id: "answer-current",
+          question_id: "question-current",
+          answer_text: "Old answer.",
+          score: 0.82,
+          feedback: "Old feedback.",
+          created_at: "2026-09-07T00:00:00Z",
+        },
+        answer_count: 1,
+        recent_answers: [],
+        citations: [],
+      },
+    ]);
+
+    render(<DocumentWorkbench document={documentDetail} profile={profile} pages={pages} chunks={chunks} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Study" }));
+    expect(await screen.findByText("What is the stale question?")).toBeInTheDocument();
+    expect(screen.getByText("82%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Exam-style" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview new study set" }));
+
+    expect(await screen.findByText("Which evidence supports the method?")).toBeInTheDocument();
+    expect(screen.getByText("What is the stale question?")).toBeInTheDocument();
+    expect(saveStudyQuestions).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace current" }));
+
+    await waitFor(() =>
+      expect(saveStudyQuestions).toHaveBeenCalledWith(
+        "doc-1",
+        [expect.objectContaining({ question: "Which evidence supports the method?" })],
+        { mode: "exam", replaceExisting: true },
+      ),
+    );
+    expect(screen.queryByText("What is the stale question?")).not.toBeInTheDocument();
+    expect(screen.queryByText("82%")).not.toBeInTheDocument();
+    expect(previewStudyQuestions).toHaveBeenCalledWith("doc-1", 5, { mode: "exam", replaceExisting: true });
   });
 
   it("shows study attempt history and citation snippets in the source viewer", async () => {
