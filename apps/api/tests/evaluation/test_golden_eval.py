@@ -16,6 +16,16 @@ def test_golden_eval_includes_ocr_quality_cases():
     assert result.summary.quality_dimensions["ocr_readiness"] == 2
 
 
+def test_golden_eval_reports_verified_dimensions():
+    result = run_golden_evaluation()
+
+    assert "verified_answers" in result.summary.quality_dimensions
+    assert "citation_accuracy" in result.summary.quality_dimensions
+    assert "table_qa" in result.summary.quality_dimensions
+    assert "multi_hop_qa" in result.summary.quality_dimensions
+    assert result.summary.quality_dimensions["hallucination_risk"] >= 1
+
+
 def test_golden_eval_endpoint_reports_universal_document_qa_coverage():
     client = TestClient(create_app())
 
@@ -24,14 +34,19 @@ def test_golden_eval_endpoint_reports_universal_document_qa_coverage():
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "universal-document-qa-golden"
-    assert body["summary"]["total_cases"] == 16
+    assert body["summary"]["total_cases"] == 21
     assert body["summary"]["passed_cases"] == body["summary"]["total_cases"]
     assert body["summary"]["pass_rate"] == 1.0
     assert body["summary"]["quality_dimensions"] == {
         "abstention_safety": 1,
         "answer_quality": 12,
+        "citation_accuracy": 1,
+        "hallucination_risk": 1,
+        "multi_hop_qa": 1,
         "ocr_readiness": 2,
         "parse_quality": 1,
+        "table_qa": 1,
+        "verified_answers": 1,
     }
     assert body["summary"]["document_types"] == {
         "contract": 2,
@@ -39,7 +54,7 @@ def test_golden_eval_endpoint_reports_universal_document_qa_coverage():
         "ocr_readiness": 2,
         "parse_quality": 1,
         "report": 2,
-        "research_paper": 5,
+        "research_paper": 10,
         "resume": 2,
     }
     assert {case["document_type"] for case in body["cases"]} == {

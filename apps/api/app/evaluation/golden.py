@@ -9,8 +9,11 @@ from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.documents.intelligence import build_document_profile
 from app.documents.parse_quality import build_parse_quality_from_pages, normalized_text_length
 from app.documents.parser import ParsedPage
+from app.evaluation.metrics import abstention_safety, citation_accuracy, hallucination_risk_score
 from app.retrieval.document_answers import build_document_aware_answer
+from app.retrieval.evidence_pack import EvidenceItem, EvidencePack
 from app.retrieval.query_router import route_query
+from app.retrieval.verified_answers import build_verified_answer
 
 OCR_UNAVAILABLE_GUIDANCE = (
     "Local OCR is not available. Install Tesseract OCR or configure DOCINTEL_TESSERACT_CMD, then retry OCR."
@@ -40,6 +43,20 @@ class GoldenCaseSpec:
     expected_terms: tuple[str, ...]
     expected_intent: str
     quality_dimension: str = "answer_quality"
+
+
+@dataclass(frozen=True)
+class VerifiedGoldenCaseSpec:
+    case_id: str
+    document_key: str
+    question: str
+    expected_status: str
+    expected_terms: tuple[str, ...]
+    expected_intent: str
+    quality_dimension: str
+    evidence_markers: tuple[str, ...]
+    expected_citation_markers: tuple[str, ...]
+    is_multi_hop: bool = False
 
 
 class GoldenEvalCaseResult(BaseModel):
@@ -107,6 +124,25 @@ _DOCUMENTS: tuple[GoldenDocumentSpec, ...] = (
                 (
                     "RESULTS Experiments show that ViT-B/16 outperforms ViT-B/32, achieving TOP1 "
                     "accuracy of 91.38 on InHARD and 83.65 on HRI30."
+                ),
+            ),
+            GoldenChunkSpec(
+                9,
+                "RESULTS",
+                "RESULTS Screening workflow began with 2,366 Scopus results for human-robot collaboration.",
+            ),
+            GoldenChunkSpec(
+                9,
+                "RESULTS",
+                "RESULTS Duplicate removal consolidated the screening corpus to 2,092 works.",
+            ),
+            GoldenChunkSpec(
+                10,
+                "RESULTS",
+                (
+                    "RESULTS Table 4 Key literature review. Reference Year Task planning "
+                    "Environmental perception Embodied execution. Chen et al. 2026 has check marks "
+                    "for task planning, environmental perception, and embodied execution."
                 ),
             ),
             GoldenChunkSpec(
@@ -320,6 +356,65 @@ _CASES: tuple[GoldenCaseSpec, ...] = (
     ),
 )
 
+_VERIFIED_CASES: tuple[VerifiedGoldenCaseSpec, ...] = (
+    VerifiedGoldenCaseSpec(
+        "verified-screening-counts",
+        "research",
+        "How many Scopus results were screened?",
+        "answerable",
+        ("2,366", "Scopus"),
+        "results",
+        "verified_answers",
+        ("2,366 Scopus results",),
+        ("2,366 Scopus results",),
+    ),
+    VerifiedGoldenCaseSpec(
+        "verified-citation-accuracy-screening",
+        "research",
+        "How many works remained after duplicate removal?",
+        "answerable",
+        ("2,092", "works"),
+        "evidence_search",
+        "citation_accuracy",
+        ("2,092 works",),
+        ("2,092 works",),
+    ),
+    VerifiedGoldenCaseSpec(
+        "research-table-reference-2026",
+        "research",
+        "Which 2026 reference includes check marks for task planning, environmental perception, and embodied execution?",
+        "answerable",
+        ("Chen et al.", "2026"),
+        "evidence_search",
+        "table_qa",
+        ("Chen et al. 2026",),
+        ("Chen et al. 2026",),
+    ),
+    VerifiedGoldenCaseSpec(
+        "verified-multi-hop-screening",
+        "research",
+        "How many total results were initially obtained from Scopus, and how many works remained after duplicate removal?",
+        "answerable",
+        ("2,366", "2,092"),
+        "results",
+        "multi_hop_qa",
+        ("2,366 Scopus results", "2,092 works"),
+        ("2,366 Scopus results", "2,092 works"),
+        is_multi_hop=True,
+    ),
+    VerifiedGoldenCaseSpec(
+        "verified-hallucination-risk-abstains",
+        "research",
+        "What private GPU cluster was used?",
+        "insufficient_evidence",
+        (),
+        "evidence_search",
+        "hallucination_risk",
+        (),
+        (),
+    ),
+)
+
 
 def _make_document(spec: GoldenDocumentSpec) -> Document:
     document = Document(
@@ -421,6 +516,101 @@ def _evaluate_case(case: GoldenCaseSpec, document: Document) -> GoldenEvalCaseRe
         citation_count=citation_count,
         answer_preview=answer_preview,
         quality_reason=quality_reason,
+        quality_dimension=case.quality_dimension,
+        passed=not failure_reasons,
+        failure_reasons=failure_reasons,
+    )
+
+
+def _chunk_with_marker(document: Document, marker: str) -> Chunk:
+    for chunk in document.chunks:
+        if marker.lower() in chunk.text.lower():
+            return chunk
+    raise ValueError(f"Golden fixture marker not found: {marker}")
+
+
+def _verified_evidence_item(document: Document, chunk: Chunk, subquery: str) -> EvidenceItem:
+    section_heading = chunk.layout.get("section_heading") if isinstance(chunk.layout, dict) else None
+    return EvidenceItem(
+        chunk_id=chunk.id,
+        document_id=document.id,
+        document_filename=document.filename,
+        page_number=chunk.page.page_number,
+        chunk_index=chunk.chunk_index,
+        text=chunk.text,
+        snippet=chunk.text,
+        score=0.95,
+        source_score=0.95,
+        ranking_signals={"golden_evidence": 1.0},
+        section_heading=section_heading if isinstance(section_heading, str) else None,
+        subquery=subquery,
+        support_score=0.95,
+    )
+
+
+def _evaluate_verified_case(case: VerifiedGoldenCaseSpec, document: Document) -> GoldenEvalCaseResult:
+    profile = build_document_profile(document)
+    route = route_query(case.question, profile.document_type)
+    evidence_chunks = [_chunk_with_marker(document, marker) for marker in case.evidence_markers]
+    evidence_items = [
+        _verified_evidence_item(document, chunk, case.question)
+        for chunk in evidence_chunks
+    ]
+    expected_chunk_ids = [
+        _chunk_with_marker(document, marker).id
+        for marker in case.expected_citation_markers
+    ]
+    pack = EvidencePack(
+        question=case.question,
+        rewritten_query=case.question,
+        subqueries=[case.question],
+        items=evidence_items,
+        retrieval_mode="hybrid",
+        selected_chunk_count=len(evidence_items),
+        selected_page_count=len({item.page_number for item in evidence_items}),
+        average_support_score=0.95 if evidence_items else 0.0,
+        is_multi_hop=case.is_multi_hop,
+    )
+    result = build_verified_answer(case.question, pack)
+    answer = result.answer
+    actual_status = result.quality.status
+    answer_preview = answer.summary if answer is not None else None
+    cited_chunk_ids = [citation.chunk_id for citation in answer.citations] if answer is not None else []
+
+    failure_reasons: list[str] = []
+    if actual_status != case.expected_status:
+        failure_reasons.append(f"Expected status {case.expected_status}, got {actual_status}.")
+    if route.intent != case.expected_intent:
+        failure_reasons.append(f"Expected intent {case.expected_intent}, got {route.intent}.")
+    if citation_accuracy(expected_chunk_ids, cited_chunk_ids) < 1.0:
+        failure_reasons.append("Expected citations were not all present in the verified answer.")
+    if abstention_safety(case.expected_status, actual_status) < 1.0:
+        failure_reasons.append("Expected a safe abstention for this verified case.")
+    risk = hallucination_risk_score(
+        result.verification.unsupported_sentence_count,
+        len(result.verification.sentences),
+    )
+    if case.quality_dimension == "hallucination_risk" and risk < 1.0:
+        failure_reasons.append("Expected hallucination-risk scoring to flag missing support.")
+
+    normalized_answer = (answer_preview or "").lower()
+    for term in case.expected_terms:
+        if term.lower() not in normalized_answer:
+            failure_reasons.append(f"Missing expected term: {term}.")
+
+    return GoldenEvalCaseResult(
+        case_id=case.case_id,
+        document_name=document.filename,
+        document_type=profile.document_type,
+        question=case.question,
+        expected_status=case.expected_status,
+        actual_status=actual_status,
+        expected_terms=list(case.expected_terms),
+        query_intent=route.intent,
+        confidence=result.quality.confidence,
+        citation_count=len(cited_chunk_ids),
+        answer_preview=answer_preview,
+        quality_reason=result.quality.reason,
         quality_dimension=case.quality_dimension,
         passed=not failure_reasons,
         failure_reasons=failure_reasons,
@@ -536,6 +726,7 @@ def _evaluate_ocr_sparse_pdf_case() -> GoldenEvalCaseResult:
 def run_golden_evaluation() -> GoldenEvalResponse:
     documents = {spec.key: _make_document(spec) for spec in _DOCUMENTS}
     cases = [_evaluate_case(case, documents[case.document_key]) for case in _CASES]
+    cases.extend(_evaluate_verified_case(case, documents[case.document_key]) for case in _VERIFIED_CASES)
     cases.append(_evaluate_parse_quality_case())
     cases.append(_evaluate_ocr_image_deferred_case())
     cases.append(_evaluate_ocr_sparse_pdf_case())
