@@ -1,4 +1,15 @@
-from app.db.models import ChunkEmbedding, Document, DocumentStatus, DocumentSummary, Page, StudyAnswer, StudyQuestion
+from app.db.models import (
+    ChunkEmbedding,
+    Document,
+    DocumentStatus,
+    DocumentSummary,
+    DocumentTable,
+    DocumentTableCell,
+    Page,
+    PageImage,
+    StudyAnswer,
+    StudyQuestion,
+)
 
 
 def test_document_status_values_are_stable():
@@ -74,3 +85,43 @@ def test_document_has_study_relationships():
 
     assert {"summaries", "study_questions"} <= relationship_names
     assert "answers" in StudyQuestion.__mapper__.relationships.keys()
+
+
+def test_page_image_columns_are_declared():
+    columns = PageImage.__table__.columns
+
+    assert PageImage.__tablename__ == "page_images"
+    assert columns["document_id"].nullable is False
+    assert columns["page_id"].nullable is False
+    assert columns["page_number"].nullable is False
+    assert columns["render_dpi"].nullable is False
+    assert columns["media_type"].nullable is False
+
+
+def test_document_table_columns_are_declared():
+    columns = DocumentTable.__table__.columns
+
+    assert DocumentTable.__tablename__ == "document_tables"
+    assert columns["document_id"].nullable is False
+    assert columns["page_id"].nullable is False
+    assert columns["source_chunk_id"].nullable is True
+    assert columns["extraction_confidence"].nullable is False
+
+
+def test_document_table_cell_columns_are_declared():
+    columns = DocumentTableCell.__table__.columns
+
+    assert DocumentTableCell.__tablename__ == "document_table_cells"
+    assert columns["table_id"].nullable is False
+    assert columns["row_index"].nullable is False
+    assert columns["column_label"].nullable is True
+    assert columns["text"].nullable is False
+
+
+def test_document_has_table_and_page_image_relationships():
+    document_relationships = set(Document.__mapper__.relationships.keys())
+    page_relationships = set(Page.__mapper__.relationships.keys())
+
+    assert {"page_images", "document_tables", "document_table_cells"} <= document_relationships
+    assert {"page_images", "document_tables", "document_table_cells"} <= page_relationships
+    assert "cells" in DocumentTable.__mapper__.relationships.keys()

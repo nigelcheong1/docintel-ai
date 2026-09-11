@@ -1,4 +1,4 @@
-from app.db.models import Base, DocumentStatus
+from app.db.models import Base, DocumentStatus, DocumentTable, DocumentTableCell, PageImage
 from app.db.session import engine
 from sqlalchemy import Engine, inspect, text
 
@@ -36,6 +36,15 @@ def sync_local_schema(bind: Engine) -> None:
     table_names = set(inspect(bind).get_table_names())
     if not {"documents", "pages"} <= table_names:
         return
+
+    Base.metadata.create_all(
+        bind=bind,
+        tables=[
+            PageImage.__table__,
+            DocumentTable.__table__,
+            DocumentTableCell.__table__,
+        ],
+    )
 
     with bind.begin() as connection:
         if bind.dialect.name == "postgresql":

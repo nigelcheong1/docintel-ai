@@ -6,12 +6,27 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, DocumentSummary, Page, StudyAnswer, StudyQuestion
+from app.db.models import (
+    Chunk,
+    ChunkEmbedding,
+    Document,
+    DocumentStatus,
+    DocumentSummary,
+    DocumentTable,
+    DocumentTableCell,
+    Page,
+    PageImage,
+    StudyAnswer,
+    StudyQuestion,
+)
+from app.documents.extraction import ExtractedPage
 from app.documents.ocr import OcrPageResult
+from app.documents.page_rendering import PAGE_PREVIEW_DPI
 from app.documents.storage import StoredUpload, save_upload_bytes
 from app.documents.service import (
     DocumentPersistenceError,
     DocumentReindexError,
+    _add_index_records_from_pages,
     delete_document,
     index_stored_upload,
     process_document_reindex,
@@ -141,6 +156,59 @@ def test_index_stored_upload_indexes_pdf(db_session, tmp_path):
     assert len(document.pages) == 1
     assert len(document.chunks) >= 1
     assert document.chunks[0].embedding is not None
+
+
+def test_index_records_persist_page_images_and_detected_tables(db_session):
+    check = "\u221a"
+    document = Document(
+        filename="paper.pdf",
+        stored_filename="paper.pdf",
+        mime_type="application/pdf",
+        file_path="/tmp/paper.pdf",
+        status=DocumentStatus.PROCESSING,
+    )
+    db_session.add(document)
+    db_session.flush()
+
+    _add_index_records_from_pages(
+        db_session,
+        document,
+        [
+            ExtractedPage(
+                page_number=10,
+                text=(
+                    "Table 4 Key literature review\n"
+                    "Reference Year Task planning Environmental perception Embodied execution\n"
+                    f"Chen et al. 2026 {check} {check} {check}\n"
+                    "This page includes enough searchable words for chunking and table detection."
+                ),
+                width=612,
+                height=792,
+                text_source="native",
+            )
+        ],
+        lambda: FakeEmbeddingProvider(),
+        commit_text_index_before_embedding=False,
+    )
+    db_session.commit()
+
+    image = db_session.scalar(select(PageImage).where(PageImage.document_id == document.id))
+    table = db_session.scalar(select(DocumentTable).where(DocumentTable.document_id == document.id))
+    cells = db_session.scalars(
+        select(DocumentTableCell)
+        .where(DocumentTableCell.document_id == document.id)
+        .order_by(DocumentTableCell.row_index, DocumentTableCell.column_index)
+    ).all()
+
+    assert image is not None
+    assert image.page_number == 10
+    assert image.render_dpi == PAGE_PREVIEW_DPI
+    assert image.media_type == "image/png"
+    assert table is not None
+    assert table.caption == "Table 4 Key literature review"
+    assert table.source_chunk_id is not None
+    assert any(cell.text == "Chen et al." for cell in cells)
+    assert any(cell.text == "2026" for cell in cells)
 
 
 def test_index_stored_upload_preserves_text_chunks_when_embedding_fails(db_session, tmp_path):
