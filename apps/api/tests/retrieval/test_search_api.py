@@ -10,7 +10,7 @@ from app.documents.service import index_stored_upload
 from app.documents.storage import save_upload_bytes
 from app.main import create_app
 from app.retrieval.embeddings import FakeEmbeddingProvider
-from app.retrieval.search import SearchHit
+from app.retrieval.search import RetrievalMode, SearchHit
 import app.retrieval.router as retrieval_router
 
 pytestmark = pytest.mark.integration
@@ -542,3 +542,79 @@ def test_search_endpoint_returns_type_aware_mismatch_for_research_paper(db_sessi
     assert body["answer"] is None
     assert body["quality"]["status"] == "insufficient_evidence"
     assert "research paper" in body["quality"]["reason"].lower()
+
+
+def test_search_request_accepts_verified_answer_mode():
+    from app.retrieval.search import SearchRequest
+
+    request = SearchRequest(query="What methods are used?", answer_mode="verified")
+
+    assert request.answer_mode == "verified"
+
+
+def test_search_request_defaults_to_standard_answer_mode():
+    from app.retrieval.search import SearchRequest
+
+    request = SearchRequest(query="What methods are used?")
+
+    assert request.answer_mode == "standard"
+
+
+def test_verified_search_returns_evidence_pack_verification_and_all_evidence_hits(monkeypatch):
+    method_hit = SearchHit(
+        chunk_id="method-chunk",
+        document_id="document-1",
+        document_filename="paper.pdf",
+        page_number=2,
+        chunk_index=0,
+        text="The method uses a local hybrid retriever with lexical fallback.",
+        score=0.91,
+        source_score=0.91,
+        ranking_signals={"keyword_overlap": 0.91},
+        section_heading="METHOD",
+    )
+    result_hit = SearchHit(
+        chunk_id="result-chunk",
+        document_id="document-1",
+        document_filename="paper.pdf",
+        page_number=4,
+        chunk_index=1,
+        text="The results report verified citations across every selected evidence item.",
+        score=0.89,
+        source_score=0.89,
+        ranking_signals={"keyword_overlap": 0.89},
+        section_heading="RESULTS",
+    )
+
+    def search_verified_subquery(_db, _embedding, query, _top_k, _document_id, *, vector_search, fallback_reason):
+        if query == "What methods are used?":
+            return [method_hit], RetrievalMode(mode="vector", fallback_reason=fallback_reason)
+        if query == "what results are reported?":
+            return [result_hit], RetrievalMode(mode="vector", fallback_reason=fallback_reason)
+        return [], RetrievalMode(mode="lexical", fallback_reason=fallback_reason)
+
+    monkeypatch.setattr(retrieval_router, "hybrid_search_chunks", search_verified_subquery)
+    app = create_app()
+
+    def override_db():
+        yield object()
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: FakeEmbeddingProvider()
+    response = TestClient(app).post(
+        "/search",
+        json={
+            "query": "What methods are used and what results are reported?",
+            "top_k": 1,
+            "answer_mode": "verified",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer_mode"] == "verified"
+    assert body["evidence_pack"]["subqueries"] == ["What methods are used?", "what results are reported?"]
+    assert {item["chunk_id"] for item in body["evidence_pack"]["items"]} == {"method-chunk", "result-chunk"}
+    assert body["verification"]["status"] == "verified"
+    assert {hit["chunk_id"] for hit in body["hits"]} == {"method-chunk", "result-chunk"}
+    assert {hit["result_role"] for hit in body["hits"]} == {"answer_evidence"}

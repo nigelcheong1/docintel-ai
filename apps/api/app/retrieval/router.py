@@ -9,18 +9,27 @@ from app.documents.intelligence import build_document_profile
 from app.documents.router import get_embedding_provider_factory
 from app.documents.service import EmbeddingProviderFactory
 from app.retrieval.answers import AnswerQuality, build_grounded_answer
+from app.retrieval.evidence_pack import EvidenceItem, EvidencePack, build_evidence_pack
+from app.retrieval.multihop import build_query_plan
 from app.retrieval.document_answers import build_document_aware_answer
 from app.retrieval.query_router import route_query
 from app.retrieval.reranker import rerank_hits
 from app.retrieval.search import (
+    EvidenceItemRead,
+    EvidencePackRead,
+    EvidenceVerificationRead,
+    RejectedEvidenceRead,
     SearchDiagnostics,
     SearchHit,
     SearchRequest,
     SearchResponse,
+    SentenceSupportRead,
     format_search_hit,
     hybrid_search_chunks,
     search_chunks,
 )
+from app.retrieval.verified_answers import build_verified_answer
+from app.retrieval.verifier import VerificationResult
 
 router = APIRouter(tags=["search"])
 
@@ -78,6 +87,21 @@ def _search_hit_from_chunk(chunk: Chunk, document: Document) -> SearchHit:
     )
 
 
+def _search_hit_from_evidence_item(item: EvidenceItem) -> SearchHit:
+    return SearchHit(
+        chunk_id=item.chunk_id,
+        document_id=item.document_id,
+        document_filename=item.document_filename,
+        page_number=item.page_number,
+        chunk_index=item.chunk_index,
+        text=item.text,
+        score=item.score,
+        source_score=item.source_score,
+        ranking_signals=item.ranking_signals,
+        section_heading=item.section_heading,
+    )
+
+
 def _augment_hits_with_answer_evidence(
     hits: list[SearchHit],
     document: Document | None,
@@ -107,6 +131,67 @@ def _augment_hits_with_answer_evidence(
             seen_chunk_ids.add(hit.chunk_id)
 
     return merged_hits
+
+
+def _read_evidence_pack(pack: EvidencePack) -> EvidencePackRead:
+    return EvidencePackRead(
+        question=pack.question,
+        rewritten_query=pack.rewritten_query,
+        subqueries=pack.subqueries,
+        items=[
+            EvidenceItemRead(
+                chunk_id=item.chunk_id,
+                document_id=item.document_id,
+                document_filename=item.document_filename,
+                page_number=item.page_number,
+                chunk_index=item.chunk_index,
+                snippet=item.snippet,
+                score=item.score,
+                source_score=item.source_score,
+                ranking_signals=item.ranking_signals,
+                section_heading=item.section_heading,
+                subquery=item.subquery,
+                support_score=item.support_score,
+            )
+            for item in pack.items
+        ],
+        rejected=[
+            RejectedEvidenceRead(
+                chunk_id=item.chunk_id,
+                page_number=item.page_number,
+                subquery=item.subquery,
+                reason=item.reason,
+            )
+            for item in pack.rejected
+        ],
+        retrieval_mode=pack.retrieval_mode,
+        retrieval_fallback_reason=pack.retrieval_fallback_reason,
+        selected_chunk_count=pack.selected_chunk_count,
+        selected_page_count=pack.selected_page_count,
+        average_support_score=pack.average_support_score,
+        is_multi_hop=pack.is_multi_hop,
+    )
+
+
+def _read_verification(result: VerificationResult) -> EvidenceVerificationRead:
+    return EvidenceVerificationRead(
+        status=result.status,
+        sentences=[
+            SentenceSupportRead(
+                sentence=sentence.sentence,
+                status=sentence.status,
+                supporting_chunk_ids=sentence.supporting_chunk_ids,
+                support_score=sentence.support_score,
+                missing_terms=sentence.missing_terms,
+                missing_numbers=sentence.missing_numbers,
+            )
+            for sentence in result.sentences
+        ],
+        unsupported_sentence_count=result.unsupported_sentence_count,
+        removed_sentence_count=result.removed_sentence_count,
+        hallucination_risk=result.hallucination_risk,
+        reason=result.reason,
+    )
 
 
 def _selected_document_no_chunks_reason(document: Document) -> str:
@@ -156,6 +241,7 @@ def _empty_scoped_document_response(
         document_type=document_type,
         query_intent=query_intent,
         diagnostics=diagnostics,
+        answer_mode=request.answer_mode,
     )
 
 
@@ -195,6 +281,63 @@ def search(
         embedding_failure_reason = _embedding_fallback_reason(exc)
 
     candidate_limit = min(50, max(request.top_k * 4, request.top_k + 10))
+    plan = build_query_plan(request.query)
+    if request.answer_mode == "verified":
+        hits_by_subquery: dict[str, list[SearchHit]] = {}
+        retrieval_modes: list[str] = []
+        fallback_reason = embedding_failure_reason
+        for subquery in plan.subqueries:
+            candidates, mode = hybrid_search_chunks(
+                db,
+                query_embedding,
+                subquery,
+                candidate_limit,
+                request.document_id,
+                vector_search=search_chunks,
+                fallback_reason=embedding_failure_reason,
+            )
+            hits_by_subquery[subquery] = rerank_hits(subquery, candidates)[: request.top_k]
+            retrieval_modes.append(mode.mode)
+            fallback_reason = fallback_reason or mode.fallback_reason
+
+        pack_mode = "hybrid" if "hybrid" in retrieval_modes else "vector" if "vector" in retrieval_modes else "lexical"
+        pack = build_evidence_pack(
+            request.query,
+            hits_by_subquery,
+            pack_mode,
+            fallback_reason,
+            rewritten_query=plan.rewritten_query,
+            is_multi_hop=plan.is_multi_hop,
+        )
+        verified = build_verified_answer(request.query, pack)
+        answer_chunk_ids = [citation.chunk_id for citation in verified.answer.citations] if verified.answer is not None else []
+        answer_chunk_id_set = set(answer_chunk_ids)
+        evidence_hits = [_search_hit_from_evidence_item(item) for item in pack.items]
+        display_hits = _augment_hits_with_answer_evidence(evidence_hits, document, answer_chunk_ids)
+        diagnostics = _build_search_diagnostics(
+            hits=display_hits,
+            answer_chunk_ids=answer_chunk_ids,
+            quality_status=verified.quality.status,
+            confidence=verified.quality.confidence,
+            reason=verified.quality.reason,
+            document_type=profile.document_type if profile is not None else None,
+            query_intent=route.intent,
+        )
+        return SearchResponse(
+            query=request.query,
+            hits=[format_search_hit(hit, answer_chunk_id_set) for hit in display_hits],
+            answer=verified.answer,
+            quality=verified.quality,
+            document_type=profile.document_type if profile is not None else None,
+            query_intent=route.intent,
+            diagnostics=diagnostics,
+            retrieval_mode=pack.retrieval_mode,
+            retrieval_fallback_reason=pack.retrieval_fallback_reason,
+            answer_mode="verified",
+            evidence_pack=_read_evidence_pack(pack),
+            verification=_read_verification(verified.verification),
+        )
+
     candidate_hits, retrieval_mode = hybrid_search_chunks(
         db,
         query_embedding,
@@ -242,4 +385,5 @@ def search(
         diagnostics=diagnostics,
         retrieval_mode=retrieval_mode.mode,
         retrieval_fallback_reason=retrieval_mode.fallback_reason,
+        answer_mode="standard",
     )
