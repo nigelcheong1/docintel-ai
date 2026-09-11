@@ -134,6 +134,66 @@ describe("SearchResults", () => {
     expect(answerEvidence.compareDocumentPosition(relatedEvidence)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it("shows verified diagnostics", () => {
+    render(
+      <SearchResults
+        hits={[]}
+        answer={null}
+        quality={{
+          status: "insufficient_evidence",
+          confidence: "weak",
+          reason: "Verified Answers could not find enough cited evidence.",
+          evidence_count: 0,
+          best_score: 0,
+          best_source_score: 0,
+          best_keyword_overlap: 0,
+          best_section_intent: 0,
+          suggested_questions: [],
+        }}
+        evidencePack={{
+          question: "What results are reported?",
+          rewritten_query: "results",
+          subqueries: ["results"],
+          items: [
+            {
+              chunk_id: "chunk-1",
+              document_id: "doc-1",
+              document_filename: "paper.pdf",
+              page_number: 3,
+              chunk_index: 0,
+              snippet: "RESULTS The study reports verified citations.",
+              score: 0.9,
+              source_score: 0.88,
+              ranking_signals: { keyword_overlap: 0.9 },
+              section_heading: "RESULTS",
+              subquery: "results",
+              support_score: 0.9,
+            },
+          ],
+          rejected: [],
+          retrieval_mode: "hybrid",
+          retrieval_fallback_reason: null,
+          selected_chunk_count: 1,
+          selected_page_count: 1,
+          average_support_score: 0.9,
+          is_multi_hop: false,
+        }}
+        verification={{
+          status: "verified",
+          sentences: [],
+          unsupported_sentence_count: 0,
+          removed_sentence_count: 0,
+          hallucination_risk: 0,
+          reason: "Every answer sentence is supported by selected evidence.",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Verified Answers")).toBeInTheDocument();
+    expect(screen.getByText("Evidence pack")).toBeInTheDocument();
+    expect(screen.getByText("Hallucination risk")).toBeInTheDocument();
+  });
+
   it("shows retrieval fallback details when vector search is unavailable", () => {
     render(
       <SearchResults

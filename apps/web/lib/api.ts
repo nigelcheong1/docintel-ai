@@ -1,4 +1,5 @@
 import type {
+  AnswerMode,
   DocumentChunk,
   DocumentDetail,
   DocumentPage,
@@ -212,11 +213,16 @@ export async function uploadDocument(file: File): Promise<DocumentSummary> {
   return parseJsonResponse<DocumentSummary>(response);
 }
 
-export async function searchDocuments(query: string, topK = 5, documentId?: string): Promise<SearchResponse> {
+export async function searchDocuments(
+  query: string,
+  topK = 5,
+  documentId?: string,
+  answerMode: AnswerMode = "standard",
+): Promise<SearchResponse> {
   const response = await fetch(`${API_BASE_URL}/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, top_k: topK, document_id: documentId }),
+    body: JSON.stringify({ query, top_k: topK, document_id: documentId, answer_mode: answerMode }),
   });
   return parseJsonResponse<SearchResponse>(response);
 }

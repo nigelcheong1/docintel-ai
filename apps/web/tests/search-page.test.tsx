@@ -109,7 +109,25 @@ describe("SearchPage", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search query" }), { target: { value: "technical skills" } });
     fireEvent.submit(screen.getByRole("textbox", { name: "Search query" }).closest("form")!);
 
-    await waitFor(() => expect(apiMocks.searchDocuments).toHaveBeenCalledWith("technical skills", 5, "doc-1"));
+    await waitFor(() => expect(apiMocks.searchDocuments).toHaveBeenCalledWith("technical skills", 5, "doc-1", "standard"));
+  });
+
+  it("toggles Verified Answers before searching", async () => {
+    apiMocks.searchDocuments.mockResolvedValue(successfulResponse);
+
+    render(<SearchPage />);
+
+    const verifiedSwitch = await screen.findByRole("switch", { name: "Verified Answers" });
+    fireEvent.click(verifiedSwitch);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search query" }), {
+      target: { value: "What results are reported?" },
+    });
+    fireEvent.submit(screen.getByRole("textbox", { name: "Search query" }).closest("form")!);
+
+    await waitFor(() =>
+      expect(apiMocks.searchDocuments).toHaveBeenCalledWith("What results are reported?", 5, undefined, "verified"),
+    );
+    expect(verifiedSwitch).toHaveAttribute("aria-checked", "true");
   });
 
   it("uses an interactive search action", async () => {
@@ -146,7 +164,7 @@ describe("SearchPage", () => {
 
     expect(screen.getByRole("textbox", { name: "Search query" })).toHaveValue("What is this document about?");
     await waitFor(() =>
-      expect(apiMocks.searchDocuments).toHaveBeenCalledWith("What is this document about?", 5, "doc-1"),
+      expect(apiMocks.searchDocuments).toHaveBeenCalledWith("What is this document about?", 5, "doc-1", "standard"),
     );
   });
 
@@ -354,7 +372,12 @@ describe("SearchPage", () => {
 
     expect(input).toHaveValue("What technical skills are mentioned?");
     await waitFor(() =>
-      expect(apiMocks.searchDocuments).toHaveBeenLastCalledWith("What technical skills are mentioned?", 5, undefined),
+      expect(apiMocks.searchDocuments).toHaveBeenLastCalledWith(
+        "What technical skills are mentioned?",
+        5,
+        undefined,
+        "standard",
+      ),
     );
   });
 });

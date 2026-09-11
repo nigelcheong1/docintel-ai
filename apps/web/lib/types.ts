@@ -221,6 +221,64 @@ export type SearchDiagnostics = {
   top_rejected_reasons: string[];
 };
 
+export type AnswerMode = "standard" | "verified";
+
+export type VerificationStatus = "verified" | "partially_supported" | "unsupported";
+
+export type EvidencePackItem = {
+  chunk_id: string;
+  document_id: string;
+  document_filename: string;
+  page_number: number;
+  chunk_index: number;
+  snippet: string;
+  score: number;
+  source_score: number;
+  ranking_signals: Record<string, number>;
+  section_heading?: string | null;
+  subquery: string;
+  support_score: number;
+};
+
+export type RejectedEvidence = {
+  chunk_id: string;
+  page_number: number;
+  subquery: string;
+  reason: string;
+};
+
+export type EvidencePack = {
+  question: string;
+  rewritten_query: string;
+  subqueries: string[];
+  items: EvidencePackItem[];
+  rejected: RejectedEvidence[];
+  retrieval_mode: "hybrid" | "vector" | "lexical";
+  retrieval_fallback_reason?: string | null;
+  selected_chunk_count: number;
+  selected_page_count: number;
+  average_support_score: number;
+  is_multi_hop: boolean;
+};
+
+export type SentenceSupport = {
+  sentence: string;
+  status: VerificationStatus;
+  supporting_chunk_ids: string[];
+  support_score: number;
+  missing_terms: string[];
+  missing_numbers: string[];
+};
+
+export type EvidenceVerification = {
+  status: VerificationStatus;
+  sentences: SentenceSupport[];
+  unsupported_sentence_count: number;
+  removed_sentence_count: number;
+  hallucination_risk: number;
+  reason: string;
+};
+
 export type SearchResponse = {
   query: string;
   hits: SearchHit[];
@@ -231,6 +289,9 @@ export type SearchResponse = {
   retrieval_mode?: "hybrid" | "vector" | "lexical";
   retrieval_fallback_reason?: string | null;
   diagnostics?: SearchDiagnostics | null;
+  answer_mode?: AnswerMode;
+  evidence_pack?: EvidencePack | null;
+  verification?: EvidenceVerification | null;
 };
 
 export type EvalRunSummary = {
