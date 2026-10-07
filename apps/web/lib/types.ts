@@ -317,6 +317,9 @@ export type GoldenEvalCaseResult = {
   quality_reason: string;
   passed: boolean;
   failure_reasons: string[];
+  verification_status?: VerificationStatus | null;
+  verification_reason?: string | null;
+  metrics?: Record<string, number>;
 };
 
 export type GoldenEvalResponse = {
@@ -330,6 +333,7 @@ export type GoldenEvalResponse = {
     abstention_cases: number;
     document_types: Record<string, number>;
     quality_dimensions: Record<string, number>;
+    verified_metrics?: Record<string, number>;
   };
   cases: GoldenEvalCaseResult[];
 };

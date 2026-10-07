@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.documents.intelligence import build_document_profile
@@ -11,8 +11,11 @@ from app.documents.parse_quality import build_parse_quality_from_pages, normaliz
 from app.documents.parser import ParsedPage
 from app.evaluation.metrics import abstention_safety, citation_accuracy, hallucination_risk_score
 from app.retrieval.document_answers import build_document_aware_answer
-from app.retrieval.evidence_pack import EvidenceItem, EvidencePack
+from app.retrieval.evidence_pack import build_evidence_pack
+from app.retrieval.multihop import build_query_plan
 from app.retrieval.query_router import route_query
+from app.retrieval.reranker import keyword_overlap_score, rerank_hits
+from app.retrieval.search import SearchHit
 from app.retrieval.verified_answers import build_verified_answer
 
 OCR_UNAVAILABLE_GUIDANCE = (
@@ -75,6 +78,9 @@ class GoldenEvalCaseResult(BaseModel):
     quality_dimension: str
     passed: bool
     failure_reasons: list[str]
+    verification_status: str | None = None
+    verification_reason: str | None = None
+    metrics: dict[str, float] = Field(default_factory=dict)
 
 
 class GoldenEvalSummary(BaseModel):
@@ -86,6 +92,7 @@ class GoldenEvalSummary(BaseModel):
     abstention_cases: int
     document_types: dict[str, int]
     quality_dimensions: dict[str, int]
+    verified_metrics: dict[str, float] = Field(default_factory=dict)
 
 
 class GoldenEvalResponse(BaseModel):
@@ -529,47 +536,40 @@ def _chunk_with_marker(document: Document, marker: str) -> Chunk:
     raise ValueError(f"Golden fixture marker not found: {marker}")
 
 
-def _verified_evidence_item(document: Document, chunk: Chunk, subquery: str) -> EvidenceItem:
+def _verified_fixture_hit(document: Document, chunk: Chunk, subquery: str) -> SearchHit:
     section_heading = chunk.layout.get("section_heading") if isinstance(chunk.layout, dict) else None
-    return EvidenceItem(
+    lexical_score = keyword_overlap_score(subquery, chunk.text)
+    return SearchHit(
         chunk_id=chunk.id,
         document_id=document.id,
         document_filename=document.filename,
         page_number=chunk.page.page_number,
         chunk_index=chunk.chunk_index,
         text=chunk.text,
-        snippet=chunk.text,
-        score=0.95,
-        source_score=0.95,
-        ranking_signals={"golden_evidence": 1.0},
+        score=lexical_score,
+        source_score=lexical_score,
+        ranking_signals={"fixture_lexical": lexical_score},
         section_heading=section_heading if isinstance(section_heading, str) else None,
-        subquery=subquery,
-        support_score=0.95,
     )
 
 
 def _evaluate_verified_case(case: VerifiedGoldenCaseSpec, document: Document) -> GoldenEvalCaseResult:
     profile = build_document_profile(document)
     route = route_query(case.question, profile.document_type)
-    evidence_chunks = [_chunk_with_marker(document, marker) for marker in case.evidence_markers]
-    evidence_items = [
-        _verified_evidence_item(document, chunk, case.question)
-        for chunk in evidence_chunks
-    ]
     expected_chunk_ids = [
         _chunk_with_marker(document, marker).id
         for marker in case.expected_citation_markers
     ]
-    pack = EvidencePack(
-        question=case.question,
-        rewritten_query=case.question,
-        subqueries=[case.question],
-        items=evidence_items,
-        retrieval_mode="hybrid",
-        selected_chunk_count=len(evidence_items),
-        selected_page_count=len({item.page_number for item in evidence_items}),
-        average_support_score=0.95 if evidence_items else 0.0,
-        is_multi_hop=case.is_multi_hop,
+    plan = build_query_plan(case.question)
+    hits_by_subquery = {
+        subquery: rerank_hits(subquery, [
+            _verified_fixture_hit(document, chunk, subquery) for chunk in document.chunks
+        ])[:5]
+        for subquery in plan.subqueries
+    }
+    pack = build_evidence_pack(
+        case.question, hits_by_subquery, "lexical",
+        rewritten_query=plan.rewritten_query, is_multi_hop=plan.is_multi_hop,
     )
     result = build_verified_answer(case.question, pack)
     answer = result.answer
@@ -583,6 +583,8 @@ def _evaluate_verified_case(case: VerifiedGoldenCaseSpec, document: Document) ->
     if route.intent != case.expected_intent:
         failure_reasons.append(f"Expected intent {case.expected_intent}, got {route.intent}.")
     if citation_accuracy(expected_chunk_ids, cited_chunk_ids) < 1.0:
+        failure_reasons.append("Verified answer contains missing or unrelated citations.")
+    if not set(expected_chunk_ids).issubset(cited_chunk_ids):
         failure_reasons.append("Expected citations were not all present in the verified answer.")
     if abstention_safety(case.expected_status, actual_status) < 1.0:
         failure_reasons.append("Expected a safe abstention for this verified case.")
@@ -597,6 +599,18 @@ def _evaluate_verified_case(case: VerifiedGoldenCaseSpec, document: Document) ->
     for term in case.expected_terms:
         if term.lower() not in normalized_answer:
             failure_reasons.append(f"Missing expected term: {term}.")
+
+    expected = set(expected_chunk_ids)
+    retrieved = {hit.chunk_id for hits in hits_by_subquery.values() for hit in hits}
+    selected = {item.chunk_id for item in pack.items}
+    metrics = {
+        "citation_accuracy": citation_accuracy(expected_chunk_ids, cited_chunk_ids),
+        "retrieval_recall_at_5": len(expected.intersection(retrieved)) / len(expected) if expected else 1.0,
+        "evidence_pack_coverage": len(expected.intersection(selected)) / len(expected) if expected else 1.0,
+        "verifier_pass_rate": float(result.verification.status == "verified"),
+        "abstention_safety": abstention_safety(case.expected_status, actual_status),
+        "hallucination_risk": result.verification.hallucination_risk if answer is not None else 0.0,
+    }
 
     return GoldenEvalCaseResult(
         case_id=case.case_id,
@@ -614,6 +628,9 @@ def _evaluate_verified_case(case: VerifiedGoldenCaseSpec, document: Document) ->
         quality_dimension=case.quality_dimension,
         passed=not failure_reasons,
         failure_reasons=failure_reasons,
+        metrics=metrics,
+        verification_status=result.verification.status,
+        verification_reason=result.verification.reason,
     )
 
 
@@ -733,6 +750,25 @@ def run_golden_evaluation() -> GoldenEvalResponse:
     passed_cases = sum(1 for case in cases if case.passed)
     document_types = Counter(case.document_type for case in cases)
     quality_dimensions = Counter(case.quality_dimension for case in cases)
+    verified_cases = [case for case in cases if case.metrics]
+    answerable_verified = [case for case in verified_cases if case.expected_status == "answerable"]
+    abstention_verified = [case for case in verified_cases if case.expected_status == "insufficient_evidence"]
+
+    def mean_metric(metric: str, subset: list[GoldenEvalCaseResult]) -> float:
+        return round(sum(case.metrics[metric] for case in subset) / len(subset), 4) if subset else 0.0
+
+    verified_metrics = {
+        "answer_quality_pass_rate": sum(case.passed for case in verified_cases) / len(verified_cases) if verified_cases else 0.0,
+        "citation_accuracy": mean_metric("citation_accuracy", answerable_verified),
+        "retrieval_recall_at_5": mean_metric("retrieval_recall_at_5", answerable_verified),
+        "evidence_pack_coverage": mean_metric("evidence_pack_coverage", answerable_verified),
+        "verifier_pass_rate": mean_metric("verifier_pass_rate", answerable_verified),
+        "abstention_safety": mean_metric("abstention_safety", abstention_verified),
+        "hallucination_risk": mean_metric("hallucination_risk", verified_cases),
+    }
+    for dimension in ("table_qa", "multi_hop_qa"):
+        subset = [case for case in verified_cases if case.quality_dimension == dimension]
+        verified_metrics[f"{dimension}_pass_rate"] = sum(case.passed for case in subset) / len(subset) if subset else 0.0
 
     return GoldenEvalResponse(
         name="universal-document-qa-golden",
@@ -745,6 +781,7 @@ def run_golden_evaluation() -> GoldenEvalResponse:
             abstention_cases=sum(1 for case in cases if case.expected_status == "insufficient_evidence"),
             document_types=dict(sorted(document_types.items())),
             quality_dimensions=dict(sorted(quality_dimensions.items())),
+            verified_metrics=verified_metrics,
         ),
         cases=cases,
     )

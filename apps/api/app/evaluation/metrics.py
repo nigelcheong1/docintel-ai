@@ -18,7 +18,8 @@ def citation_accuracy(expected_chunk_ids: list[str], cited_chunk_ids: list[str])
     expected = set(expected_chunk_ids)
     if not expected:
         return 1.0 if not cited_chunk_ids else 0.0
-    return len(expected.intersection(cited_chunk_ids)) / len(expected)
+    cited = set(cited_chunk_ids)
+    return len(expected.intersection(cited)) / len(cited) if cited else 0.0
 
 
 def abstention_safety(expected_status: str, actual_status: str) -> float:

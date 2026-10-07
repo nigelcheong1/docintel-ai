@@ -4,6 +4,21 @@ import { describe, expect, it } from "vitest";
 import { EvaluationSummary } from "@/components/evaluation-summary";
 
 describe("EvaluationSummary", () => {
+  it("renders measured verified metrics from the fixture benchmark", () => {
+    render(<EvaluationSummary runs={[]} golden={{
+      name: "universal-document-qa-golden",
+      summary: {
+        total_cases: 1, passed_cases: 1, failed_cases: 0, pass_rate: 1,
+        answerable_cases: 1, abstention_cases: 0, document_types: {}, quality_dimensions: {},
+        verified_metrics: { retrieval_recall_at_5: 0.75, hallucination_risk: 0.1, verifier_pass_rate: 0.9 },
+      }, cases: [],
+    }} />);
+
+    expect(screen.getByRole("heading", { name: "Verified Answers benchmark" })).toBeInTheDocument();
+    expect(screen.getByText("Retrieval recall at 5")).toBeInTheDocument();
+    expect(screen.getByText("75%")).toBeInTheDocument();
+    expect(screen.getByText("10%")).toBeInTheDocument();
+  });
   it("renders an empty state when no runs are recorded", () => {
     render(<EvaluationSummary runs={[]} />);
 

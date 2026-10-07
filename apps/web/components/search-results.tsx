@@ -153,7 +153,9 @@ function VerifiedDiagnosticsPanel({
           </h2>
         </div>
         {verification ? (
-          <Badge tone={verificationTone(verification.status)}>{formatMetadataValue(verification.status)}</Badge>
+          <Badge tone={verificationTone(verification.status)}>
+            {verification.status === "verified" ? "Verified" : verification.status === "partially_supported" ? "Needs review" : "Not enough evidence"}
+          </Badge>
         ) : null}
       </div>
       {evidencePack ? (
@@ -173,7 +175,7 @@ function VerifiedDiagnosticsPanel({
             <dd className="mt-1 font-medium text-slate-700">{evidencePack.subqueries.length}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Support</dt>
+            <dt className="text-slate-500">Retrieval score</dt>
             <dd className="mt-1 font-medium text-slate-700">
               {formatPercentage(evidencePack.average_support_score)}
             </dd>
@@ -188,6 +190,45 @@ function VerifiedDiagnosticsPanel({
       ) : null}
       {evidencePack?.retrieval_fallback_reason ? (
         <p className="mt-2 text-xs leading-5 text-amber-700">{evidencePack.retrieval_fallback_reason}</p>
+      ) : null}
+      {evidencePack ? (
+        <details className="mt-4 border-t border-line pt-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-slate-700 focus-visible:outline-teal-600">Evidence selection details</summary>
+          <p className="mt-3 break-words text-slate-600">Rewritten query: {evidencePack.rewritten_query}</p>
+          <ul className="mt-2 space-y-1 text-slate-600">
+            {evidencePack.subqueries.map((subquery, index) => <li key={`${index}-${subquery}`} className="break-words">{subquery}</li>)}
+          </ul>
+          {evidencePack.rejected.length > 0 ? (
+            <ul className="mt-3 space-y-2 text-slate-600" aria-label="Rejected evidence">
+              {evidencePack.rejected.map((rejected, index) => (
+                <li key={`${index}-${rejected.chunk_id}`} className="break-words">
+                  Page {rejected.page_number}: {rejected.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </details>
+      ) : null}
+      {verification && verification.sentences.length > 0 ? (
+        <details className="mt-3 border-t border-line pt-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-slate-700 focus-visible:outline-teal-600">Sentence support</summary>
+          <ol className="mt-3 space-y-3 text-slate-600">
+            {verification.sentences.map((sentence, index) => (
+              <li key={index} className="break-words">
+                <p>{sentence.sentence}</p>
+                <p className="mt-1 font-medium">{sentence.status === "verified" ? "Supported" : "Removed"}</p>
+                {sentence.supporting_chunk_ids.map((chunkId) => {
+                  const item = evidencePack?.items.find((item) => item.chunk_id === chunkId);
+                  return item ? (
+                    <a key={chunkId} className="mr-3 inline-block text-teal-700 underline underline-offset-2" href={`/documents/${item.document_id}?page=${item.page_number}&chunk=${chunkId}`}>
+                      {item.document_filename}, page {item.page_number}
+                    </a>
+                  ) : null;
+                })}
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
     </Panel>
   );

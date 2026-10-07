@@ -26,6 +26,30 @@ def test_golden_eval_reports_verified_dimensions():
     assert result.summary.quality_dimensions["hallucination_risk"] >= 1
 
 
+def test_golden_eval_reports_measured_verified_scorecard():
+    result = run_golden_evaluation()
+
+    metrics = result.summary.verified_metrics
+    assert {"citation_accuracy", "retrieval_recall_at_5", "evidence_pack_coverage", "verifier_pass_rate",
+            "abstention_safety", "hallucination_risk", "table_qa_pass_rate", "multi_hop_qa_pass_rate"} <= metrics.keys()
+    assert all(0.0 <= value <= 1.0 for value in metrics.values())
+    assert metrics["abstention_safety"] == 1.0
+    table_case = next(case for case in result.cases if case.quality_dimension == "table_qa")
+    assert table_case.verification_status == "verified"
+    assert table_case.metrics["retrieval_recall_at_5"] == 1.0
+
+
+def test_fixture_metrics_detect_dropped_retrieval_evidence(monkeypatch):
+    import app.evaluation.golden as golden
+
+    monkeypatch.setattr(golden, "rerank_hits", lambda _query, _hits: [])
+
+    result = run_golden_evaluation()
+
+    assert result.summary.verified_metrics["retrieval_recall_at_5"] == 0.0
+    assert result.summary.verified_metrics["verifier_pass_rate"] == 0.0
+
+
 def test_golden_eval_endpoint_reports_universal_document_qa_coverage():
     client = TestClient(create_app())
 

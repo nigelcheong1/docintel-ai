@@ -170,7 +170,7 @@ describe("SearchResults", () => {
               support_score: 0.9,
             },
           ],
-          rejected: [],
+          rejected: [{ chunk_id: "rejected-1", page_number: 4, subquery: "results", reason: "Duplicate evidence text already selected." }],
           retrieval_mode: "hybrid",
           retrieval_fallback_reason: null,
           selected_chunk_count: 1,
@@ -192,6 +192,9 @@ describe("SearchResults", () => {
     expect(screen.getByText("Verified Answers")).toBeInTheDocument();
     expect(screen.getByText("Evidence pack")).toBeInTheDocument();
     expect(screen.getByText("Hallucination risk")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Evidence selection details"));
+    expect(screen.getByText("results")).toBeInTheDocument();
+    expect(screen.getByText(/Duplicate evidence text already selected/)).toBeInTheDocument();
   });
 
   it("shows retrieval fallback details when vector search is unavailable", () => {

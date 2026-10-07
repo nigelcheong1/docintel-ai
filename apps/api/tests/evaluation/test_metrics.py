@@ -34,6 +34,10 @@ def test_abstention_safety_rewards_expected_abstention():
 def test_hallucination_risk_score_clamps_range():
     assert hallucination_risk_score(unsupported_sentences=1, total_sentences=4) == 0.25
     assert hallucination_risk_score(unsupported_sentences=0, total_sentences=0) == 1.0
+
+
+def test_citation_accuracy_penalizes_extra_unrelated_citations():
+    assert citation_accuracy(["a"], ["a", "unrelated"]) == 0.5
     assert hallucination_risk_score(unsupported_sentences=9, total_sentences=4) == 1.0
 
 
