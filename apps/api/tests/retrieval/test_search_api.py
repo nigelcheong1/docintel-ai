@@ -618,3 +618,30 @@ def test_verified_search_returns_evidence_pack_verification_and_all_evidence_hit
     assert body["verification"]["status"] == "verified"
     assert {hit["chunk_id"] for hit in body["hits"]} == {"method-chunk", "result-chunk"}
     assert {hit["result_role"] for hit in body["hits"]} == {"answer_evidence"}
+
+
+def test_verified_search_embeds_each_subquery_separately(monkeypatch):
+    embedded = []
+    retrieved = []
+
+    class RecordingEmbedder:
+        def embed_texts(self, texts):
+            embedded.extend(texts)
+            return [[float(i + 1)] for i in range(len(texts))]
+
+    def retrieve(_db, embedding, query, *_args, **_kwargs):
+        retrieved.append((query, embedding))
+        return [], RetrievalMode(mode="vector")
+
+    monkeypatch.setattr(retrieval_router, "hybrid_search_chunks", retrieve)
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: object()
+    app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: RecordingEmbedder()
+
+    response = TestClient(app).post("/search", json={
+        "query": "What methods are used and what results are reported?", "answer_mode": "verified",
+    })
+
+    assert response.status_code == 200
+    assert embedded == ["What methods are used?", "what results are reported?"]
+    assert retrieved == [(embedded[0], [1.0]), (embedded[1], [2.0])]

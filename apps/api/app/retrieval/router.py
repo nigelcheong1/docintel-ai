@@ -274,14 +274,18 @@ def search(
 
     query_embedding: list[float] | None = None
     embedding_failure_reason: str | None = None
+    plan = build_query_plan(request.query)
+    embedding_queries = plan.subqueries if request.answer_mode == "verified" else [request.query]
+    query_embeddings: dict[str, list[float]] = {}
     try:
         embedder = embedder_factory()
-        query_embedding = embedder.embed_texts([request.query])[0]
+        vectors = embedder.embed_texts(embedding_queries)
+        query_embeddings = dict(zip(embedding_queries, vectors, strict=True))
+        query_embedding = query_embeddings.get(request.query)
     except Exception as exc:
         embedding_failure_reason = _embedding_fallback_reason(exc)
 
     candidate_limit = min(50, max(request.top_k * 4, request.top_k + 10))
-    plan = build_query_plan(request.query)
     if request.answer_mode == "verified":
         hits_by_subquery: dict[str, list[SearchHit]] = {}
         retrieval_modes: list[str] = []
@@ -289,7 +293,7 @@ def search(
         for subquery in plan.subqueries:
             candidates, mode = hybrid_search_chunks(
                 db,
-                query_embedding,
+                query_embeddings.get(subquery),
                 subquery,
                 candidate_limit,
                 request.document_id,

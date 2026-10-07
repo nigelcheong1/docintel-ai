@@ -26,3 +26,13 @@ def test_build_query_plan_marks_multi_hop_only_for_distinct_subqueries():
     assert compound.rewritten_query == "What methods are used and what results are reported"
     assert compound.subqueries == ["What methods are used?", "what results are reported?"]
     assert compound.is_multi_hop is True
+
+
+def test_split_subqueries_preserves_a_list_of_table_columns():
+    question = "Which reference includes planning, perception, and embodied execution?"
+
+    assert split_subqueries(question) == [rewrite_query(question)]
+
+
+def test_split_subqueries_handles_shared_interrogative():
+    assert split_subqueries("What are the methods and results?") == ["What are the methods?", "What are the results?"]

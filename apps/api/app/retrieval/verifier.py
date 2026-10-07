@@ -7,12 +7,14 @@ from typing import Literal
 from app.retrieval.evidence_pack import EvidenceItem, EvidencePack
 
 VerificationStatus = Literal["verified", "partially_supported", "unsupported"]
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_BOUNDARY = re.compile(r"(?<!\bal\.)(?<=[.!?])\s+", re.IGNORECASE)
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
-_NUMBER_PATTERN = re.compile(r"\b\d[\d,]*(?:\.\d+)?%?\b")
+_NUMBER_PATTERN = re.compile(r"(?<!\w)[+-]?\d[\d,]*(?:\.\d+)?%?(?!\w)")
+_ENTITY_PATTERN = re.compile(r"\b[A-Z][A-Za-z0-9-]+\b")
+_NEGATIONS = {"not", "no", "never", "without", "neither", "cannot"}
 _STOPWORDS = {
     "a", "an", "and", "are", "as", "from", "in", "is", "it", "of", "on", "or",
-    "the", "this", "to", "used", "were", "was", "with",
+    "the", "this", "to", "used", "were", "was", "with", "study",
 }
 
 
@@ -51,34 +53,29 @@ def _numbers(text: str) -> set[str]:
 def _support_sentence(sentence: str, items: list[EvidenceItem]) -> SentenceSupport:
     sentence_words = _words(sentence)
     sentence_numbers = _numbers(sentence)
-    best_item: EvidenceItem | None = None
-    best_overlap = 0.0
-    missing_terms: list[str] = []
-    missing_numbers: list[str] = []
+    entity_words = {
+        word for entity in _ENTITY_PATTERN.findall(sentence) for word in _words(entity)
+    }
+    candidates: list[SentenceSupport] = []
     for item in items:
-        evidence_text = item.text.lower()
-        evidence_words = _words(evidence_text)
-        overlap = len(sentence_words.intersection(evidence_words)) / len(sentence_words) if sentence_words else 0.0
-        if overlap > best_overlap:
-            best_overlap = overlap
-            best_item = item
-
-    if best_item is None:
+        for evidence_sentence in _sentences(item.text):
+            evidence_words = _words(evidence_sentence)
+            overlap = len(sentence_words.intersection(evidence_words)) / len(sentence_words) if sentence_words else 0.0
+            missing_numbers = sorted(sentence_numbers - _numbers(evidence_sentence))
+            missing_terms = sorted(sentence_words - evidence_words)
+            same_negation = sentence_words.intersection(_NEGATIONS) == evidence_words.intersection(_NEGATIONS)
+            supported = overlap >= 0.8 and not missing_numbers and same_negation and entity_words.issubset(evidence_words)
+            candidates.append(SentenceSupport(
+                sentence=sentence,
+                status="verified" if supported else "unsupported",
+                supporting_chunk_ids=[item.chunk_id] if supported else [],
+                support_score=round(overlap, 6),
+                missing_terms=[] if supported else missing_terms[:8],
+                missing_numbers=missing_numbers,
+            ))
+    if not candidates:
         return SentenceSupport(sentence, "unsupported", [], 0.0, sorted(sentence_words), sorted(sentence_numbers))
-
-    best_text = best_item.text.lower()
-    missing_numbers = sorted(number for number in sentence_numbers if number not in _numbers(best_text))
-    missing_terms = sorted(word for word in sentence_words if word not in _words(best_text))[:8]
-    is_supported = best_overlap >= 0.45 and not missing_numbers
-    status: VerificationStatus = "verified" if is_supported else "unsupported"
-    return SentenceSupport(
-        sentence=sentence,
-        status=status,
-        supporting_chunk_ids=[best_item.chunk_id] if is_supported else [],
-        support_score=round(best_overlap, 6),
-        missing_terms=[] if is_supported else missing_terms,
-        missing_numbers=missing_numbers,
-    )
+    return max(candidates, key=lambda candidate: (candidate.status == "verified", candidate.support_score))
 
 
 def verify_answer(answer: str, evidence_pack: EvidencePack) -> VerificationResult:

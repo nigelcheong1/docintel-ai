@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from app.retrieval.evidence_pack import build_evidence_pack
 from app.retrieval.search import SearchHit
 
@@ -53,3 +55,31 @@ def test_evidence_pack_keeps_diverse_pages_before_lower_rank_same_page():
     assert [item.chunk_id for item in pack.items] == ["chunk-1", "chunk-3"]
     assert pack.selected_page_count == 2
     assert any(rejected.chunk_id == "chunk-2" for rejected in pack.rejected)
+
+
+def test_pack_counts_pages_per_document():
+    first = make_hit("a", 1, "First document results.")
+    second = replace(make_hit("b", 1, "Second document results."), document_id="doc-2")
+
+    pack = build_evidence_pack("results", {"results": [first, second]}, "hybrid")
+
+    assert pack.selected_page_count == 2
+
+
+def test_pack_reserves_context_for_each_subquery():
+    first = [make_hit(f"a-{i}", i + 1, f"Methods passage {i}.", 0.99) for i in range(3)]
+    second = [make_hit("b", 4, "Results are reported here.", 0.8)]
+
+    pack = build_evidence_pack("methods and results", {"methods": first, "results": second}, "hybrid", max_items=2)
+
+    assert {item.subquery for item in pack.items} == {"methods", "results"}
+
+
+def test_pack_deduplicates_repeated_text_across_pages():
+    first = make_hit("a", 1, "The method uses a hybrid retriever.")
+    second = make_hit("b", 2, "The method uses a hybrid retriever.\n")
+
+    pack = build_evidence_pack("method", {"method": [first, second]}, "hybrid")
+
+    assert len(pack.items) == 1
+    assert any(rejected.chunk_id == "b" for rejected in pack.rejected)

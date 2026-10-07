@@ -85,27 +85,52 @@ def build_evidence_pack(
     selected: list[EvidenceItem] = []
     rejected: list[RejectedEvidence] = []
     seen_chunks: set[str] = set()
-    used_pages: set[int] = set()
+    used_pages: set[tuple[str, int]] = set()
+    seen_text: set[tuple[str, str]] = set()
     ranked_candidates: list[tuple[str, SearchHit]] = []
     for subquery, hits in hits_by_subquery.items():
         ranked_candidates.extend((subquery, hit) for hit in hits)
 
     ranked_candidates.sort(key=lambda pair: (pair[1].score, pair[1].source_score), reverse=True)
 
+    def select(subquery: str, hit: SearchHit) -> None:
+        selected.append(_item_from_hit(hit, subquery))
+        seen_chunks.add(hit.chunk_id)
+        seen_text.add((hit.document_id, " ".join(hit.text.lower().split())))
+        used_pages.add((hit.document_id, hit.page_number))
+
+    # Reserve a slot per fact before allowing a higher-scoring fact to fill the pack.
+    reserved: set[tuple[str, str]] = set()
+    if len(hits_by_subquery) > 1:
+        for subquery, hits in hits_by_subquery.items():
+            for hit in sorted(hits, key=lambda hit: (hit.score, hit.source_score), reverse=True):
+                if len(selected) >= max_items:
+                    break
+                text_key = (hit.document_id, " ".join(hit.text.lower().split()))
+                if hit.chunk_id in seen_chunks or text_key in seen_text:
+                    continue
+                select(subquery, hit)
+                reserved.add((subquery, hit.chunk_id))
+                break
+
     deferred_same_page: list[tuple[str, SearchHit]] = []
     for subquery, hit in ranked_candidates:
+        if (subquery, hit.chunk_id) in reserved:
+            reserved.remove((subquery, hit.chunk_id))
+            continue
         if hit.chunk_id in seen_chunks:
             rejected.append(RejectedEvidence(hit.chunk_id, hit.page_number, subquery, "Duplicate chunk already selected."))
+            continue
+        if (hit.document_id, " ".join(hit.text.lower().split())) in seen_text:
+            rejected.append(RejectedEvidence(hit.chunk_id, hit.page_number, subquery, "Duplicate evidence text already selected."))
             continue
         if len(selected) >= max_items:
             rejected.append(RejectedEvidence(hit.chunk_id, hit.page_number, subquery, "Evidence pack context limit reached."))
             continue
-        if hit.page_number in used_pages and len(selected) + len(deferred_same_page) < len(ranked_candidates):
+        if (hit.document_id, hit.page_number) in used_pages:
             deferred_same_page.append((subquery, hit))
             continue
-        selected.append(_item_from_hit(hit, subquery))
-        seen_chunks.add(hit.chunk_id)
-        used_pages.add(hit.page_number)
+        select(subquery, hit)
 
     for subquery, hit in deferred_same_page:
         if len(selected) >= max_items:
@@ -113,12 +138,10 @@ def build_evidence_pack(
                 RejectedEvidence(hit.chunk_id, hit.page_number, subquery, "Lower priority evidence from an already selected page.")
             )
             continue
-        if hit.chunk_id in seen_chunks:
+        if hit.chunk_id in seen_chunks or (hit.document_id, " ".join(hit.text.lower().split())) in seen_text:
             rejected.append(RejectedEvidence(hit.chunk_id, hit.page_number, subquery, "Duplicate chunk already selected."))
             continue
-        selected.append(_item_from_hit(hit, subquery))
-        seen_chunks.add(hit.chunk_id)
-        used_pages.add(hit.page_number)
+        select(subquery, hit)
 
     average = sum(item.support_score for item in selected) / len(selected) if selected else 0.0
     return EvidencePack(
@@ -130,7 +153,7 @@ def build_evidence_pack(
         retrieval_mode=retrieval_mode,
         retrieval_fallback_reason=fallback_reason,
         selected_chunk_count=len(selected),
-        selected_page_count=len({item.page_number for item in selected}),
+        selected_page_count=len(used_pages),
         average_support_score=round(average, 6),
         is_multi_hop=is_multi_hop,
     )

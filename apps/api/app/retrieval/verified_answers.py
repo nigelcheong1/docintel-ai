@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from app.retrieval.answers import AnswerCitation, AnswerQuality, ExtractiveAnswer
+from app.retrieval.answers import AnswerCitation, AnswerQuality, ExtractiveAnswer, build_grounded_answer
 from app.retrieval.evidence_pack import EvidencePack
+from app.retrieval.search import SearchHit
 from app.retrieval.verifier import VerificationResult, filter_supported_answer, verify_answer
 
 
@@ -17,7 +18,7 @@ class VerifiedAnswerResult:
 def _quality(status: str, reason: str, evidence_count: int, support: float) -> AnswerQuality:
     return AnswerQuality(
         status="answerable" if status == "answerable" else "insufficient_evidence",
-        confidence="strong" if support >= 0.75 else "moderate" if support >= 0.45 else "weak",
+        confidence=("strong" if support >= 0.75 else "moderate") if status == "answerable" else "weak",
         reason=reason,
         evidence_count=evidence_count,
         best_score=support,
@@ -28,9 +29,30 @@ def _quality(status: str, reason: str, evidence_count: int, support: float) -> A
     )
 
 
-def _draft_answer(pack: EvidencePack) -> str:
-    snippets = [item.snippet for item in pack.items[:3] if item.snippet]
-    return " ".join(snippets)
+def _draft_answer(query: str, pack: EvidencePack) -> str:
+    hits = [
+        SearchHit(
+            chunk_id=item.chunk_id, document_id=item.document_id,
+            document_filename=item.document_filename, page_number=item.page_number,
+            chunk_index=item.chunk_index, text=item.text, score=item.score,
+            source_score=item.source_score, ranking_signals=item.ranking_signals,
+            section_heading=item.section_heading,
+        )
+        for item in pack.items
+    ]
+    queries = pack.subqueries or [query]
+    drafts: list[str] = []
+    for subquery in queries:
+        answer, quality = build_grounded_answer(subquery, hits)
+        if answer is None or quality.status != "answerable":
+            return ""
+        best_hit = next(hit for hit in hits if hit.chunk_id == answer.citations[0].chunk_id)
+        answer, _ = build_grounded_answer(subquery, [best_hit])
+        if answer is None:
+            return ""
+        if answer.summary not in drafts:
+            drafts.append(answer.summary)
+    return " ".join(drafts)
 
 
 def build_verified_answer(query: str, evidence_pack: EvidencePack) -> VerifiedAnswerResult:
@@ -42,7 +64,17 @@ def build_verified_answer(query: str, evidence_pack: EvidencePack) -> VerifiedAn
             verification=verification,
         )
 
-    draft = _draft_answer(evidence_pack)
+    draft = _draft_answer(query, evidence_pack)
+    if not draft:
+        verification = replace(
+            verify_answer("", evidence_pack),
+            reason="Selected evidence does not answer every requested part of the question.",
+        )
+        return VerifiedAnswerResult(
+            answer=None,
+            quality=_quality("insufficient_evidence", verification.reason, 0, evidence_pack.average_support_score),
+            verification=verification,
+        )
     filtered, verification = filter_supported_answer(draft, evidence_pack)
     if not filtered or verification.status == "unsupported":
         return VerifiedAnswerResult(

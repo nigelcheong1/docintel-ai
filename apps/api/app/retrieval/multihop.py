@@ -50,6 +50,10 @@ def _with_question_mark(text: str) -> str:
 
 def split_subqueries(question: str) -> list[str]:
     cleaned = _clean_question(question)
+    shared = re.fullmatch(r"(What (?:is|are) (?:the )?)(methods|results|findings|risks|limitations|datasets) and (methods|results|findings|risks|limitations|datasets)", cleaned, re.IGNORECASE)
+    if shared:
+        prefix, first, second = shared.groups()
+        return [_with_question_mark(f"{prefix}{first}"), _with_question_mark(f"{prefix}{second}")]
     for separator in _COMPOUND_SEPARATORS:
         if separator in cleaned.lower():
             lowered = cleaned.lower()
@@ -57,6 +61,8 @@ def split_subqueries(question: str) -> list[str]:
             first = cleaned[:split_at].strip(" ,;")
             second = cleaned[split_at + len(separator) :].strip(" ,;")
             if separator == ", and " and second:
+                if not re.match(r"^(?:what|how|which|who|when|why|where)\b", second, re.IGNORECASE):
+                    continue
                 second = second[0].upper() + second[1:]
             elif separator.startswith(" and what "):
                 second = f"what {second}"

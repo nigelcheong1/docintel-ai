@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from app.retrieval.evidence_pack import EvidenceItem, EvidencePack
 from app.retrieval.verifier import filter_supported_answer, verify_answer
 
@@ -54,3 +56,44 @@ def test_filter_supported_answer_removes_unsupported_sentence():
     assert answer == "The study obtained 2366 Scopus results."
     assert result.status == "partially_supported"
     assert result.removed_sentence_count == 1
+
+
+def test_verifier_rejects_changed_named_entity():
+    result = verify_answer("The study obtained 2366 PubMed results.", make_pack())
+
+    assert result.status == "unsupported"
+
+
+def test_verifier_rejects_changed_entity_even_with_high_word_overlap():
+    pack = make_pack()
+    pack = replace(pack, items=[replace(pack.items[0], text="Scopus provided 2366 results after screening the international robotics research publications.")])
+
+    result = verify_answer("PubMed provided 2366 results after screening the international robotics research publications.", pack)
+
+    assert result.status == "unsupported"
+
+
+def test_verifier_rejects_reversed_negation():
+    result = verify_answer("Scopus did not provide 2366 results.", make_pack())
+
+    assert result.status == "unsupported"
+
+
+def test_verifier_preserves_percent_units():
+    pack = make_pack()
+    item = replace(pack.items[0], text="Accuracy was 90%.")
+    pack = replace(pack, items=[item])
+
+    assert verify_answer("Accuracy was 90.", pack).status == "unsupported"
+    assert verify_answer("Accuracy was 90%.", pack).status == "verified"
+
+
+def test_verifier_uses_candidate_with_supported_numbers():
+    pack = make_pack()
+    other = replace(pack.items[0], chunk_id="wrong-count", text="The study obtained 5000 Scopus results.")
+    pack = replace(pack, items=[other, *pack.items])
+
+    result = verify_answer("The study obtained 2366 Scopus results.", pack)
+
+    assert result.status == "verified"
+    assert result.sentences[0].supporting_chunk_ids == ["chunk-1"]
