@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-10-verified-answers-rag-design.md`
 
+**Implementation Status:** Tasks 1-8 are implemented and locally verified. Task 9's local unit, route, UI, lint, compile, build, and whitespace checks passed. The full PostgreSQL-focused command remains pending because Docker/PostgreSQL were unavailable; see `docs/verified-answers.md` for the verification record and review decisions. PR notes are prepared in the local execution workspace; publishing remains pending.
+
 ## Global Constraints
 
 - The user-facing feature name is **Verified Answers**.
@@ -61,7 +63,7 @@
 - Produces: `build_query_plan(question: str) -> QueryPlan`
 - Produces: `QueryPlan(original_query: str, rewritten_query: str, subqueries: list[str], is_multi_hop: bool)`
 
-- [ ] **Step 1: Write failing tests for rewrite and decomposition**
+- [x] **Step 1: Write failing tests for rewrite and decomposition**
 
 ```python
 from app.retrieval.multihop import build_query_plan, rewrite_query, split_subqueries
@@ -92,13 +94,13 @@ def test_build_query_plan_marks_multi_hop_only_for_distinct_subqueries():
     assert compound.is_multi_hop is True
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_multihop.py`
 
 Expected: FAIL because `app.retrieval.multihop` does not exist.
 
-- [ ] **Step 3: Implement query planning**
+- [x] **Step 3: Implement query planning**
 
 Create `apps/api/app/retrieval/multihop.py`:
 
@@ -177,13 +179,13 @@ def build_query_plan(question: str) -> QueryPlan:
     )
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_multihop.py`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/app/retrieval/multihop.py apps/api/tests/retrieval/test_multihop.py
@@ -206,7 +208,7 @@ git commit -m "Add verified query planning"
 - Produces: `EvidencePack`
 - Produces: `build_evidence_pack(question: str, hits_by_subquery: dict[str, list[SearchHit]], retrieval_mode: str, fallback_reason: str | None = None) -> EvidencePack`
 
-- [ ] **Step 1: Write failing tests for dedupe, diversity, and diagnostics**
+- [x] **Step 1: Write failing tests for dedupe, diversity, and diagnostics**
 
 ```python
 from app.retrieval.evidence_pack import build_evidence_pack
@@ -260,13 +262,13 @@ def test_evidence_pack_keeps_diverse_pages_before_lower_rank_same_page():
     assert any(rejected.chunk_id == "chunk-2" for rejected in pack.rejected)
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_evidence_pack.py`
 
 Expected: FAIL because `app.retrieval.evidence_pack` does not exist.
 
-- [ ] **Step 3: Implement evidence pack models and selection**
+- [x] **Step 3: Implement evidence pack models and selection**
 
 Create `apps/api/app/retrieval/evidence_pack.py`:
 
@@ -407,13 +409,13 @@ def build_evidence_pack(
     )
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_evidence_pack.py`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/app/retrieval/evidence_pack.py apps/api/tests/retrieval/test_evidence_pack.py
@@ -435,7 +437,7 @@ git commit -m "Add evidence pack builder"
 - Produces: `verify_answer(answer: str, evidence_pack: EvidencePack) -> VerificationResult`
 - Produces: `filter_supported_answer(answer: str, evidence_pack: EvidencePack) -> tuple[str, VerificationResult]`
 
-- [ ] **Step 1: Write failing tests for supported and unsupported claims**
+- [x] **Step 1: Write failing tests for supported and unsupported claims**
 
 ```python
 from app.retrieval.evidence_pack import EvidenceItem, EvidencePack
@@ -496,13 +498,13 @@ def test_filter_supported_answer_removes_unsupported_sentence():
     assert result.removed_sentence_count == 1
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_verifier.py`
 
 Expected: FAIL because `app.retrieval.verifier` does not exist.
 
-- [ ] **Step 3: Implement verifier**
+- [x] **Step 3: Implement verifier**
 
 Create `apps/api/app/retrieval/verifier.py`:
 
@@ -638,13 +640,13 @@ def filter_supported_answer(answer: str, evidence_pack: EvidencePack) -> tuple[s
     )
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_verifier.py`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/app/retrieval/verifier.py apps/api/tests/retrieval/test_verifier.py
@@ -672,7 +674,7 @@ git commit -m "Add evidence verifier"
 - Produces: `SearchResponse.evidence_pack`
 - Produces: `SearchResponse.verification`
 
-- [ ] **Step 1: Write failing unit tests for verified answer behavior**
+- [x] **Step 1: Write failing unit tests for verified answer behavior**
 
 ```python
 from app.retrieval.evidence_pack import EvidenceItem, EvidencePack
@@ -723,7 +725,7 @@ def test_build_verified_answer_abstains_without_evidence():
     assert result.verification.status == "unsupported"
 ```
 
-- [ ] **Step 2: Write failing router test for opt-in mode**
+- [x] **Step 2: Write failing router test for opt-in mode**
 
 ```python
 def test_search_request_accepts_verified_answer_mode():
@@ -734,13 +736,13 @@ def test_search_request_accepts_verified_answer_mode():
     assert request.answer_mode == "verified"
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_verified_answers.py apps/api/tests/retrieval/test_search_api.py -k verified`
 
 Expected: FAIL because verified schemas and pipeline do not exist.
 
-- [ ] **Step 4: Add read models to search schemas**
+- [x] **Step 4: Add read models to search schemas**
 
 Modify `apps/api/app/retrieval/search.py` to add:
 
@@ -804,7 +806,7 @@ class EvidenceVerificationRead(BaseModel):
 
 Also add `answer_mode: AnswerMode = "standard"` to `SearchRequest`, and add `answer_mode`, `evidence_pack`, and `verification` to `SearchResponse`.
 
-- [ ] **Step 5: Implement verified answer orchestration**
+- [x] **Step 5: Implement verified answer orchestration**
 
 Create `apps/api/app/retrieval/verified_answers.py`:
 
@@ -889,7 +891,7 @@ def build_verified_answer(query: str, evidence_pack: EvidencePack) -> VerifiedAn
     )
 ```
 
-- [ ] **Step 6: Route verified requests through the new pipeline**
+- [x] **Step 6: Route verified requests through the new pipeline**
 
 Modify `apps/api/app/retrieval/router.py`:
 
@@ -1022,13 +1024,13 @@ if request.answer_mode == "verified":
 
 Keep the existing standard branch unchanged except for `answer_mode="standard"`.
 
-- [ ] **Step 7: Run tests to verify pass**
+- [x] **Step 7: Run tests to verify pass**
 
 Run: `python -m pytest -q apps/api/tests/retrieval/test_verified_answers.py apps/api/tests/retrieval/test_search_api.py -k verified`
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/api/app/retrieval apps/api/tests/retrieval/test_verified_answers.py apps/api/tests/retrieval/test_search_api.py
@@ -1057,7 +1059,7 @@ git commit -m "Add verified answer search pipeline"
 - Produces: `detect_tables(pages: list[ExtractedPage]) -> list[DetectedTable]`
 - Produces: `refresh_page_image_metadata(db: Session, document: Document, page_number: int, storage_dir: Path | None) -> PageImage | None`
 
-- [ ] **Step 1: Write failing model and schema sync tests**
+- [x] **Step 1: Write failing model and schema sync tests**
 
 ```python
 from app.db.models import DocumentTable, DocumentTableCell, PageImage
@@ -1094,7 +1096,7 @@ def test_document_table_cell_columns_are_declared():
     assert columns["text"].nullable is False
 ```
 
-- [ ] **Step 2: Write failing table detection test**
+- [x] **Step 2: Write failing table detection test**
 
 ```python
 from app.documents.extraction import ExtractedPage
@@ -1124,13 +1126,13 @@ def test_detect_tables_extracts_rows_and_cells_from_text_table():
     assert any(cell.text == "2026" for cell in tables[0].rows[0].cells)
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run: `python -m pytest -q apps/api/tests/db/test_models.py apps/api/tests/db/test_init_db.py apps/api/tests/documents/test_tables.py`
 
 Expected: FAIL because models and table detector do not exist.
 
-- [ ] **Step 4: Add models and schema sync**
+- [x] **Step 4: Add models and schema sync**
 
 Modify `apps/api/app/db/models.py` with relationships and models:
 
@@ -1183,7 +1185,7 @@ class DocumentTableCell(Base):
 
 Add `page_images`, `document_tables`, and `document_table_cells` relationships to `Document` and `Page`. Add a `cells` relationship to `DocumentTable`. Update `sync_local_schema` to rely on `Base.metadata.create_all` for new tables and keep the existing column-add behavior for older local databases.
 
-- [ ] **Step 5: Implement table detector**
+- [x] **Step 5: Implement table detector**
 
 Create `apps/api/app/documents/tables.py` with dataclasses `DetectedTable`, `DetectedTableRow`, `DetectedTableCell` and a heuristic detector:
 
@@ -1203,7 +1205,7 @@ def detect_tables(pages: list[ExtractedPage]) -> list[DetectedTable]:
 
 Use regex token grouping so row text such as `Chen et al. 2026 √ √ √` becomes cells `Chen et al.`, `2026`, `√`, `√`, `√`.
 
-- [ ] **Step 6: Persist table records and initial page-image metadata**
+- [x] **Step 6: Persist table records and initial page-image metadata**
 
 Modify `_add_index_records_from_pages` in `apps/api/app/documents/service.py` after chunks are flushed:
 
@@ -1264,13 +1266,13 @@ for table_index, detected in enumerate(detected_tables):
 
 Also add one `PageImage` metadata row per page using native page width/height and `PAGE_PREVIEW_DPI`.
 
-- [ ] **Step 7: Run tests to verify pass**
+- [x] **Step 7: Run tests to verify pass**
 
 Run: `python -m pytest -q apps/api/tests/db/test_models.py apps/api/tests/db/test_init_db.py apps/api/tests/documents/test_tables.py`
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/api/app/db apps/api/app/documents apps/api/tests/db apps/api/tests/documents/test_tables.py apps/api/tests/documents/test_service.py
@@ -1293,7 +1295,7 @@ git commit -m "Add table and page image metadata"
 - Produces: `abstention_safety(expected_status: str, actual_status: str) -> float`
 - Produces: golden quality dimensions `verified_answers`, `citation_accuracy`, `table_qa`, `multi_hop_qa`, `hallucination_risk`
 
-- [ ] **Step 1: Write failing metric tests**
+- [x] **Step 1: Write failing metric tests**
 
 ```python
 from app.evaluation.metrics import abstention_safety, citation_accuracy, hallucination_risk_score
@@ -1314,7 +1316,7 @@ def test_hallucination_risk_score_clamps_range():
     assert hallucination_risk_score(unsupported_sentences=0, total_sentences=0) == 1.0
 ```
 
-- [ ] **Step 2: Write failing golden eval tests**
+- [x] **Step 2: Write failing golden eval tests**
 
 ```python
 from app.evaluation.golden import run_golden_evaluation
@@ -1329,13 +1331,13 @@ def test_golden_eval_reports_verified_dimensions():
     assert response.summary.quality_dimensions["hallucination_risk"] >= 1
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run: `python -m pytest -q apps/api/tests/evaluation/test_metrics.py apps/api/tests/evaluation/test_golden_eval.py`
 
 Expected: FAIL because metrics/dimensions do not exist.
 
-- [ ] **Step 4: Implement metric helpers**
+- [x] **Step 4: Implement metric helpers**
 
 Modify `apps/api/app/evaluation/metrics.py`:
 
@@ -1359,7 +1361,7 @@ def hallucination_risk_score(unsupported_sentences: int, total_sentences: int) -
     return max(0.0, min(1.0, unsupported_sentences / total_sentences))
 ```
 
-- [ ] **Step 5: Add verified golden cases**
+- [x] **Step 5: Add verified golden cases**
 
 Modify `apps/api/app/evaluation/golden.py` so synthetic documents include a table-like chunk and cases include:
 
@@ -1377,13 +1379,13 @@ GoldenCaseSpec(
 
 Route selected golden cases through `build_verified_answer` using a hand-built evidence pack so the verifier and hallucination risk are exercised locally.
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 Run: `python -m pytest -q apps/api/tests/evaluation/test_metrics.py apps/api/tests/evaluation/test_golden_eval.py`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/api/app/evaluation apps/api/tests/evaluation
@@ -1411,7 +1413,7 @@ git commit -m "Expand verified answer evaluation"
 - Produces: **Verified Answers** toggle in Search page
 - Produces: evidence-pack and verifier diagnostics in Search results
 
-- [ ] **Step 1: Write failing API client test**
+- [x] **Step 1: Write failing API client test**
 
 ```typescript
 it("sends verified answer mode when requested", async () => {
@@ -1433,7 +1435,7 @@ it("sends verified answer mode when requested", async () => {
 });
 ```
 
-- [ ] **Step 2: Write failing UI tests**
+- [x] **Step 2: Write failing UI tests**
 
 ```typescript
 it("toggles Verified Answers before searching", async () => {
@@ -1464,13 +1466,13 @@ it("shows verified diagnostics", () => {
 });
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 Run: `npm test -- api-client.test.ts search-page.test.tsx search-results.test.tsx`
 
 Expected: FAIL because types, API parameter, toggle, and diagnostics are missing.
 
-- [ ] **Step 4: Add frontend types and API parameter**
+- [x] **Step 4: Add frontend types and API parameter**
 
 Modify `apps/web/lib/types.ts`:
 
@@ -1551,7 +1553,7 @@ export async function searchDocuments(
 }
 ```
 
-- [ ] **Step 5: Add toggle and diagnostics UI**
+- [x] **Step 5: Add toggle and diagnostics UI**
 
 Modify `apps/web/app/search/page.tsx`:
 
@@ -1625,13 +1627,13 @@ function VerifiedDiagnosticsPanel({
 }
 ```
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 Run: `npm test -- api-client.test.ts search-page.test.tsx search-results.test.tsx`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/web/lib apps/web/app/search/page.tsx apps/web/components/search-results.tsx apps/web/tests
@@ -1653,7 +1655,7 @@ git commit -m "Add verified answers search UI"
 - Consumes: expanded `GoldenEvalResponse.summary.quality_dimensions`
 - Produces: Evaluation Lab copy and verified metric badges
 
-- [ ] **Step 1: Write failing UI test**
+- [x] **Step 1: Write failing UI test**
 
 ```typescript
 it("labels the evaluation page as an Evaluation Lab", () => {
@@ -1673,13 +1675,13 @@ it("renders verified quality dimensions", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `npm test -- evaluation-page.test.tsx evaluation-summary.test.tsx`
 
 Expected: FAIL because copy/labels do not exist.
 
-- [ ] **Step 3: Update copy and dimension formatting**
+- [x] **Step 3: Update copy and dimension formatting**
 
 Modify `apps/web/app/evaluation/page.tsx` heading to `Evaluation Lab` and supporting copy to mention verified answer quality, citation accuracy, retrieval recall, abstention safety, and hallucination risk.
 
@@ -1699,13 +1701,13 @@ const labels: Record<string, string> = {
 };
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run: `npm test -- evaluation-page.test.tsx evaluation-summary.test.tsx`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/app/evaluation/page.tsx apps/web/components/evaluation-summary.tsx apps/web/tests/evaluation-page.test.tsx apps/web/tests/evaluation-summary.test.tsx
@@ -1732,7 +1734,7 @@ python -m pytest -q apps/api/tests/retrieval apps/api/tests/documents/test_table
 
 Expected: PASS.
 
-- [ ] **Step 2: Run full non-integration API verification**
+- [x] **Step 2: Run full non-integration API verification**
 
 Run:
 
@@ -1742,7 +1744,7 @@ python -m pytest -q -m "not integration" -k "not uses_hybrid_retrieval_hits and 
 
 Expected: PASS.
 
-- [ ] **Step 3: Run web tests**
+- [x] **Step 3: Run web tests**
 
 Run:
 
@@ -1754,7 +1756,7 @@ from `apps/web`.
 
 Expected: PASS.
 
-- [ ] **Step 4: Run web lint**
+- [x] **Step 4: Run web lint**
 
 Run:
 
@@ -1766,7 +1768,7 @@ from `apps/web`.
 
 Expected: exits with code 0.
 
-- [ ] **Step 5: Run backend compile check**
+- [x] **Step 5: Run backend compile check**
 
 Run:
 
@@ -1778,7 +1780,7 @@ from `apps/api`.
 
 Expected: exits with code 0.
 
-- [ ] **Step 6: Run web build**
+- [x] **Step 6: Run web build**
 
 Run:
 
@@ -1790,7 +1792,7 @@ from `apps/web`.
 
 Expected: exits with code 0.
 
-- [ ] **Step 7: Run diff whitespace check**
+- [x] **Step 7: Run diff whitespace check**
 
 Run:
 
@@ -1800,11 +1802,11 @@ git diff --check
 
 Expected: exits with code 0.
 
-- [ ] **Step 8: Update plan checkboxes**
+- [x] **Step 8: Update plan checkboxes**
 
 Mark completed task checkboxes in this plan using `- [x]` only for tasks that passed their verification.
 
-- [ ] **Step 9: Commit final plan update**
+- [x] **Step 9: Commit final plan update**
 
 ```bash
 git add docs/superpowers/plans/2026-09-11-verified-answers-rag.md
