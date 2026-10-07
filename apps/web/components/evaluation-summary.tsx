@@ -25,8 +25,13 @@ function formatQualityDimension(name: string) {
   const labels: Record<string, string> = {
     answer_quality: "Answer quality",
     abstention_safety: "Abstention safety",
+    citation_accuracy: "Citation accuracy",
+    hallucination_risk: "Hallucination risk",
+    multi_hop_qa: "Multi-hop QA",
     ocr_readiness: "OCR readiness",
     parse_quality: "Parse quality",
+    table_qa: "Table QA",
+    verified_answers: "Verified Answers",
   };
 
   return labels[name] ?? formatMetricName(name);

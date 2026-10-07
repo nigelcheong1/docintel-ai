@@ -48,7 +48,17 @@ describe("EvaluationSummary", () => {
             answerable_cases: 12,
             abstention_cases: 3,
             document_types: { research_paper: 5, parse_quality: 1, ocr_readiness: 2 },
-            quality_dimensions: { answer_quality: 12, abstention_safety: 1, parse_quality: 1, ocr_readiness: 2 },
+            quality_dimensions: {
+              answer_quality: 12,
+              abstention_safety: 1,
+              citation_accuracy: 1,
+              hallucination_risk: 1,
+              multi_hop_qa: 1,
+              parse_quality: 1,
+              ocr_readiness: 2,
+              table_qa: 1,
+              verified_answers: 1,
+            },
           },
           cases: [],
         }}
@@ -57,7 +67,12 @@ describe("EvaluationSummary", () => {
 
     expect(screen.getByText("Quality coverage")).toBeInTheDocument();
     expect(screen.getByText("Abstention safety")).toBeInTheDocument();
+    expect(screen.getByText("Citation accuracy")).toBeInTheDocument();
+    expect(screen.getByText("Hallucination risk")).toBeInTheDocument();
+    expect(screen.getByText("Multi-hop QA")).toBeInTheDocument();
     expect(screen.getByText("OCR readiness")).toBeInTheDocument();
+    expect(screen.getByText("Table QA")).toBeInTheDocument();
+    expect(screen.getByText("Verified Answers")).toBeInTheDocument();
     expect(screen.getByText("All passing")).toBeInTheDocument();
   });
 });
