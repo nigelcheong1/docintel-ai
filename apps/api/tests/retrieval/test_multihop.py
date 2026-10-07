@@ -1,3 +1,5 @@
+import pytest
+
 from app.retrieval.multihop import build_query_plan, rewrite_query, split_subqueries
 
 
@@ -36,3 +38,15 @@ def test_split_subqueries_preserves_a_list_of_table_columns():
 
 def test_split_subqueries_handles_shared_interrogative():
     assert split_subqueries("What are the methods and results?") == ["What are the methods?", "What are the results?"]
+
+
+@pytest.mark.parametrize("quotes", [('"', '"'), ("\u201c", "\u201d")])
+def test_query_plan_removes_outer_quotes_from_copied_questions(quotes):
+    question = "How many results were obtained from Scopus, and how many remained after duplicate removal?"
+    plan = build_query_plan(f"{quotes[0]}{question}{quotes[1]}")
+
+    assert plan.subqueries == [
+        "How many results were obtained from Scopus?",
+        "How many remained after duplicate removal?",
+    ]
+    assert plan.rewritten_query == question.rstrip("?")

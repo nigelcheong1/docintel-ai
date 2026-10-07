@@ -123,3 +123,15 @@ def test_hybrid_search_falls_back_to_lexical_when_vector_search_fails(db_session
 
 def test_lexical_search_returns_empty_when_session_cannot_execute():
     assert lexical_search_chunks(object(), "payment deadline", top_k=2) == []
+
+
+def test_lexical_search_matches_duplicate_removal_paraphrases(db_session):
+    document, matching, _ = add_chunked_document(db_session)
+    matching.text = "Duplicates eliminated left a consolidated set comprising 2092 works."
+    matching.layout = {"section_heading": "RESULTS"}
+    db_session.commit()
+
+    hits = lexical_search_chunks(db_session, "duplicate removal", top_k=2, document_id=document.id)
+
+    assert [hit.chunk_id for hit in hits] == [matching.id]
+    assert hits[0].source_score == 1.0

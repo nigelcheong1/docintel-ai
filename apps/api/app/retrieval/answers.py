@@ -11,6 +11,7 @@ from app.retrieval.reranker import (
     infer_query_intents,
     infer_section_intents,
 )
+from app.retrieval.terms import matching_words
 
 if TYPE_CHECKING:
     from app.retrieval.search import SearchHit
@@ -20,6 +21,14 @@ _MAX_ANSWER_HITS = 3
 _MAX_SNIPPET_CHARS = 260
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _SENTENCE_BOUNDARY = re.compile(r"(?<!\bal\.)(?<=[.!?])\s+", re.IGNORECASE)
+_COUNT_QUERY_PATTERN = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
+_COUNT_WORDS = {
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+    "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty",
+    "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand",
+    "million", "billion",
+}
 _DOCUMENT_LANGUAGE_NAMES = (
     "english",
     "malay",
@@ -124,7 +133,7 @@ class _EvidenceSignal:
 
 
 def _words(text: str) -> set[str]:
-    return set(_WORD_PATTERN.findall(text.lower()))
+    return matching_words(text)
 
 
 def _expanded_words(text: str) -> set[str]:
@@ -328,7 +337,10 @@ def _build_snippet(text: str, query_terms: set[str]) -> str:
 def _select_answer_signals(query: str, hits: Sequence[SearchHit]) -> tuple[list[_EvidenceSignal], AnswerQuality]:
     all_signals = _rank_evidence(query, hits)
     candidate_signals = _rank_evidence(query, _candidate_hits(query, hits))
-    selected_signals = [signal for signal in candidate_signals if _is_sufficient_evidence(signal)][:_MAX_ANSWER_HITS]
+    selected_signals = [
+        signal for signal in candidate_signals
+        if _is_sufficient_evidence(signal) and _has_requested_quantity(query, signal.hit)
+    ][:_MAX_ANSWER_HITS]
     quality = _quality_from_signals(
         query=query,
         hits=hits,
@@ -336,6 +348,14 @@ def _select_answer_signals(query: str, hits: Sequence[SearchHit]) -> tuple[list[
         all_signals=all_signals,
     )
     return selected_signals, quality
+
+
+def _has_requested_quantity(query: str, hit: SearchHit) -> bool:
+    if not _COUNT_QUERY_PATTERN.search(query):
+        return True
+    # An unrelated number elsewhere in the chunk cannot support the answer sentence.
+    snippet_words = _words(_build_snippet(hit.text, _words(query)))
+    return any(word.isdigit() or word in _COUNT_WORDS for word in snippet_words)
 
 
 def _build_answer_from_hits(query: str, hits: Sequence[SearchHit]) -> ExtractiveAnswer | None:

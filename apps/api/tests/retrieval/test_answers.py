@@ -20,6 +20,31 @@ def test_build_extractive_answer_returns_none_when_there_are_no_hits():
     assert build_extractive_answer("invoice total", []) is None
 
 
+def test_count_question_abstains_when_matching_sentence_has_no_quantity():
+    hit = make_hit(
+        chunk_id="duplicates", text="Duplicates were eliminated. See Figure 2.",
+        page_number=3, section_heading="RESULTS",
+    )
+
+    answer, quality = build_grounded_answer("How many remained after duplicate removal?", [hit])
+
+    assert answer is None
+    assert quality.status == "insufficient_evidence"
+
+
+def test_count_question_accepts_a_quantity_written_in_words():
+    hit = make_hit(
+        chunk_id="duplicates", text="Two works remained after duplicates were eliminated.",
+        page_number=3, section_heading="RESULTS",
+    )
+
+    answer, quality = build_grounded_answer("How many remained after duplicate removal?", [hit])
+
+    assert answer is not None
+    assert answer.summary == "Two works remained after duplicates were eliminated."
+    assert quality.status == "answerable"
+
+
 def test_build_extractive_answer_uses_top_ranked_evidence_with_citations():
     top_hit = make_hit(
         chunk_id="chunk-top",

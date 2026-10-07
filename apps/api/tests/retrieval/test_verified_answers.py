@@ -91,3 +91,52 @@ def test_verified_answer_uses_relevant_sentence_beyond_preview_snippet():
 
     assert result.answer is not None
     assert "2092" in result.answer.summary
+
+
+def test_verified_answer_covers_duplicate_removal_paraphrase_in_shared_chunk():
+    text = (
+        "From Scopus, an aggregate of 2366 results were obtained. "
+        "Initially, these two databases were harmonized and duplicates eliminated, "
+        "resulting in a transition from an original pool of 4364 papers to a "
+        "consolidated set comprising 2092 works."
+    )
+    item = replace(evidence_item(text, heading="RESULTS"), page_number=3)
+    pack = EvidencePack(
+        "How many results were initially obtained from Scopus, and how many remained after duplicate removal?",
+        "Scopus results and duplicate removal",
+        ["How many results were initially obtained from Scopus?", "How many remained after duplicate removal?"],
+        [item], is_multi_hop=True,
+    )
+
+    result = build_verified_answer(pack.question, pack)
+
+    assert result.answer is not None
+    assert "2366" in result.answer.summary
+    assert "2092" in result.answer.summary
+    assert result.verification.status == "verified"
+    assert [citation.page_number for citation in result.answer.citations] == [3]
+
+
+def test_duplicate_removal_query_abstains_when_source_only_has_initial_count():
+    item = evidence_item("From Scopus, 2366 results were obtained.", heading="RESULTS")
+    pack = EvidencePack(
+        "How many remained after duplicate removal?", "duplicate removal",
+        ["How many remained after duplicate removal?"], [item],
+    )
+
+    result = build_verified_answer(pack.question, pack)
+
+    assert result.answer is None
+
+
+def test_verified_count_question_abstains_when_source_has_no_quantity():
+    item = evidence_item("Duplicates were eliminated.", heading="RESULTS")
+    pack = EvidencePack(
+        "How many remained after duplicate removal?", "duplicate removal",
+        ["How many remained after duplicate removal?"], [item],
+    )
+
+    result = build_verified_answer(pack.question, pack)
+
+    assert result.answer is None
+    assert result.quality.status == "insufficient_evidence"
