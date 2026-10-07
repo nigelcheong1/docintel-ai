@@ -1,4 +1,5 @@
 import hashlib
+import os
 import random
 from collections.abc import Sequence
 from typing import Protocol
@@ -20,6 +21,8 @@ def normalize_embedding_dimension(vector: Sequence[float], expected_dimension: i
 
 class LocalEmbeddingProvider:
     def __init__(self, model_name: str, expected_dimension: int, device: str = "cpu") -> None:
+        # BGE uses PyTorch; avoid importing optional TensorFlow/Keras backends.
+        os.environ.setdefault("USE_TF", "0")
         from sentence_transformers import SentenceTransformer
 
         self.model_name = model_name

@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from app.retrieval.terms import matching_words
+
 if TYPE_CHECKING:
     from app.retrieval.search import SearchHit
 
@@ -119,7 +121,7 @@ _SECTION_INTENT_WEIGHT = 0.10
 
 
 def _words(text: str) -> set[str]:
-    return set(_WORD_PATTERN.findall(text.lower()))
+    return matching_words(text)
 
 
 def infer_query_intents(query: str) -> set[str]:

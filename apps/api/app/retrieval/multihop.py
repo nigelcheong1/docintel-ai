@@ -27,6 +27,10 @@ class QueryPlan:
 
 def _clean_question(text: str) -> str:
     cleaned = " ".join(text.strip().split())
+    for opening, closing in (("\"", "\""), ("\u201c", "\u201d")):
+        if cleaned.startswith(opening) and cleaned.endswith(closing) and len(cleaned) > 1:
+            cleaned = cleaned[1:-1].strip()
+            break
     return cleaned.rstrip(" ?")
 
 

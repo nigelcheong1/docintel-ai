@@ -1,4 +1,3 @@
-import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
@@ -9,10 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Chunk, ChunkEmbedding, Document, Page
 from app.retrieval.answers import AnswerQuality, ExtractiveAnswer
+from app.retrieval.terms import matching_words
 
 AnswerMode = Literal["standard", "verified"]
 
-_WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _LEXICAL_STOPWORDS = {
     "a",
     "an",
@@ -192,7 +191,7 @@ def cosine_distance_to_score(distance: float) -> float:
 
 
 def _words(text: str) -> set[str]:
-    return {word for word in _WORD_PATTERN.findall(text.lower()) if word not in _LEXICAL_STOPWORDS and len(word) > 1}
+    return {word for word in matching_words(text) if word not in _LEXICAL_STOPWORDS and len(word) > 1}
 
 
 def _lexical_score(query: str, text: str, section_heading: str | None) -> float:
