@@ -53,8 +53,12 @@ class PersistedDocument:
     document_id: str
 
 
-def _first_chunk_for_page(chunks: list[Chunk], page: Page) -> Chunk | None:
-    return next((chunk for chunk in chunks if chunk.page_id == page.id), None)
+def _first_chunk_for_page(chunks: list[Chunk], page: Page, text: str | None = None) -> Chunk | None:
+    normalized = " ".join(text.lower().split()) if text else ""
+    return next((
+        chunk for chunk in chunks
+        if chunk.page_id == page.id and (not normalized or normalized in " ".join(chunk.text.lower().split()))
+    ), None)
 
 
 def _resolve_storage_dir(storage_dir: Path | None) -> Path:
@@ -228,7 +232,7 @@ def _add_index_records_from_pages(
 
     for table_index, detected in enumerate(detect_tables(extracted_pages)):
         page = page_models[detected.page_number]
-        source_chunk = _first_chunk_for_page(chunks, page)
+        source_chunk = _first_chunk_for_page(chunks, page, detected.caption)
         table = DocumentTable(
             document_id=document.id,
             page_id=page.id,
@@ -239,28 +243,28 @@ def _add_index_records_from_pages(
             extraction_confidence=detected.extraction_confidence,
             row_count=len(detected.rows),
             column_count=max((len(row.cells) for row in detected.rows), default=0),
-            metadata_={"detector": "native-text-heuristic"},
+            metadata_={"detector": "native-text-heuristic", "text": detected.text},
         )
         db.add(table)
         db.flush()
-        db.add_all(
-            [
+        for row in detected.rows:
+            row_text = " ".join(cell.text for cell in row.cells)
+            row_chunk = _first_chunk_for_page(chunks, page, row_text)
+            db.add_all([
                 DocumentTableCell(
                     table_id=table.id,
                     document_id=document.id,
                     page_id=page.id,
-                    source_chunk_id=source_chunk.id if source_chunk is not None else None,
+                    source_chunk_id=row_chunk.id if row_chunk is not None else None,
                     page_number=detected.page_number,
                     row_index=row.row_index,
                     column_index=cell.column_index,
                     column_label=cell.column_label,
                     text=cell.text,
                 )
-                for row in detected.rows
                 for cell in row.cells
                 if cell.text
-            ]
-        )
+            ])
     db.flush()
 
     if commit_text_index_before_embedding:

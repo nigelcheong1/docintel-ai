@@ -29,6 +29,15 @@ class DetectedTable:
     caption: str
     rows: list[DetectedTableRow]
     extraction_confidence: str
+    text: str = ""
+
+
+def _split_columns(line: str) -> list[str]:
+    if "\t" in line:
+        return [cell.strip() for cell in line.split("\t")]
+    if "|" in line:
+        return [cell.strip() for cell in line.strip("|").split("|")]
+    return []
 
 
 def _is_cell_boundary_token(token: str) -> bool:
@@ -78,20 +87,29 @@ def detect_tables(pages: list[ExtractedPage]) -> list[DetectedTable]:
             if not line.lower().startswith("table "):
                 continue
 
-            body = lines[index + 1 : index + 8]
-            rows = [
-                _parse_table_row(row_index, row)
-                for row_index, row in enumerate(body)
-                if _is_table_row(row)
-            ]
-            rows = [row for row in rows if row.cells]
-            if rows:
-                tables.append(
-                    DetectedTable(
-                        page_number=page.page_number,
-                        caption=line,
-                        rows=rows,
-                        extraction_confidence="moderate",
-                    )
-                )
+            body: list[str] = []
+            for candidate in lines[index + 1 :]:
+                if candidate.lower().startswith("table ") or (body and candidate.isupper() and not _is_table_row(candidate)):
+                    break
+                body.append(candidate)
+            labels = _split_columns(body[0]) if body else []
+            rows: list[DetectedTableRow] = []
+            for candidate in body[1:] if labels else body:
+                if not _is_table_row(candidate):
+                    continue
+                columns = _split_columns(candidate)
+                if labels and len(columns) == len(labels):
+                    rows.append(DetectedTableRow(len(rows), [
+                        DetectedTableCell(column_index, text, labels[column_index])
+                        for column_index, text in enumerate(columns)
+                    ]))
+                elif not labels:
+                    rows.append(_parse_table_row(len(rows), candidate))
+            tables.append(DetectedTable(
+                page_number=page.page_number,
+                caption=line,
+                rows=rows,
+                extraction_confidence="moderate" if labels and rows else "low",
+                text="\n".join([line, *body]),
+            ))
     return tables

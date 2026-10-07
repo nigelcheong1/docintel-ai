@@ -75,6 +75,8 @@ def refresh_page_image_metadata(
     document: Document,
     page_number: int,
     storage_dir: Path | None,
+    *,
+    rendered: RenderedPageImage | None = None,
 ) -> PageImage | None:
     page = db.scalar(
         select(Page).where(
@@ -86,7 +88,8 @@ def refresh_page_image_metadata(
         return None
 
     try:
-        rendered = render_document_page_image(document, page_number=page_number, storage_dir=storage_dir)
+        if rendered is None:
+            rendered = render_document_page_image(document, page_number=page_number, storage_dir=storage_dir)
     except DocumentPageRenderError:
         return None
 
@@ -110,8 +113,8 @@ def refresh_page_image_metadata(
         db.add(image)
 
     image.render_dpi = PAGE_PREVIEW_DPI
-    image.width = page.width
-    image.height = page.height
+    with Image.open(io.BytesIO(rendered.content)) as rendered_image:
+        image.width, image.height = rendered_image.size
     image.media_type = rendered.media_type
     image.checksum = sha256(rendered.content).hexdigest()
     db.flush()
