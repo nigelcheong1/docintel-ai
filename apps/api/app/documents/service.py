@@ -6,12 +6,24 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import Chunk, ChunkEmbedding, Document, DocumentStatus, Page, utc_now
+from app.db.models import (
+    Chunk,
+    ChunkEmbedding,
+    Document,
+    DocumentStatus,
+    DocumentTable,
+    DocumentTableCell,
+    Page,
+    PageImage,
+    utc_now,
+)
 from app.documents.chunker import chunk_pages
 from app.documents.extraction import ExtractedPage, extract_image_pages, extract_pdf_pages
 from app.documents.ocr import OcrProvider
+from app.documents.page_rendering import PAGE_PREVIEW_DPI
 from app.documents.parser import DocumentParseError
 from app.documents.storage import StoredUpload
+from app.documents.tables import detect_tables
 from app.retrieval.embeddings import EmbeddingProvider
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +51,14 @@ SPARSE_IMAGE_OCR_MESSAGE = "OCR ran, but this image does not contain enough read
 class PersistedDocument:
     model: Document
     document_id: str
+
+
+def _first_chunk_for_page(chunks: list[Chunk], page: Page, text: str | None = None) -> Chunk | None:
+    normalized = " ".join(text.lower().split()) if text else ""
+    return next((
+        chunk for chunk in chunks
+        if chunk.page_id == page.id and (not normalized or normalized in " ".join(chunk.text.lower().split()))
+    ), None)
 
 
 def _resolve_storage_dir(storage_dir: Path | None) -> Path:
@@ -194,6 +214,59 @@ def _add_index_records_from_pages(
     db.add_all(chunks)
     document.status = DocumentStatus.EMBEDDING
     db.flush()
+
+    db.add_all(
+        [
+            PageImage(
+                document_id=document.id,
+                page_id=page_models[extracted_page.page_number].id,
+                page_number=extracted_page.page_number,
+                render_dpi=PAGE_PREVIEW_DPI,
+                width=extracted_page.width,
+                height=extracted_page.height,
+                media_type="image/png",
+            )
+            for extracted_page in extracted_pages
+        ]
+    )
+
+    for table_index, detected in enumerate(detect_tables(extracted_pages)):
+        page = page_models[detected.page_number]
+        source_chunk = _first_chunk_for_page(chunks, page, detected.caption)
+        table = DocumentTable(
+            document_id=document.id,
+            page_id=page.id,
+            source_chunk_id=source_chunk.id if source_chunk is not None else None,
+            page_number=detected.page_number,
+            table_index=table_index,
+            caption=detected.caption,
+            extraction_confidence=detected.extraction_confidence,
+            row_count=len(detected.rows),
+            column_count=max((len(row.cells) for row in detected.rows), default=0),
+            metadata_={"detector": "native-text-heuristic", "text": detected.text},
+        )
+        db.add(table)
+        db.flush()
+        for row in detected.rows:
+            row_text = " ".join(cell.text for cell in row.cells)
+            row_chunk = _first_chunk_for_page(chunks, page, row_text)
+            db.add_all([
+                DocumentTableCell(
+                    table_id=table.id,
+                    document_id=document.id,
+                    page_id=page.id,
+                    source_chunk_id=row_chunk.id if row_chunk is not None else None,
+                    page_number=detected.page_number,
+                    row_index=row.row_index,
+                    column_index=cell.column_index,
+                    column_label=cell.column_label,
+                    text=cell.text,
+                )
+                for cell in row.cells
+                if cell.text
+            ])
+    db.flush()
+
     if commit_text_index_before_embedding:
         db.commit()
 

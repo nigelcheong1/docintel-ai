@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import Settings, get_settings
 from app.db.models import Chunk, Document
@@ -10,7 +11,7 @@ from app.db.session import SessionLocal, get_db
 from app.documents.intelligence import build_document_profile
 from app.documents.ocr import TesseractOcrProvider
 from app.documents.parse_quality import build_parse_quality_for_document
-from app.documents.page_rendering import DocumentPageRenderError, render_document_page_image
+from app.documents.page_rendering import DocumentPageRenderError, render_document_page_image, refresh_page_image_metadata
 from app.documents.processing_status import build_processing_status
 from app.documents.schemas import (
     ChunkRead,
@@ -241,6 +242,11 @@ def document_page_image(
         rendered = render_document_page_image(document, page_number=page_number, storage_dir=settings.storage_dir)
     except DocumentPageRenderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        refresh_page_image_metadata(db, document, page_number, settings.storage_dir, rendered=rendered)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
     return Response(content=rendered.content, media_type=rendered.media_type)
 
 

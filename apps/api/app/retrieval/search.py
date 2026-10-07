@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.db.models import Chunk, ChunkEmbedding, Document, Page
 from app.retrieval.answers import AnswerQuality, ExtractiveAnswer
 
+AnswerMode = Literal["standard", "verified"]
+
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _LEXICAL_STOPWORDS = {
     "a",
@@ -59,6 +61,7 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
     document_id: str | None = None
+    answer_mode: AnswerMode = "standard"
 
 
 class SearchHitRead(BaseModel):
@@ -89,6 +92,60 @@ class SearchDiagnostics(BaseModel):
     top_rejected_reasons: list[str]
 
 
+class EvidenceItemRead(BaseModel):
+    chunk_id: str
+    document_id: str
+    document_filename: str
+    page_number: int
+    chunk_index: int
+    snippet: str
+    score: float
+    source_score: float
+    ranking_signals: dict[str, float]
+    section_heading: str | None = None
+    subquery: str
+    support_score: float
+
+
+class RejectedEvidenceRead(BaseModel):
+    chunk_id: str
+    page_number: int
+    subquery: str
+    reason: str
+
+
+class EvidencePackRead(BaseModel):
+    question: str
+    rewritten_query: str
+    subqueries: list[str]
+    items: list[EvidenceItemRead]
+    rejected: list[RejectedEvidenceRead]
+    retrieval_mode: Literal["hybrid", "vector", "lexical"]
+    retrieval_fallback_reason: str | None = None
+    selected_chunk_count: int
+    selected_page_count: int
+    average_support_score: float
+    is_multi_hop: bool
+
+
+class SentenceSupportRead(BaseModel):
+    sentence: str
+    status: Literal["verified", "partially_supported", "unsupported"]
+    supporting_chunk_ids: list[str]
+    support_score: float
+    missing_terms: list[str]
+    missing_numbers: list[str]
+
+
+class EvidenceVerificationRead(BaseModel):
+    status: Literal["verified", "partially_supported", "unsupported"]
+    sentences: list[SentenceSupportRead]
+    unsupported_sentence_count: int
+    removed_sentence_count: int
+    hallucination_risk: float
+    reason: str
+
+
 class SearchResponse(BaseModel):
     query: str
     hits: list[SearchHitRead]
@@ -99,6 +156,9 @@ class SearchResponse(BaseModel):
     diagnostics: SearchDiagnostics | None = None
     retrieval_mode: Literal["hybrid", "vector", "lexical"] = "vector"
     retrieval_fallback_reason: str | None = None
+    answer_mode: AnswerMode = "standard"
+    evidence_pack: EvidencePackRead | None = None
+    verification: EvidenceVerificationRead | None = None
 
 
 def build_snippet(text: str, max_chars: int = 260) -> str:

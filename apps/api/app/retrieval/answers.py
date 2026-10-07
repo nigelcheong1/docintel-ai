@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _MAX_ANSWER_HITS = 3
 _MAX_SNIPPET_CHARS = 260
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_BOUNDARY = re.compile(r"(?<!\bal\.)(?<=[.!?])\s+", re.IGNORECASE)
 _DOCUMENT_LANGUAGE_NAMES = (
     "english",
     "malay",
@@ -62,11 +62,13 @@ _QUALITY_STOP_WORDS = {
     "is",
     "it",
     "listed",
+    "many",
     "mentioned",
     "of",
     "on",
     "pdf",
     "resume",
+    "remained",
     "show",
     "that",
     "the",

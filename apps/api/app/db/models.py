@@ -4,7 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -51,6 +51,12 @@ class Document(Base):
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
     summaries: Mapped[list["DocumentSummary"]] = relationship(back_populates="document", cascade="all, delete-orphan")
     study_questions: Mapped[list["StudyQuestion"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    page_images: Mapped[list["PageImage"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    document_tables: Mapped[list["DocumentTable"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    document_table_cells: Mapped[list["DocumentTableCell"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
 
 
 class Page(Base):
@@ -70,6 +76,12 @@ class Page(Base):
 
     document: Mapped[Document] = relationship(back_populates="pages")
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="page", cascade="all, delete-orphan")
+    page_images: Mapped[list["PageImage"]] = relationship(back_populates="page", cascade="all, delete-orphan")
+    document_tables: Mapped[list["DocumentTable"]] = relationship(back_populates="page", cascade="all, delete-orphan")
+    document_table_cells: Mapped[list["DocumentTableCell"]] = relationship(
+        back_populates="page",
+        cascade="all, delete-orphan",
+    )
 
 
 class Chunk(Base):
@@ -99,6 +111,73 @@ class ChunkEmbedding(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     chunk: Mapped[Chunk] = relationship(back_populates="embedding")
+
+
+class PageImage(Base):
+    __tablename__ = "page_images"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    page_id: Mapped[str] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    render_dpi: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[float | None]
+    height: Mapped[float | None]
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False, default="image/png")
+    checksum: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    document: Mapped[Document] = relationship(back_populates="page_images")
+    page: Mapped[Page] = relationship(back_populates="page_images")
+
+
+class DocumentTable(Base):
+    __tablename__ = "document_tables"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    page_id: Mapped[str] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"), nullable=False)
+    source_chunk_id: Mapped[str | None] = mapped_column(ForeignKey("chunks.id", ondelete="SET NULL"))
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    table_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text)
+    extraction_confidence: Mapped[str] = mapped_column(String(20), nullable=False, default="low")
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    column_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB().with_variant(JSON, "sqlite"),
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    document: Mapped[Document] = relationship(back_populates="document_tables")
+    page: Mapped[Page] = relationship(back_populates="document_tables")
+    source_chunk: Mapped[Chunk | None] = relationship()
+    cells: Mapped[list["DocumentTableCell"]] = relationship(back_populates="table", cascade="all, delete-orphan")
+
+
+class DocumentTableCell(Base):
+    __tablename__ = "document_table_cells"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    table_id: Mapped[str] = mapped_column(ForeignKey("document_tables.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    page_id: Mapped[str] = mapped_column(ForeignKey("pages.id", ondelete="CASCADE"), nullable=False)
+    source_chunk_id: Mapped[str | None] = mapped_column(ForeignKey("chunks.id", ondelete="SET NULL"))
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    column_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    column_label: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    table: Mapped[DocumentTable] = relationship(back_populates="cells")
+    document: Mapped[Document] = relationship(back_populates="document_table_cells")
+    page: Mapped[Page] = relationship(back_populates="document_table_cells")
+    source_chunk: Mapped[Chunk | None] = relationship()
 
 
 class DocumentSummary(Base):

@@ -25,8 +25,19 @@ function formatQualityDimension(name: string) {
   const labels: Record<string, string> = {
     answer_quality: "Answer quality",
     abstention_safety: "Abstention safety",
+    citation_accuracy: "Citation accuracy",
+    hallucination_risk: "Hallucination risk",
+    multi_hop_qa: "Multi-hop QA",
     ocr_readiness: "OCR readiness",
     parse_quality: "Parse quality",
+    table_qa: "Table QA",
+    verified_answers: "Verified Answers",
+    answer_quality_pass_rate: "Answer quality pass rate",
+    retrieval_recall_at_5: "Retrieval recall at 5",
+    evidence_pack_coverage: "Evidence pack coverage",
+    verifier_pass_rate: "Verifier pass rate",
+    table_qa_pass_rate: "Table QA pass rate",
+    multi_hop_qa_pass_rate: "Multi-hop QA pass rate",
   };
 
   return labels[name] ?? formatMetricName(name);
@@ -52,6 +63,9 @@ function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
       </td>
       <td className="border-t border-line py-3 pl-3 text-xs leading-5 text-slate-600">
         {result.answer_preview ?? result.quality_reason}
+        {result.verification_reason ? (
+          <p className="mt-1 text-xs text-slate-500">{result.verification_reason}</p>
+        ) : null}
         {result.failure_reasons.length > 0 ? (
           <ul className="mt-1 space-y-1 text-amber-700">
             {result.failure_reasons.map((reason) => (
@@ -66,6 +80,7 @@ function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
 
 function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
   const qualityDimensions = golden.summary.quality_dimensions ?? {};
+  const verifiedMetrics = golden.summary.verified_metrics ?? {};
 
   return (
     <Panel tone="accent" className="p-5">
@@ -102,6 +117,21 @@ function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
           <dd className="mt-1 text-xl font-semibold">{golden.summary.abstention_cases}</dd>
         </div>
       </dl>
+
+      {Object.keys(verifiedMetrics).length > 0 ? (
+        <section className="mt-5 border-t border-line pt-4" aria-labelledby="verified-benchmark-heading">
+          <h3 id="verified-benchmark-heading" className="text-sm font-semibold">Verified Answers benchmark</h3>
+          <p className="mt-1 text-xs text-slate-500">Local fixtures, lexical retrieval</p>
+          <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4 lg:grid-cols-3">
+            {Object.entries(verifiedMetrics).map(([metric, value]) => (
+              <div key={metric} className="min-w-0">
+                <dt className="break-words text-xs text-slate-600">{formatQualityDimension(metric)}</dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums">{formatPercent(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
 
       {Object.keys(qualityDimensions).length > 0 ? (
         <section className="mt-5" aria-labelledby="quality-coverage-heading">

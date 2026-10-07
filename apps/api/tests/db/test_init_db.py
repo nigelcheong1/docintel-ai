@@ -24,3 +24,15 @@ def test_sync_local_schema_adds_missing_ocr_columns(tmp_path):
 
     assert {"processing_started_at", "processing_completed_at", "processing_duration_ms"} <= document_columns
     assert {"text_source", "ocr_engine", "ocr_confidence", "ocr_duration_ms"} <= page_columns
+
+
+def test_sync_local_schema_creates_verified_metadata_tables(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'metadata.db'}")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE documents (id TEXT PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE pages (id TEXT PRIMARY KEY)"))
+
+    sync_local_schema(engine)
+
+    table_names = set(inspect(engine).get_table_names())
+    assert {"page_images", "document_tables", "document_table_cells"} <= table_names

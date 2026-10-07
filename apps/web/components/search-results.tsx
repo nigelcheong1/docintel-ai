@@ -9,13 +9,21 @@ import {
   Eye,
   Info,
   Lightbulb,
+  ShieldCheck,
 } from "lucide-react";
 
 import { SourceViewer, type SourceViewerSource } from "@/components/source-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import type { AnswerQuality, SearchAnswer, SearchDiagnostics, SearchHit } from "@/lib/types";
+import type {
+  AnswerQuality,
+  EvidencePack,
+  EvidenceVerification,
+  SearchAnswer,
+  SearchDiagnostics,
+  SearchHit,
+} from "@/lib/types";
 
 function formatSignalName(signal: string) {
   const label = signal.replace(/_/g, " ");
@@ -115,6 +123,112 @@ function SearchDiagnosticsPanel({ diagnostics }: { diagnostics: SearchDiagnostic
             </li>
           ))}
         </ul>
+      ) : null}
+    </Panel>
+  );
+}
+
+function verificationTone(status: EvidenceVerification["status"]) {
+  return status === "verified" ? "success" : status === "partially_supported" ? "amber" : "danger";
+}
+
+function VerifiedDiagnosticsPanel({
+  evidencePack,
+  verification,
+}: {
+  evidencePack?: EvidencePack | null;
+  verification?: EvidenceVerification | null;
+}) {
+  if (!evidencePack && !verification) {
+    return null;
+  }
+
+  return (
+    <Panel className="p-5" aria-labelledby="verified-answers-heading">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-accent" aria-hidden="true" />
+          <h2 id="verified-answers-heading" className="text-sm font-semibold">
+            Verified Answers
+          </h2>
+        </div>
+        {verification ? (
+          <Badge tone={verificationTone(verification.status)}>
+            {verification.status === "verified" ? "Verified" : verification.status === "partially_supported" ? "Needs review" : "Not enough evidence"}
+          </Badge>
+        ) : null}
+      </div>
+      {evidencePack ? (
+        <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-4">
+          <div>
+            <dt className="text-slate-500">Evidence pack</dt>
+            <dd className="mt-1 font-medium text-slate-700">
+              {formatCount(evidencePack.selected_chunk_count, "chunk", "chunks")}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Pages</dt>
+            <dd className="mt-1 font-medium text-slate-700">{evidencePack.selected_page_count}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Subqueries</dt>
+            <dd className="mt-1 font-medium text-slate-700">{evidencePack.subqueries.length}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Retrieval score</dt>
+            <dd className="mt-1 font-medium text-slate-700">
+              {formatPercentage(evidencePack.average_support_score)}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
+      {verification ? (
+        <p className="mt-3 text-xs leading-5 text-slate-600">
+          <span className="font-medium text-slate-700">Hallucination risk</span>:{" "}
+          {formatPercentage(verification.hallucination_risk)}. {verification.reason}
+        </p>
+      ) : null}
+      {evidencePack?.retrieval_fallback_reason ? (
+        <p className="mt-2 text-xs leading-5 text-amber-700">{evidencePack.retrieval_fallback_reason}</p>
+      ) : null}
+      {evidencePack ? (
+        <details className="mt-4 border-t border-line pt-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-slate-700 focus-visible:outline-teal-600">Evidence selection details</summary>
+          <p className="mt-3 break-words text-slate-600">Rewritten query: {evidencePack.rewritten_query}</p>
+          <ul className="mt-2 space-y-1 text-slate-600">
+            {evidencePack.subqueries.map((subquery, index) => <li key={`${index}-${subquery}`} className="break-words">{subquery}</li>)}
+          </ul>
+          {evidencePack.rejected.length > 0 ? (
+            <ul className="mt-3 space-y-2 text-slate-600" aria-label="Rejected evidence">
+              {evidencePack.rejected.map((rejected, index) => (
+                <li key={`${index}-${rejected.chunk_id}`} className="break-words">
+                  Page {rejected.page_number}: {rejected.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </details>
+      ) : null}
+      {verification && verification.sentences.length > 0 ? (
+        <details className="mt-3 border-t border-line pt-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-slate-700 focus-visible:outline-teal-600">Sentence support</summary>
+          <ol className="mt-3 space-y-3 text-slate-600">
+            {verification.sentences.map((sentence, index) => (
+              <li key={index} className="break-words">
+                <p>{sentence.sentence}</p>
+                <p className="mt-1 font-medium">{sentence.status === "verified" ? "Supported" : "Removed"}</p>
+                {sentence.supporting_chunk_ids.map((chunkId) => {
+                  const item = evidencePack?.items.find((item) => item.chunk_id === chunkId);
+                  return item ? (
+                    <a key={chunkId} className="mr-3 inline-block text-teal-700 underline underline-offset-2" href={`/documents/${item.document_id}?page=${item.page_number}&chunk=${chunkId}`}>
+                      {item.document_filename}, page {item.page_number}
+                    </a>
+                  ) : null;
+                })}
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
     </Panel>
   );
@@ -251,6 +365,8 @@ export function SearchResults({
   documentType,
   queryIntent,
   diagnostics,
+  evidencePack,
+  verification,
   retrievalMode,
   retrievalFallbackReason,
   onSuggestionSelect,
@@ -261,6 +377,8 @@ export function SearchResults({
   documentType?: string | null;
   queryIntent?: string | null;
   diagnostics?: SearchDiagnostics | null;
+  evidencePack?: EvidencePack | null;
+  verification?: EvidenceVerification | null;
   retrievalMode?: "hybrid" | "vector" | "lexical" | null;
   retrievalFallbackReason?: string | null;
   onSuggestionSelect?: (question: string) => void;
@@ -287,6 +405,7 @@ export function SearchResults({
   return (
     <div className="space-y-3">
       <RetrievalFallbackNotice retrievalMode={retrievalMode} retrievalFallbackReason={retrievalFallbackReason} />
+      <VerifiedDiagnosticsPanel evidencePack={evidencePack} verification={verification} />
       {answer ? (
         <Panel tone="accent" className="border-l-4 border-l-accent p-5" aria-labelledby="answer-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">

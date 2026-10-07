@@ -74,9 +74,9 @@ export default function EvaluationPage() {
       <section className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-normal text-teal-700">Quality workbench</p>
-          <h1 className="mt-2 text-3xl font-black tracking-normal">Evaluation</h1>
+          <h1 className="mt-2 text-3xl font-black tracking-normal">Evaluation Lab</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Track golden QA safety, parse-quality coverage, and local retrieval metrics before shipping changes.
+            Answer quality, citation accuracy, retrieval recall, abstention safety, and hallucination risk.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

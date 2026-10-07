@@ -429,6 +429,40 @@ describe("api client", () => {
       query: "invoice",
       top_k: 5,
       document_id: "doc-1",
+      answer_mode: "standard",
+    });
+  });
+
+  it("sends verified answer mode when requested", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        query: "q",
+        hits: [],
+        answer: null,
+        answer_mode: "verified",
+        quality: {
+          status: "insufficient_evidence",
+          confidence: "weak",
+          reason: "No indexed evidence was retrieved for this question.",
+          evidence_count: 0,
+          best_score: 0,
+          best_source_score: 0,
+          best_keyword_overlap: 0,
+          best_section_intent: 0,
+          suggested_questions: [],
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchDocuments("q", 5, "doc-1", "verified");
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      query: "q",
+      top_k: 5,
+      document_id: "doc-1",
+      answer_mode: "verified",
     });
   });
 

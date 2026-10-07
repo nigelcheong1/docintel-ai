@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle, Search, ShieldCheck } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { DocumentProfilePanel } from "@/components/document-profile-panel";
@@ -9,7 +9,17 @@ import { SearchResults } from "@/components/search-results";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { getDocumentProfile, getDocuments, searchDocuments } from "@/lib/api";
-import type { AnswerQuality, DocumentProfile, DocumentSummary, SearchAnswer, SearchDiagnostics, SearchHit } from "@/lib/types";
+import type {
+  AnswerMode,
+  AnswerQuality,
+  DocumentProfile,
+  DocumentSummary,
+  EvidencePack,
+  EvidenceVerification,
+  SearchAnswer,
+  SearchDiagnostics,
+  SearchHit,
+} from "@/lib/types";
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   processing: "Processing",
@@ -68,6 +78,9 @@ export default function SearchPage() {
   const [documentType, setDocumentType] = useState<string | null>(null);
   const [queryIntent, setQueryIntent] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<SearchDiagnostics | null>(null);
+  const [answerMode, setAnswerMode] = useState<AnswerMode>("standard");
+  const [evidencePack, setEvidencePack] = useState<EvidencePack | null>(null);
+  const [verification, setVerification] = useState<EvidenceVerification | null>(null);
   const [retrievalMode, setRetrievalMode] = useState<"hybrid" | "vector" | "lexical" | null>(null);
   const [retrievalFallbackReason, setRetrievalFallbackReason] = useState<string | null>(null);
   const [message, setMessage] = useState("Enter a question or search phrase.");
@@ -116,6 +129,8 @@ export default function SearchPage() {
     setDocumentType(null);
     setQueryIntent(null);
     setDiagnostics(null);
+    setEvidencePack(null);
+    setVerification(null);
     setRetrievalMode(null);
     setRetrievalFallbackReason(null);
     setIsSearching(false);
@@ -136,12 +151,14 @@ export default function SearchPage() {
     setDocumentType(null);
     setQueryIntent(null);
     setDiagnostics(null);
+    setEvidencePack(null);
+    setVerification(null);
     setRetrievalMode(null);
     setRetrievalFallbackReason(null);
     setIsSearching(true);
     setMessage("Searching local vector index...");
     try {
-      const response = await searchDocuments(submittedQuery, 5, selectedDocumentId || undefined);
+      const response = await searchDocuments(submittedQuery, 5, selectedDocumentId || undefined, answerMode);
       if (searchId !== latestSearchId.current) {
         return;
       }
@@ -151,6 +168,8 @@ export default function SearchPage() {
       setDocumentType(response.document_type ?? null);
       setQueryIntent(response.query_intent ?? null);
       setDiagnostics(response.diagnostics ?? null);
+      setEvidencePack(response.evidence_pack ?? null);
+      setVerification(response.verification ?? null);
       setRetrievalMode(response.retrieval_mode ?? null);
       setRetrievalFallbackReason(response.retrieval_fallback_reason ?? null);
       setMessage(response.hits.length === 0 ? "No cited evidence found." : "");
@@ -209,6 +228,22 @@ export default function SearchPage() {
             aria-label="Search query"
             placeholder="Ask about totals, methods, datasets, results, or limitations"
           />
+          <button
+            type="button"
+            role="switch"
+            aria-checked={answerMode === "verified"}
+            aria-label="Verified Answers"
+            className={[
+              "inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2",
+              answerMode === "verified"
+                ? "border-teal-700 bg-teal-700 text-white shadow-sm shadow-teal-900/20"
+                : "border-line bg-white text-slate-700 hover:border-teal-500 hover:text-teal-700",
+            ].join(" ")}
+            onClick={() => setAnswerMode((current) => (current === "verified" ? "standard" : "verified"))}
+          >
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            Verified Answers
+          </button>
           <Button leftIcon={<Search className="h-4 w-4" aria-hidden="true" />} disabled={isSearching} isLoading={isSearching}>
             Search
           </Button>
@@ -235,6 +270,8 @@ export default function SearchPage() {
         documentType={documentType}
         queryIntent={queryIntent}
         diagnostics={diagnostics}
+        evidencePack={evidencePack}
+        verification={verification}
         retrievalMode={retrievalMode}
         retrievalFallbackReason={retrievalFallbackReason}
         onSuggestionSelect={handleSuggestionSelect}

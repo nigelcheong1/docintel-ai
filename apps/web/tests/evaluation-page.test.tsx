@@ -74,6 +74,19 @@ describe("EvaluationPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("labels the page as an Evaluation Lab", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({ ok: true, json: async () => goldenEvaluation });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EvaluationPage />);
+
+    expect(screen.getByRole("heading", { name: "Evaluation Lab" })).toBeInTheDocument();
+    expect(await screen.findByText(goldenEvaluation.name)).toBeInTheDocument();
+  });
+
   it("loads existing evaluation runs from the backend", async () => {
     const fetchMock = vi
       .fn()
