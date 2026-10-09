@@ -12,6 +12,7 @@ from app.main import create_app
 from app.retrieval.embeddings import FakeEmbeddingProvider
 from app.retrieval.search import RetrievalMode, SearchHit
 import app.retrieval.router as retrieval_router
+import app.retrieval.service as retrieval_service
 
 pytestmark = pytest.mark.integration
 
@@ -244,7 +245,7 @@ def test_search_endpoint_overfetches_reranks_and_slices_candidates(monkeypatch):
         requested_limits.append(top_k)
         return candidates[:top_k]
 
-    monkeypatch.setattr(retrieval_router, "search_chunks", search_only_requested_candidates)
+    monkeypatch.setattr(retrieval_service, "search_chunks", search_only_requested_candidates)
     app = create_app()
 
     def override_db():
@@ -297,7 +298,7 @@ def test_search_endpoint_returns_diagnostics_and_evidence_roles(monkeypatch):
     def search_invoice_candidates(_db, _embedding, _top_k, _document_id):
         return candidates
 
-    monkeypatch.setattr(retrieval_router, "search_chunks", search_invoice_candidates)
+    monkeypatch.setattr(retrieval_service, "search_chunks", search_invoice_candidates)
     app = create_app()
 
     def override_db():
@@ -358,7 +359,7 @@ def test_search_endpoint_includes_document_aware_evidence_when_vector_hit_misses
     def search_method_candidate(_db, _embedding, _top_k, _document_id):
         return [vector_only_hit]
 
-    monkeypatch.setattr(retrieval_router, "search_chunks", search_method_candidate)
+    monkeypatch.setattr(retrieval_service, "search_chunks", search_method_candidate)
     app = create_app()
 
     def override_db():
@@ -410,7 +411,7 @@ def test_search_endpoint_abstains_when_retrieved_hits_do_not_answer_question(mon
     def search_resume_candidates(_db, _embedding, _top_k, _document_id):
         return candidates
 
-    monkeypatch.setattr(retrieval_router, "search_chunks", search_resume_candidates)
+    monkeypatch.setattr(retrieval_service, "search_chunks", search_resume_candidates)
     app = create_app()
 
     def override_db():
@@ -593,7 +594,7 @@ def test_verified_search_returns_evidence_pack_verification_and_all_evidence_hit
             return [result_hit], RetrievalMode(mode="vector", fallback_reason=fallback_reason)
         return [], RetrievalMode(mode="lexical", fallback_reason=fallback_reason)
 
-    monkeypatch.setattr(retrieval_router, "hybrid_search_chunks", search_verified_subquery)
+    monkeypatch.setattr(retrieval_service, "hybrid_search_chunks", search_verified_subquery)
     app = create_app()
 
     def override_db():
@@ -633,7 +634,7 @@ def test_verified_search_embeds_each_subquery_separately(monkeypatch):
         retrieved.append((query, embedding))
         return [], RetrievalMode(mode="vector")
 
-    monkeypatch.setattr(retrieval_router, "hybrid_search_chunks", retrieve)
+    monkeypatch.setattr(retrieval_service, "hybrid_search_chunks", retrieve)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: object()
     app.dependency_overrides[retrieval_router.get_embedding_provider_factory] = lambda: lambda: RecordingEmbedder()
