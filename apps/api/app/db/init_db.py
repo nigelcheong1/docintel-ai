@@ -1,4 +1,4 @@
-from app.db.models import Base, DocumentStatus, DocumentTable, DocumentTableCell, PageImage
+from app.db.models import Base, DocumentEvalCase, DocumentEvalResult, DocumentEvalRun, DocumentEvalSuite, DocumentStatus, DocumentTable, DocumentTableCell, PageImage
 from app.db.session import engine
 from sqlalchemy import Engine, inspect, text
 
@@ -43,6 +43,10 @@ def sync_local_schema(bind: Engine) -> None:
             PageImage.__table__,
             DocumentTable.__table__,
             DocumentTableCell.__table__,
+            DocumentEvalSuite.__table__,
+            DocumentEvalCase.__table__,
+            DocumentEvalRun.__table__,
+            DocumentEvalResult.__table__,
         ],
     )
 
