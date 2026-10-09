@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import EvaluationPage from "@/app/evaluation/page";
 
+vi.mock("@/components/document-benchmarks", () => ({ DocumentBenchmarks: () => <p>Document suite workspace</p> }));
+
 const evaluationRun = {
   id: "eval-1",
   name: "local-retrieval-benchmark",
@@ -84,6 +86,8 @@ describe("EvaluationPage", () => {
     render(<EvaluationPage />);
 
     expect(screen.getByRole("heading", { name: "Evaluation Lab" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Document Benchmarks" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Fixture Tests" }));
     expect(await screen.findByText(goldenEvaluation.name)).toBeInTheDocument();
   });
 
@@ -95,6 +99,8 @@ describe("EvaluationPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<EvaluationPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Fixture Tests" }));
 
     expect(await screen.findByText("local-retrieval-benchmark")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/eval/runs", { cache: "no-store" });
@@ -109,6 +115,8 @@ describe("EvaluationPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<EvaluationPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Fixture Tests" }));
 
     expect(await screen.findByRole("heading", { name: "Synthetic fixture tests" })).toBeInTheDocument();
     expect(screen.getByText("Quality coverage")).toBeInTheDocument();
@@ -129,6 +137,8 @@ describe("EvaluationPage", () => {
 
     render(<EvaluationPage />);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Fixture Tests" }));
+
     expect(await screen.findByRole("heading", { name: "Synthetic fixture tests" })).toBeInTheDocument();
     expect(screen.getByText("Retrieval history unavailable")).toBeInTheDocument();
   });
@@ -141,6 +151,8 @@ describe("EvaluationPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<EvaluationPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Fixture Tests" }));
 
     expect(await screen.findByText("local-retrieval-benchmark")).toBeInTheDocument();
     expect(screen.getByText("Golden QA unavailable")).toBeInTheDocument();
@@ -155,6 +167,7 @@ describe("EvaluationPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<EvaluationPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Fixture Tests" }));
     const button = await screen.findByRole("button", { name: "Run evaluation" });
     fireEvent.click(button);
 
