@@ -135,7 +135,12 @@ def check_case_readiness(db: Session, case: DocumentEvalCase) -> CaseReadiness:
         return CaseReadiness("unavailable", reasons=("Document must be indexed and its local file must exist.",))
     if case.review_state != "reviewed":
         return CaseReadiness("draft", reasons=("This case has not been reviewed.",))
-    return _resolve_sources(db, case)
+    readiness = _resolve_sources(db, case)
+    if readiness.availability != "ready":
+        return readiness
+    if db.scalar(select(Chunk.id).where(Chunk.document_id == document.id).limit(1)) is None:
+        return CaseReadiness("unavailable", reasons=("Document has no indexed evidence; restore its index before evaluation.",))
+    return readiness
 
 
 def review_case(db: Session, case_id: str, content_version: int) -> DocumentEvalCase:
@@ -149,6 +154,8 @@ def review_case(db: Session, case_id: str, content_version: int) -> DocumentEval
     document = _document(db, case.document_id) if case.document_id else None
     if document is None or document.status != DocumentStatus.INDEXED or not Path(document.file_path).is_file():
         raise HTTPException(409, "Indexed document and local file are required for source review.")
+    if db.scalar(select(Chunk.id).where(Chunk.document_id == document.id).limit(1)) is None:
+        raise HTTPException(409, "Document has no indexed evidence to review.")
     # Explicit re-review resolves current sources rather than comparing old hashes.
     previous_state = case.review_state
     case.review_state = "draft"
