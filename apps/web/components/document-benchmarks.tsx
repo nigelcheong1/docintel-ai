@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { Pencil, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { BenchmarkCaseEditor, benchmarkInputClass, caseStateLabel } from "@/components/benchmark-case-editor";
+import { BenchmarkRunResults } from "@/components/benchmark-run-results";
 import { Button } from "@/components/ui/button";
 import { getDocuments } from "@/lib/api";
-import { createDocumentSuite, deleteDocumentCase, deleteDocumentSuite, getDocumentSuite, listDocumentSuites, updateDocumentSuite } from "@/lib/document-evaluation";
-import type { DocumentEvalCase, DocumentEvalSuite, DocumentEvalSuiteDetail, DocumentSummary } from "@/lib/types";
+import { createDocumentRun, createDocumentSuite, deleteDocumentCase, deleteDocumentSuite, getDocumentSuite, listDocumentRuns, listDocumentSuites, updateDocumentSuite } from "@/lib/document-evaluation";
+import type { DocumentEvalCase, DocumentEvalRun, DocumentEvalSuite, DocumentEvalSuiteDetail, DocumentSummary } from "@/lib/types";
 
 export function DocumentBenchmarks() {
   const [suites, setSuites] = useState<DocumentEvalSuite[]>([]);
@@ -21,6 +22,8 @@ export function DocumentBenchmarks() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [runs, setRuns] = useState<DocumentEvalRun[]>([]);
+  const [runId, setRunId] = useState("");
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(async () => {
@@ -30,13 +33,29 @@ export function DocumentBenchmarks() {
         const loadedDocs = await getDocuments();
         if (cancelled) return;
         setSuites(loadedSuites); setDocuments(loadedDocs);
-        setSelectedId((current) => loadedSuites.some((item) => item.id === current) ? current : loadedSuites[0]?.id ?? "");
+        const storedSuite = localStorage.getItem("docintel-benchmark-suite");
+        setSelectedId((current) => loadedSuites.some((item) => item.id === current) ? current : loadedSuites.find((item) => item.id === storedSuite)?.id ?? loadedSuites[0]?.id ?? "");
         setError("");
       } catch (reason) { if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load benchmarks."); }
       finally { if (!cancelled) setLoading(false); }
     });
     return () => { cancelled = true; };
   }, [refresh]);
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(async () => {
+      try {
+        const history = await listDocumentRuns();
+        if (cancelled) return;
+        setRuns(history);
+        const storedRun = localStorage.getItem("docintel-benchmark-run");
+        setRunId((current) => history.some((item) => item.id === current) ? current : history.find((item) => item.id === storedRun)?.id ?? history[0]?.id ?? "");
+      } catch (reason) { if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load run history."); }
+    });
+    return () => { cancelled = true; };
+  }, [refresh]);
+  useEffect(() => { if (selectedId) localStorage.setItem("docintel-benchmark-suite", selectedId); }, [selectedId]);
+  useEffect(() => { if (runId) localStorage.setItem("docintel-benchmark-run", runId); }, [runId]);
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(async () => {
@@ -71,7 +90,10 @@ export function DocumentBenchmarks() {
         <label className="min-w-0 flex-1 text-sm font-semibold">Selected suite<select className={benchmarkInputClass} value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{suites.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <Button variant="secondary" aria-label="Rename suite" title="Rename suite" onClick={() => setRename(suite?.name ?? "")} disabled={!suite || busy}><Pencil className="h-4 w-4" /></Button>
         <Button variant="danger" aria-label="Delete suite" title="Delete suite" onClick={() => setConfirm("suite")} disabled={!suite || busy}><Trash2 className="h-4 w-4" /></Button>
-        <Button disabled={!reviewed || busy} leftIcon={<Play className="h-4 w-4" />}>Run benchmark</Button>
+        <Button disabled={!reviewed || busy} leftIcon={<Play className="h-4 w-4" />} onClick={() => void action(async () => {
+          if (!suite) return;
+          const created = await createDocumentRun(suite.id); setRuns((current) => [created, ...current.filter((item) => item.id !== created.id)]); setRunId(created.id);
+        })}>Run benchmark</Button>
       </div>
       {rename !== null && suite ? <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
         event.preventDefault(); void action(async () => { const updated = await updateDocumentSuite(suite.id, rename); setSuites((items) => items.map((item) => item.id === updated.id ? updated : item)); setSuite((item) => item ? { ...item, name: updated.name } : null); setRename(null); });
@@ -97,5 +119,7 @@ export function DocumentBenchmarks() {
         {editing ? <BenchmarkCaseEditor key={editing === "new" ? "new" : editing.id} suiteId={suite.id} documents={documents} initialCase={editing === "new" ? undefined : editing} onSaved={saved} onCancel={() => setEditing(null)} /> : null}
       </> : <p role="status" className="text-sm text-slate-600">Loading suite...</p>}
     </>}
+    {runs.length ? <div className="border-t border-line pt-5"><label className="block text-sm font-semibold">Saved run<select className={benchmarkInputClass} value={runId} onChange={(event) => setRunId(event.target.value)}><option value="">Select run</option>{runs.map((run) => <option key={run.id} value={run.id}>{run.suite_snapshot.name} · {new Date(run.created_at).toLocaleString()} · {run.status}</option>)}</select></label></div> : null}
+    {runId ? <BenchmarkRunResults key={runId} runId={runId} /> : null}
   </section>;
 }

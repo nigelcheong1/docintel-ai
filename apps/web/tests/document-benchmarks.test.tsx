@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentBenchmarks } from "@/components/document-benchmarks";
 import * as api from "@/lib/document-evaluation";
-import { benchmarkDocument, benchmarkSuite } from "./document-evaluation-fixtures";
+import { benchmarkDocument, benchmarkSuite, benchmarkRun } from "./document-evaluation-fixtures";
 
-vi.mock("@/lib/document-evaluation", () => ({ listDocumentSuites: vi.fn(), createDocumentSuite: vi.fn(), getDocumentSuite: vi.fn(), updateDocumentSuite: vi.fn(), deleteDocumentSuite: vi.fn(), deleteDocumentCase: vi.fn() }));
+vi.mock("@/lib/document-evaluation", () => ({ listDocumentSuites: vi.fn(), createDocumentSuite: vi.fn(), getDocumentSuite: vi.fn(), updateDocumentSuite: vi.fn(), deleteDocumentSuite: vi.fn(), deleteDocumentCase: vi.fn(), listDocumentRuns: vi.fn(), createDocumentRun: vi.fn() }));
+vi.mock("@/components/benchmark-run-results", () => ({ BenchmarkRunResults: ({ runId }: { runId: string }) => <p>Saved results {runId}</p> }));
 vi.mock("@/lib/api", () => ({ getDocuments: vi.fn(async () => [benchmarkDocument]) }));
 describe("DocumentBenchmarks", () => {
   beforeEach(() => {
@@ -12,6 +13,8 @@ describe("DocumentBenchmarks", () => {
     vi.mocked(api.listDocumentSuites).mockResolvedValue([benchmarkSuite]);
     vi.mocked(api.getDocumentSuite).mockResolvedValue(benchmarkSuite);
     vi.mocked(api.createDocumentSuite).mockResolvedValue(benchmarkSuite);
+    vi.mocked(api.listDocumentRuns).mockResolvedValue([]);
+    vi.mocked(api.createDocumentRun).mockResolvedValue(benchmarkRun);
   });
   it("creates a suite from the empty state without fabricated cases", async () => {
     vi.mocked(api.listDocumentSuites).mockResolvedValue([]);
@@ -36,5 +39,26 @@ describe("DocumentBenchmarks", () => {
     render(<DocumentBenchmarks />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Backend unavailable");
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+  it("starts reviewed cases immediately and restores the selected persisted run on return", async () => {
+    const reviewedSuite = { ...benchmarkSuite, reviewed_count: 1, cases: benchmarkSuite.cases.map((item) => ({ ...item, review_state: "reviewed" as const, availability: "ready" as const })) };
+    vi.mocked(api.getDocumentSuite).mockResolvedValue(reviewedSuite);
+    const view = render(<DocumentBenchmarks />);
+    fireEvent.click(await screen.findByRole("button", { name: "Run benchmark" }));
+    await waitFor(() => expect(api.createDocumentRun).toHaveBeenCalledWith("suite-1"));
+    expect(await screen.findByText("Saved results run-1")).toBeInTheDocument();
+    view.unmount();
+    vi.mocked(api.listDocumentRuns).mockResolvedValue([benchmarkRun]);
+    render(<DocumentBenchmarks />);
+    expect(await screen.findByText("Saved results run-1")).toBeInTheDocument();
+  });
+  it("surfaces an actionable globally-busy error without a false new run", async () => {
+    vi.mocked(api.getDocumentSuite).mockResolvedValue({ ...benchmarkSuite, cases: benchmarkSuite.cases.map((item) => ({ ...item, review_state: "reviewed", availability: "ready" })) });
+    vi.mocked(api.createDocumentRun).mockRejectedValue(new Error("A benchmark is already active. Wait or cancel it."));
+    render(<DocumentBenchmarks />);
+    await screen.findByText("Reviewed");
+    fireEvent.click(screen.getByRole("button", { name: "Run benchmark" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Wait or cancel it.");
+    expect(screen.queryByText("Saved results run-1")).not.toBeInTheDocument();
   });
 });

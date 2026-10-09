@@ -34,4 +34,24 @@ describe("document benchmark client", () => {
     await expect(api.reviewDocumentCase("suite-1", "case-1", 1)).rejects.toThrow("Case changed; review again.");
     await expect(api.deleteDocumentSuite("suite-1")).rejects.toThrow("Case changed; review again.");
   });
+  it("creates, loads, cancels and assesses persisted runs without changing expectations", async () => {
+    const fetcher = vi.fn().mockImplementation(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    await api.createDocumentRun("suite-1");
+    expect(JSON.parse(fetcher.mock.lastCall![1].body)).toEqual({ suite_id: "suite-1" });
+    await api.listDocumentRuns("suite-1");
+    expect(fetcher.mock.lastCall![0]).toBe("http://localhost:8000/eval/document-runs?suite_id=suite-1");
+    await api.listDocumentRuns();
+    expect(fetcher.mock.lastCall![0]).toBe("http://localhost:8000/eval/document-runs");
+    await api.getDocumentRun("run-1");
+    expect(fetcher.mock.lastCall![0]).toContain("/document-runs/run-1");
+    await api.getDocumentRunResults("run-1");
+    expect(fetcher.mock.lastCall![0]).toContain("/run-1/results");
+    await api.cancelDocumentRun("run-1");
+    expect(fetcher.mock.lastCall![0]).toContain("/run-1/cancel");
+    expect(fetcher.mock.lastCall![1].method).toBe("POST");
+    await api.assessDocumentResult("run-1", "result-1", "incorrect", "The source is ambiguous.");
+    expect(fetcher.mock.lastCall![1].method).toBe("PUT");
+    expect(JSON.parse(fetcher.mock.lastCall![1].body)).toEqual({ assessment: "incorrect", note: "The source is ambiguous." });
+  });
 });
