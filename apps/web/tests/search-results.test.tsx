@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import { SearchResults } from "@/components/search-results";
 
 describe("SearchResults", () => {
+  it.each([['verified', 'Evidence checks passed'], ['partially_supported', 'Needs review'], ['unsupported', 'Not enough evidence']] as const)("shows scoped evidence status %s", (status, label) => {
+    render(<SearchResults hits={[]} answer={{summary:"Scopus returned 2366 records.", citations:[]}} verification={{status, sentences:[{sentence:"Scopus returned 2366 records.", status, supporting_chunk_ids:[], support_score:status === 'verified' ? 1 : 0, missing_terms:[],missing_numbers:[]}], unsupported_sentence_count:status === 'verified' ? 0 : 1,removed_sentence_count:status === 'verified' ? 0 : 1,hallucination_risk:status === 'verified' ? 0 : 1,reason:"Sentence checker result"}} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText(status === 'verified' ? '1 checked, 1 supported, 0 removed' : '1 checked, 0 supported, 1 removed')).toBeInTheDocument();
+    expect(screen.queryByText('Hallucination risk')).not.toBeInTheDocument();
+  });
   it("renders an answer with traceable citations above evidence", () => {
     render(
       <SearchResults
@@ -191,7 +197,8 @@ describe("SearchResults", () => {
 
     expect(screen.getByText("Verified Answers")).toBeInTheDocument();
     expect(screen.getByText("Evidence pack")).toBeInTheDocument();
-    expect(screen.getByText("Hallucination risk")).toBeInTheDocument();
+    expect(screen.getByText("No answer generated")).toBeInTheDocument();
+    expect(screen.queryByText("Hallucination risk")).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Evidence selection details"));
     expect(screen.getByText("results")).toBeInTheDocument();
     expect(screen.getByText(/Duplicate evidence text already selected/)).toBeInTheDocument();

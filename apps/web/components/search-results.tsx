@@ -135,9 +135,11 @@ function verificationTone(status: EvidenceVerification["status"]) {
 function VerifiedDiagnosticsPanel({
   evidencePack,
   verification,
+  hasAnswer,
 }: {
   evidencePack?: EvidencePack | null;
   verification?: EvidenceVerification | null;
+  hasAnswer: boolean;
 }) {
   if (!evidencePack && !verification) {
     return null;
@@ -154,7 +156,7 @@ function VerifiedDiagnosticsPanel({
         </div>
         {verification ? (
           <Badge tone={verificationTone(verification.status)}>
-            {verification.status === "verified" ? "Verified" : verification.status === "partially_supported" ? "Needs review" : "Not enough evidence"}
+            {!hasAnswer ? "Not enough evidence" : verification.status === "verified" ? "Evidence checks passed" : verification.status === "partially_supported" ? "Needs review" : "Not enough evidence"}
           </Badge>
         ) : null}
       </div>
@@ -184,8 +186,10 @@ function VerifiedDiagnosticsPanel({
       ) : null}
       {verification ? (
         <p className="mt-3 text-xs leading-5 text-slate-600">
-          <span className="font-medium text-slate-700">Hallucination risk</span>:{" "}
-          {formatPercentage(verification.hallucination_risk)}. {verification.reason}
+          {!hasAnswer ? <span className="font-medium">No answer generated</span> : <>
+            <span className="font-medium">{verification.sentences.length} checked, {verification.sentences.filter((sentence) => sentence.status === "verified").length} supported, {verification.removed_sentence_count} removed</span>
+            {". "}{verification.reason}
+          </>}
         </p>
       ) : null}
       {evidencePack?.retrieval_fallback_reason ? (
@@ -405,7 +409,7 @@ export function SearchResults({
   return (
     <div className="space-y-3">
       <RetrievalFallbackNotice retrievalMode={retrievalMode} retrievalFallbackReason={retrievalFallbackReason} />
-      <VerifiedDiagnosticsPanel evidencePack={evidencePack} verification={verification} />
+      <VerifiedDiagnosticsPanel evidencePack={evidencePack} verification={verification} hasAnswer={Boolean(answer)} />
       {answer ? (
         <Panel tone="accent" className="border-l-4 border-l-accent p-5" aria-labelledby="answer-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -334,6 +334,15 @@ export type GoldenEvalResponse = {
     document_types: Record<string, number>;
     quality_dimensions: Record<string, number>;
     verified_metrics?: Record<string, number>;
+    verified_measurements?: Record<string, EvaluationMeasurement>;
   };
   cases: GoldenEvalCaseResult[];
+};
+
+export type EvaluationMeasurement = {
+  value: number | null;
+  numerator: number;
+  denominator: number;
+  unit: "ratio" | "ms";
+  scope: string;
 };

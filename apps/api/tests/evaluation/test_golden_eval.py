@@ -4,6 +4,26 @@ from app.evaluation.golden import run_golden_evaluation
 from app.main import create_app
 
 
+def test_fixture_measurements_have_actual_case_denominators():
+    summary = run_golden_evaluation().summary
+    measurements = summary.verified_measurements
+    assert measurements["answer_quality_pass_rate"].denominator == 5
+    assert measurements["citation_accuracy"].denominator == 4
+    assert measurements["abstention_safety"].denominator == 1
+    assert measurements["table_qa_pass_rate"].denominator == 1
+    assert measurements["multi_hop_qa_pass_rate"].denominator == 1
+    assert "case" in measurements["citation_accuracy"].scope.lower()
+
+
+def test_fixture_empty_subset_is_not_evaluated(monkeypatch):
+    import app.evaluation.golden as golden
+    monkeypatch.setattr(golden, "_VERIFIED_CASES", ())
+    summary = golden.run_golden_evaluation().summary
+    assert summary.verified_measurements["citation_accuracy"].value is None
+    assert summary.verified_measurements["abstention_safety"].denominator == 0
+    assert summary.verified_metrics["citation_accuracy"] == 0
+
+
 def test_golden_eval_includes_ocr_quality_cases():
     result = run_golden_evaluation()
 

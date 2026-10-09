@@ -101,7 +101,7 @@ describe("EvaluationPage", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/eval/golden", { cache: "no-store" });
   });
 
-  it("shows the universal document QA golden evaluation", async () => {
+  it("shows explicitly scoped synthetic fixture tests", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => [] })
@@ -110,7 +110,7 @@ describe("EvaluationPage", () => {
 
     render(<EvaluationPage />);
 
-    expect(await screen.findByRole("heading", { name: "Universal document QA" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Synthetic fixture tests" })).toBeInTheDocument();
     expect(screen.getByText("Quality coverage")).toBeInTheDocument();
     expect(screen.getByText("Abstention safety")).toBeInTheDocument();
     expect(screen.getByText("13 cases")).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe("EvaluationPage", () => {
 
     render(<EvaluationPage />);
 
-    expect(await screen.findByRole("heading", { name: "Universal document QA" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Synthetic fixture tests" })).toBeInTheDocument();
     expect(screen.getByText("Retrieval history unavailable")).toBeInTheDocument();
   });
 
