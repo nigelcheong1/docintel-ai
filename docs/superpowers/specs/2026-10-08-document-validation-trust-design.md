@@ -1,7 +1,8 @@
 # Real-Document Evaluation and Evidence Trust
 
 Date: 2026-10-08
-Status: Proposed; awaiting user review. Product implementation has not started.
+Status: Approved by the user on 2026-10-08. Implementation plan review pending;
+product implementation has not started.
 
 ## Intent
 
@@ -233,8 +234,7 @@ opened with existing preview/workbench controls.
 
 ## Approval and Implementation Handoff
 
-The user has approved the phase direction. This written design still needs
-review before an implementation plan and product-code changes. After approval,
-prepare the implementation plan and agree on inline execution. Keep the tested
+The user has approved this written design. Prepare the implementation plan for
+review and agree on execution before product-code changes. Keep the tested
 bug-fix follow-up separate from the new feature work, and do not merge the new
 phase without reviewed tests and CI.
