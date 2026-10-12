@@ -1,10 +1,18 @@
 from pathlib import Path
 
+import pytest
+
 from app.core.config import Settings
 
 
+@pytest.fixture(autouse=True)
+def clear_settings_environment(monkeypatch):
+    for field_name in Settings.model_fields:
+        monkeypatch.delenv(f"DOCINTEL_{field_name.upper()}", raising=False)
+
+
 def test_settings_have_local_only_defaults():
-    settings = Settings()
+    settings = Settings(_env_file=None)
     expected_storage_dir = Path(__file__).resolve().parents[2] / "storage"
 
     assert settings.app_name == "DocIntel AI API"
@@ -15,16 +23,14 @@ def test_settings_have_local_only_defaults():
 
 
 def test_relative_storage_dir_is_api_root_relative():
-    settings = Settings(storage_dir=Path("custom-storage"))
+    settings = Settings(_env_file=None, storage_dir=Path("custom-storage"))
     expected_storage_dir = Path(__file__).resolve().parents[2] / "custom-storage"
 
     assert settings.storage_dir == expected_storage_dir
 
 
-def test_ocr_settings_have_local_defaults(monkeypatch):
-    monkeypatch.delenv("DOCINTEL_TESSERACT_CMD", raising=False)
-
-    settings = Settings()
+def test_ocr_settings_have_local_defaults():
+    settings = Settings(_env_file=None)
 
     assert settings.ocr_enabled is True
     assert settings.ocr_language == "eng"

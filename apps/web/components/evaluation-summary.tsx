@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
+import { EvaluationMetric } from "@/components/evaluation-metric";
 import type { EvalRunSummary, GoldenEvalCaseResult, GoldenEvalResponse } from "@/lib/types";
 
 function formatMetricName(name: string) {
@@ -26,7 +27,7 @@ function formatQualityDimension(name: string) {
     answer_quality: "Answer quality",
     abstention_safety: "Abstention safety",
     citation_accuracy: "Citation accuracy",
-    hallucination_risk: "Hallucination risk",
+    hallucination_risk: "Unsupported-claim checks",
     multi_hop_qa: "Multi-hop QA",
     ocr_readiness: "OCR readiness",
     parse_quality: "Parse quality",
@@ -81,12 +82,13 @@ function GoldenCaseRow({ result }: { result: GoldenEvalCaseResult }) {
 function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
   const qualityDimensions = golden.summary.quality_dimensions ?? {};
   const verifiedMetrics = golden.summary.verified_metrics ?? {};
+  const verifiedMeasurements = golden.summary.verified_measurements ?? {};
 
   return (
     <Panel tone="accent" className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Universal document QA</h2>
+          <h2 className="text-sm font-semibold">Synthetic fixture tests</h2>
           <p className="mt-1 break-words text-xs text-slate-500">{golden.name}</p>
         </div>
         <Badge tone={statusClassName(golden.summary.failed_cases === 0)}>
@@ -103,6 +105,7 @@ function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
         <div className="rounded-lg border border-line bg-teal-50/40 p-3">
           <dt className="text-xs uppercase text-slate-500">Pass rate</dt>
           <dd className="mt-1 text-xl font-semibold">{formatPercent(golden.summary.pass_rate)}</dd>
+          <dd className="mt-1 text-xs text-slate-600">{golden.summary.passed_cases} / {golden.summary.total_cases} synthetic cases</dd>
         </div>
         <div className="rounded-lg border border-line bg-white p-3">
           <dt className="text-xs uppercase text-slate-500">Cases</dt>
@@ -121,13 +124,10 @@ function GoldenEvaluationPanel({ golden }: { golden: GoldenEvalResponse }) {
       {Object.keys(verifiedMetrics).length > 0 ? (
         <section className="mt-5 border-t border-line pt-4" aria-labelledby="verified-benchmark-heading">
           <h3 id="verified-benchmark-heading" className="text-sm font-semibold">Verified Answers benchmark</h3>
-          <p className="mt-1 text-xs text-slate-500">Local fixtures, lexical retrieval</p>
+          <p className="mt-1 text-xs text-slate-500">Lexical retrieval</p>
           <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4 lg:grid-cols-3">
-            {Object.entries(verifiedMetrics).map(([metric, value]) => (
-              <div key={metric} className="min-w-0">
-                <dt className="break-words text-xs text-slate-600">{formatQualityDimension(metric)}</dt>
-                <dd className="mt-1 text-lg font-semibold tabular-nums">{formatPercent(value)}</dd>
-              </div>
+            {Object.keys(verifiedMetrics).filter((metric) => metric !== "hallucination_risk").map((metric) => (
+              <EvaluationMetric key={metric} label={formatQualityDimension(metric)} measurement={verifiedMeasurements[metric] ?? {value:null,numerator:0,denominator:0,unit:"ratio",scope:"Sample counts unavailable"}} />
             ))}
           </dl>
         </section>
@@ -186,6 +186,7 @@ export function EvaluationSummary({ runs, golden }: { runs: EvalRunSummary[]; go
   return (
     <div className="space-y-3">
       {golden ? <GoldenEvaluationPanel golden={golden} /> : null}
+      {runs.length ? <h2 className="pt-4 text-sm font-semibold">Retrieval history</h2> : null}
       {runs.map((run) => (
         <Panel key={run.id} className="p-5">
           <h2 className="break-words text-sm font-semibold">{run.name}</h2>

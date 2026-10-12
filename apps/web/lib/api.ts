@@ -16,7 +16,7 @@ import type {
   StudyQuestion,
 } from "@/lib/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 function parseErrorDetail(body: string): string | undefined {
   try {
@@ -27,7 +27,7 @@ function parseErrorDetail(body: string): string | undefined {
   }
 }
 
-async function parseJsonResponse<T>(response: Response): Promise<T> {
+export async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.text();
     throw new Error(parseErrorDetail(body) ?? (body || `Request failed with ${response.status}`));

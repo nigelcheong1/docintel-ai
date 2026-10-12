@@ -334,6 +334,65 @@ export type GoldenEvalResponse = {
     document_types: Record<string, number>;
     quality_dimensions: Record<string, number>;
     verified_metrics?: Record<string, number>;
+    verified_measurements?: Record<string, EvaluationMeasurement>;
   };
   cases: GoldenEvalCaseResult[];
+};
+
+export type EvaluationMeasurement = {
+  value: number | null;
+  numerator: number;
+  denominator: number;
+  unit: "ratio" | "ms";
+  scope: string;
+};
+
+export type DocumentCaseWrite = {
+  document_id: string;
+  question: string;
+  expected_outcome: "answerable" | "insufficient_evidence";
+  facts: { pattern: string; alternatives: string[] }[];
+  anchors: { page_number: number; quote: string }[];
+  tags: string[];
+  review_rationale: string;
+};
+
+export type DocumentEvalCase = Omit<DocumentCaseWrite, "document_id"> & {
+  document_id: string | null;
+  id: string;
+  suite_id: string;
+  document_filename: string;
+  review_state: "draft" | "reviewed";
+  content_version: number;
+  reviewed_at: string | null;
+  review_page_hashes: Record<string, string>;
+  availability: "ready" | "draft" | "stale" | "unavailable";
+  availability_reasons: string[];
+  created_at: string;
+  updated_at: string;
+};
+export type DocumentEvalSuite = { id: string; name: string; case_count: number; reviewed_count: number; created_at: string; updated_at: string };
+export type DocumentEvalSuiteDetail = DocumentEvalSuite & { cases: DocumentEvalCase[] };
+export type DocumentRunStatus = "queued" | "running" | "completed" | "cancelled" | "interrupted" | "failed";
+export type DocumentAssessment = "correct" | "incorrect" | "needs_review";
+export type DocumentEvalRun = {
+  id: string; suite_id: string | null; suite_snapshot: { id: string; name: string }; case_snapshots: DocumentEvalCase[];
+  pipeline_config: Record<string, unknown>; measurements: Record<string, EvaluationMeasurement>;
+  status: DocumentRunStatus; cancel_requested: boolean; total_cases: number; completed_cases: number;
+  created_at: string; started_at: string | null; finished_at: string | null; error: string | null;
+  mode_counts: Record<string, number>; fallback_count: number; error_count: number; unavailable_count: number;
+  passed_count: number; failed_count: number;
+};
+export type BenchmarkEvidence = Omit<SearchHit, "snippet"> & { text: string };
+export type DocumentEvalResult = {
+  id: string; run_id: string; case_id_snapshot: string; case_version: number; case_snapshot: DocumentEvalCase;
+  execution_snapshot: {
+    response?: SearchResponse;
+    candidates_by_subquery?: Record<string, BenchmarkEvidence[]>;
+    selected_evidence?: BenchmarkEvidence[];
+    resolved_anchors?: { page_number: number; quote: string; chunk_ids: string[] }[];
+  };
+  measurements: Record<string, EvaluationMeasurement>; failure_reasons: string[];
+  status: "pass" | "fail" | "unavailable" | "error"; duration_ms: number;
+  human_assessment: DocumentAssessment | null; assessment_note: string; assessed_at: string | null; created_at: string;
 };

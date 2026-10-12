@@ -4,7 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -250,4 +250,74 @@ class EvalRun(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class DocumentEvalSuite(Base):
+    __tablename__ = "document_eval_suites"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class DocumentEvalCase(Base):
+    __tablename__ = "document_eval_cases"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    suite_id: Mapped[str] = mapped_column(ForeignKey("document_eval_suites.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
+    document_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_outcome: Mapped[str] = mapped_column(String(30), nullable=False)
+    facts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=list, nullable=False)
+    anchors: Mapped[list[dict[str, Any]]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=list, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=list, nullable=False)
+    review_rationale: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    review_state: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
+    content_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_page_hashes: Mapped[dict[str, str]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class DocumentEvalRun(Base):
+    __tablename__ = "document_eval_runs"
+    __table_args__ = (CheckConstraint("active_slot IS NULL OR active_slot = 1", name="document_eval_active_slot"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    suite_id: Mapped[str | None] = mapped_column(ForeignKey("document_eval_suites.id", ondelete="SET NULL"), index=True)
+    suite_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    case_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=list, nullable=False)
+    pipeline_config: Mapped[dict[str, Any]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    measurements: Mapped[dict[str, Any]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
+    active_slot: Mapped[int | None] = mapped_column(Integer, unique=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    total_cases: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completed_cases: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentEvalResult(Base):
+    __tablename__ = "document_eval_results"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(ForeignKey("document_eval_runs.id", ondelete="CASCADE"), index=True)
+    case_id_snapshot: Mapped[str] = mapped_column(String(36), nullable=False)
+    case_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    execution_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    measurements: Mapped[dict[str, Any]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=dict, nullable=False)
+    failure_reasons: Mapped[list[str]] = mapped_column(JSONB().with_variant(JSON, "sqlite"), default=list, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    duration_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    human_assessment: Mapped[str | None] = mapped_column(String(20))
+    assessment_note: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

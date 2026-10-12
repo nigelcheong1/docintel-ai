@@ -6,8 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.db.init_db import init_db
+from app.db.session import SessionLocal
 from app.documents.router import router as documents_router
 from app.evaluation.router import router as evaluation_router
+from app.evaluation.document_runs import interrupt_abandoned_runs
+from app.evaluation.document_router import router as document_evaluation_router
 from app.retrieval.router import router as retrieval_router
 from app.study.router import router as study_router
 
@@ -15,6 +18,8 @@ from app.study.router import router as study_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    with SessionLocal() as db:
+        interrupt_abandoned_runs(db)
     yield
 
 
@@ -36,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(retrieval_router)
     app.include_router(evaluation_router)
+    app.include_router(document_evaluation_router)
     app.include_router(study_router)
     return app
 

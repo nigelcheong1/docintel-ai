@@ -11,13 +11,17 @@ describe("EvaluationSummary", () => {
         total_cases: 1, passed_cases: 1, failed_cases: 0, pass_rate: 1,
         answerable_cases: 1, abstention_cases: 0, document_types: {}, quality_dimensions: {},
         verified_metrics: { retrieval_recall_at_5: 0.75, hallucination_risk: 0.1, verifier_pass_rate: 0.9 },
+        verified_measurements: { retrieval_recall_at_5: { value: 0.75, numerator: 3, denominator: 4, unit: "ratio", scope: "Mean recall across four answerable synthetic cases" } },
       }, cases: [],
     }} />);
 
     expect(screen.getByRole("heading", { name: "Verified Answers benchmark" })).toBeInTheDocument();
     expect(screen.getByText("Retrieval recall at 5")).toBeInTheDocument();
     expect(screen.getByText("75%")).toBeInTheDocument();
-    expect(screen.getByText("10%")).toBeInTheDocument();
+    expect(screen.getByText("3 / 4")).toBeInTheDocument();
+    expect(screen.getByText("Synthetic fixture tests")).toBeInTheDocument();
+    expect(screen.getByText("Lexical retrieval")).toBeInTheDocument();
+    expect(screen.queryByText("10%")).not.toBeInTheDocument();
   });
   it("renders an empty state when no runs are recorded", () => {
     render(<EvaluationSummary runs={[]} />);
@@ -83,7 +87,7 @@ describe("EvaluationSummary", () => {
     expect(screen.getByText("Quality coverage")).toBeInTheDocument();
     expect(screen.getByText("Abstention safety")).toBeInTheDocument();
     expect(screen.getByText("Citation accuracy")).toBeInTheDocument();
-    expect(screen.getByText("Hallucination risk")).toBeInTheDocument();
+    expect(screen.getByText("Unsupported-claim checks")).toBeInTheDocument();
     expect(screen.getByText("Multi-hop QA")).toBeInTheDocument();
     expect(screen.getByText("OCR readiness")).toBeInTheDocument();
     expect(screen.getByText("Table QA")).toBeInTheDocument();

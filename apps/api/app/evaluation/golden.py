@@ -10,6 +10,8 @@ from app.documents.intelligence import build_document_profile
 from app.documents.parse_quality import build_parse_quality_from_pages, normalized_text_length
 from app.documents.parser import ParsedPage
 from app.evaluation.metrics import abstention_safety, citation_accuracy, hallucination_risk_score
+from app.evaluation.document_schemas import Measurement
+from app.evaluation.document_metrics import make_measurement
 from app.retrieval.document_answers import build_document_aware_answer
 from app.retrieval.evidence_pack import build_evidence_pack
 from app.retrieval.multihop import build_query_plan
@@ -93,6 +95,7 @@ class GoldenEvalSummary(BaseModel):
     document_types: dict[str, int]
     quality_dimensions: dict[str, int]
     verified_metrics: dict[str, float] = Field(default_factory=dict)
+    verified_measurements: dict[str, Measurement] = Field(default_factory=dict)
 
 
 class GoldenEvalResponse(BaseModel):
@@ -770,6 +773,14 @@ def run_golden_evaluation() -> GoldenEvalResponse:
         subset = [case for case in verified_cases if case.quality_dimension == dimension]
         verified_metrics[f"{dimension}_pass_rate"] = sum(case.passed for case in subset) / len(subset) if subset else 0.0
 
+    verified_measurements = {}
+    for metric in verified_metrics:
+        subset = (verified_cases if metric in {"answer_quality_pass_rate", "hallucination_risk"} else
+                  abstention_verified if metric == "abstention_safety" else
+                  [case for case in verified_cases if case.quality_dimension == metric.removesuffix("_pass_rate")] if metric in {"table_qa_pass_rate", "multi_hop_qa_pass_rate"} else answerable_verified)
+        numerator = sum(case.passed for case in subset) if metric.endswith("_pass_rate") and metric != "verifier_pass_rate" else sum(case.metrics[metric] for case in subset)
+        verified_measurements[metric] = make_measurement(numerator, len(subset), "ratio", f"Case-average {metric.replace('_', ' ')} over eligible synthetic cases; lexical retrieval")
+
     return GoldenEvalResponse(
         name="universal-document-qa-golden",
         summary=GoldenEvalSummary(
@@ -782,6 +793,7 @@ def run_golden_evaluation() -> GoldenEvalResponse:
             document_types=dict(sorted(document_types.items())),
             quality_dimensions=dict(sorted(quality_dimensions.items())),
             verified_metrics=verified_metrics,
+            verified_measurements=verified_measurements,
         ),
         cases=cases,
     )
