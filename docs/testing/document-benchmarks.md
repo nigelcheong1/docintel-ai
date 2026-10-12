@@ -162,38 +162,43 @@ test-owned documents. Do not delete or reindex personal uploads to provoke them.
 
 ## Implementation Verification Record
 
-The pre-restriction runs passed 364 backend tests and 130 frontend tests. A
-fresh independent code review identified seven issues; regression tests then
-reproduced and verified fixes for failed-provider negatives, signed quantities
-and comparisons, reversed negation, equivalent overlapping evidence,
-line-wrapped quotes, pending editor requests, and legacy relative upload paths.
+On 2026-10-12, fresh verification passed the full backend suite (375 tests)
+against the disposable PostgreSQL database `docintel_verified_fix_test`, the
+frontend suite (139 tests), ESLint, and TypeScript with incremental compilation
+disabled. Frontend tests used the checked-in Vitest configuration without a
+temporary path-resolution override. Existing React `act` warnings remain in
+the frontend suite; they are not test failures.
 
-Latest verification passed 131 frontend tests, 121 focused backend tests, lint
-and TypeScript. The frontend run used a temporary, uncommitted Vitest
-`resolve.preserveSymlinks` configuration because the sandbox denied Vite's
-native Windows path lookup; it did not change app configuration and was removed.
-Backend counts exclude PostgreSQL and HTTP endpoint tests under the current
-socket restrictions. Earlier broad attempts were interrupted rather than
-reported as passing.
+The first full backend run exposed a default-settings test reading the local
+storage override from `.env`. Default-settings tests now explicitly exclude
+dotenv and clear settings environment variables. Runtime settings, database
+configuration, and uploaded files were not changed by that test-only fix.
 
-Live BGE/PostgreSQL checks, a fresh full backend suite, CI, and desktop/mobile
-screenshots remain required before merge. The preview could not connect in the
-restricted runtime; fixture passes alone do not substitute for these checks.
-No private real-document cases or source excerpts were seeded or committed.
+Independent review earlier identified seven issues; regression tests reproduced
+and verified fixes for failed-provider negatives, signed quantities and
+comparisons, reversed negation, equivalent overlapping evidence, line-wrapped
+quotes, pending editor requests, and legacy relative upload paths.
+
+The local real-document smoke run completed two reviewed cases: an answerable
+count question and a negative question. Both automatic checks passed with hybrid
+retrieval and no fallbacks. This is a two-case smoke test, not a claim of general
+retrieval accuracy or hallucination-free answers. The editor's required-field
+markers, outcome-specific review gates, and inline errors were also checked at
+desktop and mobile widths. Private cases and source excerpts were not seeded or
+committed. GitHub CI, including the production frontend build, must pass before
+merge.
 
 ## Execution Decisions
 
 - PowerShell/manual progress records replaced the Git Bash helper scripts when
   the sandbox denied MSYS kernel-object access. The cost is losing the helper's
   automatic bookkeeping validation, not a change in product behavior.
-- Fresh frontend verification temporarily preserved paths rather than invoking
-  the denied native lookup. Symlink canonicalization was not exercised by that
-  run; application configuration remained unchanged.
-- PostgreSQL concurrency and crash recovery still require an unrestricted test
-  run. Until then, their post-fix database behavior is not freshly verified.
-- Real BGE/Paper 10 and desktop/mobile checks are pending. Retrieval accuracy
-  and visual layout issues may still exist; do not merge based only on fixtures.
-- Full backend/CI checks and the private dataset's labels need independent
-  confirmation. A small reviewed suite is not evidence of universal accuracy.
+- Earlier restricted verification used a temporary path-resolution override
+  and could not reach PostgreSQL or the live browser. The 2026-10-12 unrestricted
+  verification supersedes those limitations; no override was committed.
+- A small reviewed suite is not evidence of universal accuracy. Expand the
+  independently reviewed dataset across multiple documents, including table,
+  multi-part, OCR, and unanswerable cases, before publishing quality claims.
+- GitHub CI and the private dataset's labels still need independent confirmation.
 - The guide is complete; source highlighting and arithmetic contradiction
   detection remain deferred as approved. Contradictions still need human review.
