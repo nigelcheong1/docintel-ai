@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentBenchmarks } from "@/components/document-benchmarks";
 import * as api from "@/lib/document-evaluation";
@@ -40,11 +40,18 @@ describe("DocumentBenchmarks", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Backend unavailable");
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
-  it("starts reviewed cases immediately and restores the selected persisted run on return", async () => {
+  it("waits for reviewed cases before starting and restores the selected persisted run on return", async () => {
     const reviewedSuite = { ...benchmarkSuite, reviewed_count: 1, cases: benchmarkSuite.cases.map((item) => ({ ...item, review_state: "reviewed" as const, availability: "ready" as const })) };
-    vi.mocked(api.getDocumentSuite).mockResolvedValue(reviewedSuite);
+    let resolveSuite!: (value: typeof reviewedSuite) => void;
+    vi.mocked(api.getDocumentSuite).mockReturnValueOnce(new Promise((resolve) => { resolveSuite = resolve; }));
     const view = render(<DocumentBenchmarks />);
-    fireEvent.click(await screen.findByRole("button", { name: "Run benchmark" }));
+    const runButton = await screen.findByRole("button", { name: "Run benchmark" });
+    expect(runButton).toBeDisabled();
+    fireEvent.click(runButton);
+    expect(api.createDocumentRun).not.toHaveBeenCalled();
+    await act(async () => { resolveSuite(reviewedSuite); });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
     await waitFor(() => expect(api.createDocumentRun).toHaveBeenCalledWith("suite-1"));
     expect(await screen.findByText("Saved results run-1")).toBeInTheDocument();
     view.unmount();
