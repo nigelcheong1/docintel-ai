@@ -114,11 +114,14 @@ def _execute_case(db: Session, run_id: str, snapshot: dict, embedder_factory: Em
         else:
             # Scoring labels never cross the production execution boundary.
             execution = search_service.execute_search(SearchRequest(query=case.question, document_id=case.document_id, top_k=5, answer_mode="verified"), db, embedder_factory)
-            measurements = score_case(CaseWrite.model_validate(snapshot), readiness.anchors, execution, (perf_counter() - start) * 1000)
-            result.failure_reasons = case_failure_reasons(CaseWrite.model_validate(snapshot), measurements)
-            result.status = "fail" if result.failure_reasons else "pass"
-            result.measurements = {key: value.model_dump(mode="json") for key, value in measurements.items()}
             result.execution_snapshot = {"response": execution.response.model_dump(mode="json"), "candidates_by_subquery": {query: [asdict(hit) for hit in hits] for query, hits in execution.candidates_by_subquery.items()}, "selected_evidence": [asdict(hit) for hit in execution.selected_evidence], "resolved_anchors": [asdict(anchor) for anchor in readiness.anchors]}
+            if case.expected_outcome == "insufficient_evidence" and execution.response.retrieval_fallback_reason:
+                result.failure_reasons = ["Provider fallback prevents a measured abstention: " + execution.response.retrieval_fallback_reason]
+            else:
+                measurements = score_case(CaseWrite.model_validate(snapshot), readiness.anchors, execution, (perf_counter() - start) * 1000)
+                result.failure_reasons = case_failure_reasons(CaseWrite.model_validate(snapshot), measurements)
+                result.status = "fail" if result.failure_reasons else "pass"
+                result.measurements = {key: value.model_dump(mode="json") for key, value in measurements.items()}
     except Exception as exc:
         db.rollback()
         result.status = "error"

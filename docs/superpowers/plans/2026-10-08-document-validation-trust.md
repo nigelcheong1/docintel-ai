@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-08-document-validation-trust-design.md`
 
+**Execution Status (2026-10-12):** Tasks 1-9 implemented. Seven independent
+review findings reproduced and fixed. Latest checks: 131 frontend tests,
+121 focused backend tests, lint and TypeScript pass. Task 10 live/PostgreSQL
+verification remains pending runtime restrictions. See
+`docs/testing/document-benchmarks.md` for the operator guide and decisions.
+
 ## Global Constraints
 
 - Preserve uploads, summaries, study sets, local credentials, and the user's running development servers. Schema changes are additive only.

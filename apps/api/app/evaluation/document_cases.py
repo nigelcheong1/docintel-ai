@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 from hashlib import sha256
-from pathlib import Path
 import re
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import Chunk, Document, DocumentEvalCase, DocumentEvalSuite, DocumentStatus, Page, utc_now
+from app.documents.service import resolve_document_file_path
 from app.evaluation.document_schemas import CaseRead, CaseWrite
 
 
@@ -26,7 +27,7 @@ class CaseReadiness:
 
 
 def normalize_source(text: str) -> str:
-    return " ".join(re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "", text).split())
+    return " ".join(re.sub(r"(?<=[A-Za-z])-\s+(?=[A-Za-z])", "", text).split())
 
 
 def page_text_hash(text: str) -> str:
@@ -131,7 +132,7 @@ def check_case_readiness(db: Session, case: DocumentEvalCase) -> CaseReadiness:
     document = db.get(Document, case.document_id) if case.document_id else None
     if document is None:
         return CaseReadiness("unavailable", reasons=("The selected document is no longer available.",))
-    if document.status != DocumentStatus.INDEXED or not Path(document.file_path).is_file():
+    if document.status != DocumentStatus.INDEXED or not resolve_document_file_path(document, get_settings().storage_dir).is_file():
         return CaseReadiness("unavailable", reasons=("Document must be indexed and its local file must exist.",))
     if case.review_state != "reviewed":
         return CaseReadiness("draft", reasons=("This case has not been reviewed.",))
@@ -152,7 +153,7 @@ def review_case(db: Session, case_id: str, content_version: int) -> DocumentEval
     if case.expected_outcome == "insufficient_evidence" and (case.facts or not case.review_rationale.strip()):
         raise HTTPException(422, "Negative cases require a scope-review rationale and no required facts.")
     document = _document(db, case.document_id) if case.document_id else None
-    if document is None or document.status != DocumentStatus.INDEXED or not Path(document.file_path).is_file():
+    if document is None or document.status != DocumentStatus.INDEXED or not resolve_document_file_path(document, get_settings().storage_dir).is_file():
         raise HTTPException(409, "Indexed document and local file are required for source review.")
     if db.scalar(select(Chunk.id).where(Chunk.document_id == document.id).limit(1)) is None:
         raise HTTPException(409, "Document has no indexed evidence to review.")

@@ -53,6 +53,36 @@ def test_explicit_alternative_matches():
     assert metrics().fact_matches("Scopus yielded 2366 records.", ExpectedFact(pattern="Scopus returned 2366 records", alternatives=["Scopus yielded 2366 records"]))
 
 
+@pytest.mark.parametrize("answer,pattern", [
+    ("The balance is -5 dollars.", "The balance is 5 dollars"),
+    ("The balance is 5 dollars.", "The balance is -5 dollars"),
+    ("The probability is > 0.05.", "The probability is < 0.05"),
+    ("The probability is >= 0.05.", "The probability is > 0.05"),
+    ("It is not true that the study did not use a GPU.", "The study did not use a GPU"),
+])
+def test_fact_matching_rejects_sign_operator_and_negation_reversal(answer, pattern):
+    assert not metrics().fact_matches(answer, ExpectedFact(pattern=pattern))
+
+
+def test_equivalent_overlapping_chunk_covers_the_reviewed_anchor():
+    current = execution()
+    equivalent = hit("overlap", text="Context. Scopus returned 2366 records. More context.", index=1)
+    current.response.answer.citations = [AnswerCitation(chunk_id="overlap", document_filename="source.pdf", page_number=1)]
+    current = replace(current, candidates_by_subquery={"count": (equivalent,)}, selected_evidence=(equivalent,))
+    result = metrics().score_case(case(), (ResolvedAnchor(1, hit().text, ("one",)),), current, 10)
+    for key in ["retrieval_anchor_recall_at_5", "citation_precision", "citation_anchor_coverage", "pack_anchor_coverage"]:
+        assert result[key].value == 1, key
+
+
+def test_unrelated_context_does_not_increase_citation_precision():
+    current = execution()
+    unrelated = hit("context", text="Unrelated background.", index=1)
+    current.response.answer.citations.append(AnswerCitation(chunk_id="context", document_filename="source.pdf", page_number=1))
+    current = replace(current, selected_evidence=(*current.selected_evidence, unrelated))
+    result = metrics().score_case(case(), (ResolvedAnchor(1, hit().text, ("one",)),), current, 10)
+    assert result["citation_precision"].value == 0.5
+
+
 def test_partial_answer_counts_only_one_of_two_facts():
     result = metrics().score_case(case(facts=[{"pattern": "Scopus returned 2366 records"}, {"pattern": "2092 remained"}]), (ResolvedAnchor(1, "Scopus returned 2366 records.", ("one",)),), execution(), 10)
     assert result["fact_match"].numerator == 1

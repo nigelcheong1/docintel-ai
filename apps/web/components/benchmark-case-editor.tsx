@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check, Eye, Plus, Save, Trash2, X } from "lucide-react";
 import { SourceViewer, type SourceViewerSource } from "@/components/source-viewer";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,9 @@ export function BenchmarkCaseEditor({ suiteId, documents, initialCase, onSaved, 
   const [source, setSource] = useState<SourceViewerSource | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const editRevision = useRef(0);
   function change(next: Partial<DocumentCaseWrite>) {
+    editRevision.current += 1;
     setData((current) => ({ ...current, ...next })); setSaved(undefined); setViewed([]); setScopeViewed(false); setScopeConfirmed(false);
   }
   const negative = data.expected_outcome === "insufficient_evidence";
@@ -41,10 +43,12 @@ export function BenchmarkCaseEditor({ suiteId, documents, initialCase, onSaved, 
     : data.facts.length && data.anchors.length && data.anchors.every((_, index) => viewed.includes(index))));
 
   async function preview(index?: number) {
+    const revision = editRevision.current;
     setBusy(true); setError("");
     try {
       const pages = await getDocumentPages(data.document_id);
       const chunks = await getDocumentChunks(data.document_id);
+      if (revision !== editRevision.current) return;
       const anchor = index === undefined ? undefined : data.anchors[index];
       const page = anchor ? pages.find((item) => item.page_number === anchor.page_number) : pages[0];
       if (!page) throw new Error("Source page is unavailable. Check the document in the workbench.");
@@ -59,18 +63,27 @@ export function BenchmarkCaseEditor({ suiteId, documents, initialCase, onSaved, 
     finally { setBusy(false); }
   }
   async function save() {
+    const revision = editRevision.current;
     setBusy(true); setError("");
     try {
       const item = await saveDocumentCase(suiteId, { ...data, facts: data.facts.map((fact) => ({ ...fact, alternatives: fact.alternatives.map((value) => value.trim()).filter(Boolean) })) }, caseId);
       setCaseId(item.id);
-      setSaved(item); setViewed([]); setScopeViewed(false); setScopeConfirmed(false); onSaved(item);
+      if (revision === editRevision.current) setSaved(item);
+      else setError("Current edits are not saved. Save again before source review.");
+      setViewed([]); setScopeViewed(false); setScopeConfirmed(false); onSaved(item);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save case."); }
     finally { setBusy(false); }
   }
   async function review() {
     if (!saved || !readyToReview) return;
+    const revision = editRevision.current;
     setBusy(true); setError("");
-    try { const item = await reviewDocumentCase(suiteId, saved.id, saved.content_version); setSaved(item); onSaved(item); }
+    try {
+      const item = await reviewDocumentCase(suiteId, saved.id, saved.content_version);
+      if (revision === editRevision.current) setSaved(item);
+      else setError("Current edits are not saved. Save again before source review.");
+      onSaved(item);
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Review failed. Reload the case and try again."); }
     finally { setBusy(false); }
   }

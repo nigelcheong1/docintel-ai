@@ -29,7 +29,7 @@ def make_measurement(numerator: float, denominator: int, unit: Literal["ratio", 
 def _tokens(text: str) -> list[str]:
     text = re.sub(r"(?<=\d),(?=\d{3}(?:\D|$))", "", text.lower())
     text = re.sub(r"n['\u2019]t\b", " not", text)
-    return re.findall(r"[a-z0-9]+(?:\.\d+)?", text)
+    return re.findall(r"[a-z][a-z0-9]*|[+-]?\d+(?:\.\d+)?|[<>]=?|[=%+]", text.replace("\u2212", "-"))
 
 
 def fact_matches(answer: str, fact: ExpectedFact) -> bool:
@@ -40,19 +40,33 @@ def fact_matches(answer: str, fact: ExpectedFact) -> bool:
             continue
         for sentence in sentences:
             actual = _tokens(sentence)
-            if bool(set(expected) & _NEGATION) != bool(set(actual) & _NEGATION):
+            if sum(token in _NEGATION for token in expected) != sum(token in _NEGATION for token in actual):
                 continue
             if any(actual[start:start + len(expected)] == expected for start in range(len(actual) - len(expected) + 1)):
                 return True
     return False
 
 
+def _covering_chunk_ids(anchor: ResolvedAnchor, hits: list[SearchHit]) -> set[str]:
+    ordered = sorted({hit.chunk_id: hit for hit in hits if hit.page_number == anchor.page_number}.values(), key=lambda item: item.chunk_index)
+    quote = normalize_source(anchor.quote)
+    supporting = set()
+    for width in range(1, len(ordered) + 1):
+        for start in range(len(ordered) - width + 1):
+            group = ordered[start:start + width]
+            if any(right.chunk_index != left.chunk_index + 1 for left, right in zip(group, group[1:])):
+                continue
+            if quote not in join_source_texts([hit.text for hit in group]):
+                continue
+            # Only minimal quote-bearing groups count, not adjacent background.
+            if width > 1 and any(quote in join_source_texts([hit.text for hit in subset]) for subset in (group[1:], group[:-1])):
+                continue
+            supporting.update(hit.chunk_id for hit in group)
+    return supporting
+
+
 def _anchor_covered(anchor: ResolvedAnchor, hits: list[SearchHit]) -> bool:
-    unique = {hit.chunk_id: hit for hit in hits if hit.page_number == anchor.page_number and hit.chunk_id in anchor.chunk_ids}
-    if not set(anchor.chunk_ids) <= unique.keys():
-        return False
-    text = join_source_texts([hit.text for hit in sorted(unique.values(), key=lambda item: item.chunk_index)])
-    return normalize_source(anchor.quote) in text
+    return bool(_covering_chunk_ids(anchor, hits))
 
 
 def score_case(case: CaseWrite, anchors: tuple[ResolvedAnchor, ...], execution: SearchExecution, duration_ms: float) -> dict[str, Measurement]:
@@ -63,11 +77,12 @@ def score_case(case: CaseWrite, anchors: tuple[ResolvedAnchor, ...], execution: 
     negative = case.expected_outcome == "insufficient_evidence"
     actual_negative = response.quality.status == "insufficient_evidence" and answer is None and not citation_ids
     actual_positive = response.quality.status == "answerable" and answer is not None
-    trace = [hit for candidates in execution.candidates_by_subquery.values() for hit in candidates[:5]]
-    selected = list(execution.selected_evidence)
+    trace = [hit for candidates in execution.candidates_by_subquery.values() for hit in candidates[:5] if hit.document_id == str(case.document_id)]
+    selected = [hit for hit in execution.selected_evidence if hit.document_id == str(case.document_id)]
     all_hits = {hit.chunk_id: hit for hit in [*trace, *selected]}
     cited = [all_hits[chunk_id] for chunk_id in citation_ids if chunk_id in all_hits]
     anchor_ids = {chunk_id for anchor in anchors for chunk_id in anchor.chunk_ids}
+    anchor_ids.update(chunk_id for anchor in anchors for chunk_id in _covering_chunk_ids(anchor, list(all_hits.values())))
     sentences = response.verification.sentences if answer and response.verification else []
     counts = {
         "outcome_match": (int(actual_negative if negative else actual_positive), 1),

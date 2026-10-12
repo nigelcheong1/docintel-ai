@@ -1,0 +1,185 @@
+# Document Benchmarks
+
+## Start the Feature Checkout
+
+Use the checkout for `feature/document-validation-trust`, currently located at:
+
+```text
+C:\Users\nigel\Documents\Codex\2026-08-27\i-w\work\docintel-ai\.worktrees\feature-verified-answers-rag
+```
+
+Keep PostgreSQL and its existing volume running. Stop the old backend with
+Ctrl+C, then restart it from this checkout's `apps/api` directory:
+
+```powershell
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Startup creates the additional benchmark tables. It does not replace the
+documents, pages, chunks, summaries, or study sets. Keep the existing local
+`.env` database and storage settings. Do not reset Docker volumes or use a new
+empty database to address an empty document list.
+
+In another PowerShell window, from this checkout's `apps/web` directory:
+
+```powershell
+npm run dev -- --hostname 127.0.0.1 --port 3001
+```
+
+Open [Evaluation Lab](http://127.0.0.1:3001/evaluation). If dependencies are
+missing, stop any Next.js process using this checkout before `npm ci`; a running
+Windows SWC library can prevent installation. No model training or new cloud
+provider is needed. Search and document benchmarks use the same configured
+embedding provider and Verified Answers pipeline.
+
+## Create and Review Cases
+
+1. Open **Document Benchmarks**, the default Evaluation Lab tab. **Fixture
+   Tests** is a separate synthetic, lexical-retrieval scorecard; it does not
+   measure uploaded documents. Existing retrieval history remains there.
+2. Enter a suite name and select **Create suite**, then **Add case**.
+3. Select the actual uploaded document and enter a question. Choose
+   **Answerable** or **Not enough evidence**.
+4. For answerable cases, add concise expected fact patterns, optional approved
+   alternatives (one per line), and page-number/exact-quote evidence anchors.
+   Include entities with numbers: a pattern such as `Scopus returned 2366`
+   is stronger than `2366` alone. Quotes may cross adjacent chunks; anchor
+   resolution is checked against current page text and the index.
+5. Tags are comma-separated. Use `table` and `multi-part` for those measured
+   subsets. A subset without eligible reviewed cases is **Not evaluated**,
+   never 100%.
+6. Select **Save draft**. Saving never marks a case reviewed. Preview each
+   anchor with its eye button, inspect the source page, close the viewer,
+   then select **Mark reviewed**.
+7. For a negative case, provide a review rationale describing the inspected
+   scope and why the answer is absent. Use **Open document scope** and its
+   workbench link to inspect the full document. Confirm **I reviewed the
+   whole document scope** before marking reviewed. An automated abstention
+   is not sufficient justification for a negative label.
+
+Editing case content clears source review and increments its version when
+saved. A source text change makes a reviewed case stale; review it again.
+Unchanged reindexing can change chunk IDs without invalidating the page-based
+review. Missing files, missing indexed evidence, and unavailable documents
+are not scored as successful abstentions.
+
+## Run and Inspect
+
+- **Run benchmark** is disabled when the selected suite has no reviewed cases.
+  Only reviewed cases enter the run snapshot. Stale or unavailable reviewed
+  cases produce unavailable results rather than misleading passes.
+- Only one run can be queued/running at once. A conflict message means wait
+  for the active run or select it in **Saved run** and cancel it.
+- Progress and completed case results are saved after each case. Navigating
+  away stops browser polling, not the backend run. Returning restores saved
+  history and selection. **Cancel run** takes effect between cases; completed
+  results are retained.
+- After backend restart, abandoned active runs become **interrupted** and
+  release the active slot. They are not silently resumed; start another run.
+- Filter results by **Failed**, **Unavailable**, **Errors**, or **Needs human
+  review**. Inspection shows the reviewed case version and expected snapshot,
+  actual answer/citations, latency, mode/fallback reason, sentence checks,
+  candidates before selection, and the selected evidence pack.
+- Human assessment (**Correct**, **Incorrect**, **Needs review**) and notes
+  are saved separately from automatic checks. Editing live cases or deleting
+  a suite does not rewrite historical expectations, answers, or scores.
+
+Every measurement carries its numerator, denominator, and scope. Run scores
+apply to completed evaluated cases, not all documents or unfinished work.
+Failures, unavailable cases, and execution errors remain visible beside those
+scores. Lexical fallback is explicitly reported; it is not a passing vector
+retrieval test. A provider-failed negative case is an execution error with no
+abstention score; missing semantic retrieval must not inflate safe-abstention
+results. Positive lexical answers can still be checked, with fallback visible.
+Fact checks are normalized pattern checks, not semantic judges.
+Sentence-check support counts are not a calibrated hallucination probability.
+
+## First Real-Document Checks
+
+Start locally with the uploaded Paper 10 and inspect its page 3:
+
+- An answerable question about the initial Scopus result count and the count
+  remaining after deduplication. Review and label each requested part from
+  the source, keeping the combined-database pool distinct from Scopus alone.
+- A negative question about a private GPU cluster, after checking the full
+  paper for that information. Record the source-scope rationale.
+
+Do not silently repair contradictory source numbers or force a 100% result.
+Record ambiguity in the human assessment. Add table and multi-part cases only
+after inspecting the relevant sources. Build toward 30-50 independently
+reviewed cases across several documents, with meaningful unanswerable cases;
+the application deliberately does not seed fabricated reviewed examples.
+
+## Evidence for a Failure
+
+Provide the question, selected document, case version, run ID/status, retrieval
+mode and fallback reason, and these screenshots:
+
+1. The expected snapshot and actual answer with automatic failure reasons.
+2. The relevant source page and exact anchor quote in Source Viewer.
+3. Expanded candidates and selected evidence, plus relevant case measurements.
+4. Progress/error state and any red backend startup/request error, with API
+   keys and connection passwords removed.
+
+Also check desktop and a narrow mobile viewport: tabs, form fields, editor
+actions, result filters and source links must remain readable and usable.
+
+## Automated Verification
+
+Backend integration tests DROP and recreate tables. Use a dedicated disposable
+database whose name contains `test`, never the development `docintel` database:
+
+```powershell
+$env:DOCINTEL_TEST_DATABASE_URL = "postgresql+psycopg://docintel:docintel@localhost:5432/docintel_verified_fix_test"
+python -m pytest -q
+```
+
+Run frontend checks from `apps/web`:
+
+```powershell
+npm test
+npm run lint
+node node_modules/typescript/bin/tsc --noEmit --incremental false
+```
+
+Missing-source, changed-source, cross-chunk quotes, altered labels, cancellation,
+restart recovery, active-run conflicts and provider fallback are exercised with
+test-owned documents. Do not delete or reindex personal uploads to provoke them.
+
+## Implementation Verification Record
+
+The pre-restriction runs passed 364 backend tests and 130 frontend tests. A
+fresh independent code review identified seven issues; regression tests then
+reproduced and verified fixes for failed-provider negatives, signed quantities
+and comparisons, reversed negation, equivalent overlapping evidence,
+line-wrapped quotes, pending editor requests, and legacy relative upload paths.
+
+Latest verification passed 131 frontend tests, 121 focused backend tests, lint
+and TypeScript. The frontend run used a temporary, uncommitted Vitest
+`resolve.preserveSymlinks` configuration because the sandbox denied Vite's
+native Windows path lookup; it did not change app configuration and was removed.
+Backend counts exclude PostgreSQL and HTTP endpoint tests under the current
+socket restrictions. Earlier broad attempts were interrupted rather than
+reported as passing.
+
+Live BGE/PostgreSQL checks, a fresh full backend suite, CI, and desktop/mobile
+screenshots remain required before merge. The preview could not connect in the
+restricted runtime; fixture passes alone do not substitute for these checks.
+No private real-document cases or source excerpts were seeded or committed.
+
+## Execution Decisions
+
+- PowerShell/manual progress records replaced the Git Bash helper scripts when
+  the sandbox denied MSYS kernel-object access. The cost is losing the helper's
+  automatic bookkeeping validation, not a change in product behavior.
+- Fresh frontend verification temporarily preserved paths rather than invoking
+  the denied native lookup. Symlink canonicalization was not exercised by that
+  run; application configuration remained unchanged.
+- PostgreSQL concurrency and crash recovery still require an unrestricted test
+  run. Until then, their post-fix database behavior is not freshly verified.
+- Real BGE/Paper 10 and desktop/mobile checks are pending. Retrieval accuracy
+  and visual layout issues may still exist; do not merge based only on fixtures.
+- Full backend/CI checks and the private dataset's labels need independent
+  confirmation. A small reviewed suite is not evidence of universal accuracy.
+- The guide is complete; source highlighting and arithmetic contradiction
+  detection remain deferred as approved. Contradictions still need human review.

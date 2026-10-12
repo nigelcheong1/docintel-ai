@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BenchmarkCaseEditor } from "@/components/benchmark-case-editor";
 import * as api from "@/lib/document-evaluation";
@@ -78,5 +78,19 @@ describe("BenchmarkCaseEditor", () => {
     fireEvent.change(screen.getByLabelText("Alternatives 1"), { target: { value: "2,092\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(api.saveDocumentCase).toHaveBeenLastCalledWith("suite-1", expect.objectContaining({ facts: [{ pattern: "2092", alternatives: ["2,092"] }], tags: ["table"] }), "case-1"));
+  });
+  it("does not restore a saved version over edits made while the request was pending", async () => {
+    let finish!: (value: typeof benchmarkCase) => void;
+    vi.mocked(api.saveDocumentCase).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "A different current question?" } });
+    await act(async () => finish(benchmarkCase));
+    fireEvent.click(screen.getByRole("button", { name: "Preview anchor 1" }));
+    await screen.findByRole("dialog", { name: "Source viewer" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByLabelText("Question")).toHaveValue("A different current question?");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
+    expect(screen.getByText("Unsaved draft")).toBeInTheDocument();
   });
 });
