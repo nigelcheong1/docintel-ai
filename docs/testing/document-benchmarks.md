@@ -63,6 +63,20 @@ Unchanged reindexing can change chunk IDs without invalidating the page-based
 review. Missing files, missing indexed evidence, and unavailable documents
 are not scored as successful abstentions.
 
+The editor marks required review fields with a red asterisk and always shows
+**Review prerequisites** above **Mark reviewed**. Answerable cases need a
+question, indexed source, expected facts, complete page/quote anchors, the
+current draft saved, and every anchor previewed. Negative cases need a
+question, indexed source, scope-review rationale, a saved draft, inspected
+document scope and explicit scope confirmation. Negative cases omit expected
+facts; their evidence anchors are optional. Alternatives and tags remain optional.
+Any optional rows that are added must still have valid values.
+
+Incomplete review requirements do not prevent saving a valid draft. Blank
+questions and malformed entered rows are rejected locally, with field-level
+errors and focus moved to the first invalid field. Editing resets source
+review prerequisites. Backend source checks remain authoritative.
+
 ## Run and Inspect
 
 - **Run benchmark** is disabled when the selected suite has no reviewed cases.

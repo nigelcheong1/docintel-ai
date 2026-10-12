@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BenchmarkCaseEditor } from "@/components/benchmark-case-editor";
+import * as sources from "@/lib/api";
 import * as api from "@/lib/document-evaluation";
 import { benchmarkCase, benchmarkDocument } from "./document-evaluation-fixtures";
 
@@ -92,5 +93,92 @@ describe("BenchmarkCaseEditor", () => {
     expect(screen.getByLabelText("Question")).toHaveValue("A different current question?");
     expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
     expect(screen.getByText("Unsaved draft")).toBeInTheDocument();
+  });
+  it("identifies outcome-specific required fields without requiring optional negative anchors", () => {
+    const view = setup();
+    expect(screen.getByText("Required for review")).toBeInTheDocument();
+    expect(screen.getByLabelText("Expected fact 1")).toBeRequired();
+    expect(screen.getByLabelText("Quote 1")).toBeRequired();
+    expect(screen.getByLabelText("Review rationale")).not.toBeRequired();
+    fireEvent.click(screen.getByRole("radio", { name: "Not enough evidence" }));
+    expect(screen.getByLabelText("Review rationale")).toBeRequired();
+    expect(screen.getByLabelText("I reviewed the whole document scope")).toBeRequired();
+    expect(screen.queryByLabelText("Expected fact 1")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Tags")).not.toBeRequired();
+    view.unmount();
+  });
+  it("shows missing positive prerequisites before a disabled review button can be clicked", () => {
+    render(<BenchmarkCaseEditor suiteId="suite-1" documents={[benchmarkDocument]} onSaved={vi.fn()} onCancel={vi.fn()} />);
+    const checklist = screen.getByRole("region", { name: "Review prerequisites" });
+    expect(checklist).toHaveTextContent("Enter a question.");
+    expect(checklist).toHaveTextContent("Add at least one expected fact.");
+    expect(checklist).toHaveTextContent("Add at least one evidence anchor.");
+    expect(checklist).toHaveTextContent("Save the current draft.");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
+  });
+  it("rejects whitespace-only questions locally and focuses the missing required field", async () => {
+    setup();
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "   " } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save draft" }).closest("form")!);
+    expect(api.saveDocumentCase).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Question")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Question")).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a question.");
+  });
+  it("allows a valid incomplete draft while keeping missing review requirements visible", async () => {
+    vi.mocked(api.saveDocumentCase).mockResolvedValue({ ...benchmarkCase, facts: [], anchors: [] });
+    render(<BenchmarkCaseEditor suiteId="suite-1" documents={[benchmarkDocument]} onSaved={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: benchmarkCase.question } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(await screen.findByText("Draft")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Add at least one expected fact.");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
+    expect(api.reviewDocumentCase).not.toHaveBeenCalled();
+  });
+  it("gates incomplete fact/anchor rows and prevents previewing empty evidence", async () => {
+    setup();
+    fireEvent.change(screen.getByLabelText("Expected fact 1"), { target: { value: " " } });
+    fireEvent.change(screen.getByLabelText("Page 1"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Quote 1"), { target: { value: " " } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save draft" }).closest("form")!);
+    expect(api.saveDocumentCase).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Expected fact 1")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Page 1")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Quote 1")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Alternatives 1")).not.toBeRequired();
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Enter expected fact 1.");
+    expect(screen.getByRole("button", { name: "Preview anchor 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
+  });
+  it("shows a negative rationale error on blur and tracks scope confirmation independently", async () => {
+    setup({ ...benchmarkCase, expected_outcome: "insufficient_evidence", facts: [], anchors: [], review_rationale: "" });
+    fireEvent.blur(screen.getByLabelText("Review rationale"));
+    expect(screen.getByLabelText("Review rationale")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Add a scope-review rationale.");
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Inspect the document scope.");
+    fireEvent.click(screen.getByRole("button", { name: "Open document scope" }));
+    await screen.findByRole("dialog", { name: "Source viewer" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Confirm the document scope review.");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
+  });
+  it("enables review only after every positive requirement is complete, and resets it after edits", async () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Preview anchor 1" }));
+    await screen.findByRole("dialog", { name: "Source viewer" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Ready for review");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "Changed question?" } });
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Save the current draft.");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
+  });
+  it("shows source preview errors as an unmet prerequisite instead of claiming completion", async () => {
+    vi.mocked(sources.getDocumentPages).mockRejectedValueOnce(new Error("Source file missing."));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Preview anchor 1" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Source file missing.");
+    expect(screen.getByRole("region", { name: "Review prerequisites" })).toHaveTextContent("Preview every evidence anchor.");
+    expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeDisabled();
   });
 });
