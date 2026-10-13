@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, RefreshCw, Save, Square } from "lucide-react";
 import { benchmarkInputClass } from "@/components/benchmark-case-editor";
 import { EvaluationMetric } from "@/components/evaluation-metric";
@@ -89,13 +89,19 @@ function CaseResult({ result, onAssessed }: { result: DocumentEvalResult; onAsse
   </article>;
 }
 
-export function BenchmarkRunResults({ runId }: { runId: string }) {
+export function BenchmarkRunResults({ runId, onRunUpdated }: { runId: string; onRunUpdated?: (run: DocumentEvalRun) => void }) {
   const [run, setRun] = useState<DocumentEvalRun | null>(null);
   const [results, setResults] = useState<DocumentEvalResult[]>([]);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
-  const [cancelling, setCancelling] = useState(false);
+  const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const [filter, setFilter] = useState<typeof filters[number]>("All");
+  const isCurrentRun = useRef<() => boolean>(() => false);
+  useEffect(() => {
+    let stopped = false;
+    isCurrentRun.current = () => !stopped;
+    return () => { stopped = true; };
+  }, [runId]);
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -105,17 +111,23 @@ export function BenchmarkRunResults({ runId }: { runId: string }) {
         const items = await getDocumentRunResults(runId);
         if (stopped) return;
         setRun(current); setResults(items); setError("");
+        onRunUpdated?.(current);
         if (current.status === "queued" || current.status === "running") timer = setTimeout(() => void load(), 2000);
       } catch (reason) { if (!stopped) setError(reason instanceof Error ? reason.message : "Could not refresh run. Saved results are still shown."); }
     }
     void load();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [runId, refresh]);
+  }, [runId, refresh, onRunUpdated]);
   async function cancel() {
-    setCancelling(true);
-    try { setRun(await cancelDocumentRun(runId)); setError(""); setRefresh((value) => value + 1); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Could not cancel run."); }
-    finally { setCancelling(false); }
+    const isCurrent = isCurrentRun.current;
+    setCancellingRunId(runId);
+    try {
+      const current = await cancelDocumentRun(runId);
+      if (!isCurrent()) return;
+      setRun(current); onRunUpdated?.(current); setError(""); setRefresh((value) => value + 1);
+    }
+    catch (reason) { if (isCurrent()) setError(reason instanceof Error ? reason.message : "Could not cancel run."); }
+    finally { if (isCurrent()) setCancellingRunId(null); }
   }
   const active = run?.status === "queued" || run?.status === "running";
   const shown = results.filter((result) => filterResult(result, filter));
@@ -123,7 +135,7 @@ export function BenchmarkRunResults({ runId }: { runId: string }) {
     {error ? <div className="mb-4 flex flex-wrap items-center gap-3"><p role="alert" className="break-words text-sm text-red-700">{error}</p><Button variant="secondary" onClick={() => setRefresh((value) => value + 1)} leftIcon={<RefreshCw className="h-4 w-4" />}>Retry run refresh</Button></div> : null}
     {!run ? <p role="status">Loading saved run...</p> : <>
       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h2 className="break-words text-lg font-bold">{run.suite_snapshot.name}</h2><p className="mt-1 text-sm capitalize">{run.status}</p><p role="status" className="mt-2 text-sm font-semibold">{run.completed_cases} / {run.total_cases} cases finished</p></div>
-        {active ? <Button variant="secondary" disabled={cancelling || run.cancel_requested} leftIcon={<Square className="h-4 w-4" />} onClick={() => void cancel()}>Cancel run</Button> : null}
+        {active ? <Button variant="secondary" disabled={cancellingRunId === runId || run.cancel_requested} leftIcon={<Square className="h-4 w-4" />} onClick={() => void cancel()}>Cancel run</Button> : null}
       </div>
       {run.cancel_requested ? <p className="mt-2 text-sm text-amber-800">Cancellation requested</p> : null}
       {run.error ? <p className="mt-2 break-words text-sm text-red-700">{run.error}</p> : null}

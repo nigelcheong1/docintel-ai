@@ -1,3 +1,5 @@
+import pytest
+
 from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.documents.intelligence import build_document_profile
 from app.retrieval.document_answers import build_document_aware_answer
@@ -212,6 +214,57 @@ def test_research_methods_answer_prefers_method_section_over_front_matter():
     assert "freezes the vision encoder" in result.answer.summary
     assert "ScienceDirect" not in result.answer.summary
     assert result.answer.citations[0].section_heading == "METHOD"
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "The visual encoder fuses video and language features as shown in Fig. 3.",
+        "The visual encoder follows the fusion rule defined in Eq. 2.",
+        "The visual encoder processes 32 \u00d7 32 image patches with a transformer model.",
+    ],
+)
+def test_research_methods_answer_preserves_scientific_prose(method):
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nMethod\n{method}\nReferences",
+        [(f"METHOD {method}", "METHOD")],
+    )
+
+    result = answer_for("What methods are used?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.answer.summary == method
+    assert result.answer.citations[0].section_heading == "METHOD"
+
+
+def test_research_results_answer_preserves_narrative_top1_top5_metrics():
+    result_text = "The encoder achieves TOP1 91.10 and TOP5 98.63 on unseen videos."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nResults\n{result_text}\nReferences",
+        [(f"RESULTS {result_text}", "RESULTS")],
+    )
+
+    result = answer_for("What results are reported?", document)
+
+    assert result is not None
+    assert result.answer is not None
+    assert result.answer.summary == result_text
+
+
+def test_research_results_answer_omits_terse_top1_top5_table_row():
+    table = "TOP1(%) TOP5(%) Random 30.650 85.028."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nResults\n{table}\nReferences",
+        [(f"RESULTS {table}", "RESULTS")],
+    )
+
+    result = answer_for("What results are reported?", document)
+
+    assert result is None or result.answer is None
 
 
 def test_research_methods_answer_avoids_method_named_result_tables():
@@ -699,7 +752,7 @@ def test_abstains_with_type_aware_reason_for_contract_question_on_research_paper
     assert result.answer is None
     assert result.quality.status == "insufficient_evidence"
     assert "research paper" in result.quality.reason.lower()
-    assert "What methods are used?" in result.quality.suggested_questions
+    assert result.quality.suggested_questions == ["What is this document about?"]
 
 
 def test_academic_report_answers_methods_and_results_despite_feature_contract_phrase():

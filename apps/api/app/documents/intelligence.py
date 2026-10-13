@@ -210,7 +210,20 @@ _ACADEMIC_LIMITATION_TERMS = {
     "limitation",
     "limitations",
 }
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_BOUNDARY = re.compile(
+    r"(?<!Fig\.)(?<!fig\.)(?<!Figs\.)(?<!figs\.)(?<!Eq\.)(?<!eq\.)"
+    r"(?<!Sec\.)(?<!sec\.)(?<!Ref\.)(?<!ref\.)(?<=[.!?])\s+"
+)
+_RESEARCH_NONPROSE_BOUNDARY = re.compile(
+    r"\b(?:Keywords|KEYWORDS|References|REFERENCES|Bibliography|BIBLIOGRAPHY)\b\s*:?"
+    r"|\b(?:keywords|references|bibliography)\s*:"
+    r"|(?:^|\n)\s*\[\d+\]"
+)
+_RESEARCH_DANGLING_REFERENCE = re.compile(
+    r"\b(?:fig(?:ure)?s?|tables?|eq(?:uation)?s?|sections?|refs?|references?)\.?\s*$"
+    r"|\[[^\]]*$",
+    re.IGNORECASE,
+)
 _RESEARCH_CONTENT_HEADINGS = {
     "ABSTRACT",
     "INTRODUCTION",
@@ -547,6 +560,20 @@ def is_research_noise_sentence(sentence: str) -> bool:
     if len(words) < 5:
         return True
     if re.fullmatch(r"(?:[A-Z]\.\s*)+", cleaned):
+        return True
+    if re.search(r"[\u2713\u2714\u2717\u2718]|^\[\d+\]", cleaned):
+        return True
+    if _RESEARCH_DANGLING_REFERENCE.search(cleaned):
+        return True
+    numeric_count = sum(bool(re.fullmatch(r"\d+(?:\.\d+)?%?", word.strip(".,;()"))) for word in words)
+    acronym_count = sum(bool(re.fullmatch(r"[A-Z][A-Z0-9/-]+", word.strip(".,;()"))) for word in words)
+    if numeric_count >= 2 and numeric_count / len(words) >= 1 / 3 and is_research_table_like_text(cleaned):
+        return True
+    if numeric_count >= 3 and numeric_count / len(words) >= 1 / 3:
+        return True
+    if acronym_count >= 3 and acronym_count / len(words) >= 1 / 2:
+        return True
+    if re.search(r"\b[A-Z][a-z]+\s+[A-Z],.*\b(?:19|20)\d{2}\b", cleaned):
         return True
     if _RESEARCH_AUTHOR_LINE_PATTERN.search(cleaned) and not _RESEARCH_CONTRIBUTION_PATTERN.search(cleaned):
         return True
@@ -893,7 +920,8 @@ def _context(text: str, value: str, window: int = 80) -> str:
 
 
 def _research_sentence_candidates(text: str) -> list[str]:
-    cleaned = clean_research_text(text)
+    prose = _RESEARCH_NONPROSE_BOUNDARY.split(normalize_spaced_headings(text), maxsplit=1)[0]
+    cleaned = clean_research_text(prose)
     return [
         sentence
         for sentence in (sentence.strip() for sentence in _SENTENCE_BOUNDARY.split(cleaned))
@@ -904,7 +932,7 @@ def _research_sentence_candidates(text: str) -> list[str]:
 def _research_chunks(document: Document) -> Iterable[Chunk]:
     for chunk in ordered_chunks(document):
         heading = chunk_heading(chunk)
-        if heading == "REFERENCES" or is_table_of_contents_like_text(chunk.text):
+        if heading in {"REFERENCES", "KEYWORDS", "BIBLIOGRAPHY"} or is_table_of_contents_like_text(chunk.text):
             continue
         yield chunk
 
@@ -919,7 +947,6 @@ def _add_research_section_fact(
     kind: str,
     terms: set[str],
     allow_unheaded_terms: bool = False,
-    exclude_table_like: bool = False,
 ) -> None:
     candidates: list[tuple[int, int, str, Chunk]] = []
     for chunk in _research_chunks(document):
@@ -932,15 +959,11 @@ def _add_research_section_fact(
                 continue
             if not any(term in normalized_text for term in terms):
                 continue
-        if exclude_table_like and is_research_table_like_text(text):
-            continue
         sentences = _research_sentence_candidates(text)
         if not sentences:
             continue
         for sentence_index, sentence in enumerate(sentences):
             lower_sentence = sentence.lower()
-            if exclude_table_like and is_research_table_like_text(sentence):
-                continue
             score = 5 if heading_match else 0
             score += 3 if any(term in lower_sentence for term in terms) else 0
             if label == "Method":
@@ -1012,7 +1035,6 @@ def _extract_research_entities(document: Document) -> list[DocumentFactRead]:
             "visual",
         },
         allow_unheaded_terms=True,
-        exclude_table_like=True,
     )
     _add_research_section_fact(
         facts,
@@ -1307,12 +1329,93 @@ def extract_entities(document: Document, document_type: str | None = None) -> li
     return facts
 
 
+def _suggested_questions(
+    document_type: str,
+    sections: list[DocumentSectionRead],
+    dates: list[DocumentFactRead],
+    numbers: list[DocumentFactRead],
+    entities: list[DocumentFactRead],
+    text: str,
+) -> list[str]:
+    meaningful_headings: set[str] = set()
+    section_bodies: list[str] = []
+    for section in sections:
+        body = strip_leading_heading(section.text_preview, section.heading)
+        if not body or _canonical_heading(body) in _KNOWN_HEADINGS or is_table_of_contents_like_text(body):
+            continue
+        if document_type in {"research_paper", "academic_report"}:
+            if not _research_sentence_candidates(body):
+                continue
+        elif len(body.split()) < 2:
+            continue
+        meaningful_headings.add(section.heading)
+        section_bodies.append(body)
+
+    def has_section(*headings: str) -> bool:
+        return bool(meaningful_headings.intersection(headings))
+
+    kinds = {fact.kind for fact in entities}
+    method_supported = "research_method" in kinds or has_section("METHOD", "METHODS", "METHODOLOGY", "APPROACH", "MODEL")
+    results_supported = (
+        "research_result" in kinds
+        or has_section("RESULT", "RESULTS", "EVALUATION", "EXPERIMENT", "EXPERIMENTS", "FINDINGS")
+        or any(fact.kind == "metric" for fact in numbers)
+    )
+    limitations_supported = has_section("LIMITATION", "LIMITATIONS", "FUTURE WORK") or any(
+        re.search(r"\b(?:limitations?|future work|future research)\b", body, re.IGNORECASE)
+        for body in section_bodies
+    )
+    supported = {
+        "What is this document about?": True,
+        "What is this project report about?": True,
+        "What methods are used?": method_supported,
+        "What design or methodology is used?": method_supported,
+        "What datasets are mentioned?": "dataset" in kinds or has_section("DATASET", "DATASETS"),
+        "What results are reported?": results_supported,
+        "What limitations or future work are discussed?": limitations_supported,
+        "Who prepared this project report?": any(fact.label == "Prepared by" for fact in entities),
+        "What technical skills are mentioned?": has_section(
+            "TECHNICAL SKILLS", "CORE SKILLS", "SKILLS", "PROGRAMMING LANGUAGES",
+            "FRAMEWORKS AND LIBRARIES", "FRAMEWORKS & LIBRARIES", "TOOLS AND PLATFORMS", "TOOLS & PLATFORMS",
+        ),
+        "What projects are listed in this document?": has_section("PROJECTS", "KEY PROJECTS", "PROJECT EXPERIENCE"),
+        "What education background is listed?": has_section("EDUCATION"),
+        "What experience is described?": has_section(
+            "EXPERIENCE", "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE", "INTERNSHIP EXPERIENCE",
+        ),
+        "What total amount is due?": any(
+            fact.kind == "amount" and fact.label in {"Total due", "Balance due", "Total"} for fact in numbers
+        ),
+        "When is payment due?": any(fact.label == "Due date" for fact in dates),
+        "Who is the invoice billed to?": bool(_BILL_TO_PATTERN.search(text)),
+        "What payment terms are mentioned?": has_section("PAYMENT TERMS"),
+        "Who are the parties involved?": any(fact.label == "Party" for fact in entities) or has_section("PARTIES"),
+        "What obligations are mentioned?": has_section("OBLIGATIONS", "RESPONSIBILITIES") or bool(
+            re.search(r"\bshall\s+\w+", text, re.IGNORECASE)
+        ),
+        "What risks or termination terms are mentioned?": has_section("RISKS", "TERMINATION", "LIABILITY"),
+        "What dates are mentioned?": bool(dates),
+        "What are the key findings?": has_section("FINDINGS", "RESULT", "RESULTS"),
+        "What recommendations are listed?": has_section("RECOMMENDATIONS", "NEXT STEPS"),
+        "What risks are mentioned?": has_section("RISKS"),
+    }
+    questions = [
+        question
+        for question in _SUGGESTED_QUESTIONS.get(document_type, _SUGGESTED_QUESTIONS["generic"])
+        if supported.get(question, False)
+    ]
+    return questions or [_SUGGESTED_QUESTIONS["generic"][0]]
+
+
 def build_document_profile(document: Document) -> DocumentProfileRead:
     chunks = ordered_chunks(document)
     sections = extract_sections(document)
     text = _full_text(document)
     document_type = infer_document_type(document.filename, text, sections)
     title = infer_title(document, sections, document_type)
+    dates = extract_dates(document, document_type)
+    numbers = extract_numbers(document, document_type)
+    entities = extract_entities(document, document_type)
     return DocumentProfileRead(
         document_id=document.id,
         filename=document.filename,
@@ -1320,8 +1423,8 @@ def build_document_profile(document: Document) -> DocumentProfileRead:
         title=title,
         overview=_overview(document_type, sections, chunks),
         sections=sections,
-        key_dates=extract_dates(document, document_type),
-        key_numbers=extract_numbers(document, document_type),
-        key_entities=extract_entities(document, document_type),
-        suggested_questions=_SUGGESTED_QUESTIONS.get(document_type, _SUGGESTED_QUESTIONS["generic"]),
+        key_dates=dates,
+        key_numbers=numbers,
+        key_entities=entities,
+        suggested_questions=_suggested_questions(document_type, sections, dates, numbers, entities, text),
     )

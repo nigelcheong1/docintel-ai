@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,6 +33,26 @@ def create_pdf_bytes(path: Path, text: str) -> bytes:
 def create_image_bytes(path: Path) -> bytes:
     Image.new("RGB", (120, 60), "white").save(path)
     return path.read_bytes()
+
+
+@pytest.mark.integration
+def test_original_checksum_endpoint_checks_bytes_and_missing_source(db_session, tmp_path):
+    data = create_pdf_bytes(tmp_path / "source.pdf", "An original sample file.")
+    stored = save_upload_bytes("source.pdf", "application/pdf", data, tmp_path / "storage", 20)
+    document = index_stored_upload(db_session, stored, lambda: FakeEmbeddingProvider())
+    app = create_app()
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    response = client.get(f"/documents/{document.id}/checksum")
+    assert response.status_code == 200
+    assert response.json() == {"sha256": hashlib.sha256(data).hexdigest()}
+    Path(document.file_path).unlink()
+    assert client.get(f"/documents/{document.id}/checksum").status_code == 404
+    assert client.get("/documents/00000000-0000-0000-0000-000000000000/checksum").status_code == 404
 
 
 class FakeOcrProvider:

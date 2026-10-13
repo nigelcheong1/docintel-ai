@@ -39,6 +39,8 @@ jobs:
       - name: Run full backend test suite
         working-directory: apps/api
         run: pytest -v
+      - name: Check demo loader safety
+        run: python -m pytest -q demo/tests
 
   frontend:
     runs-on: ubuntu-latest

@@ -1,4 +1,6 @@
 from functools import lru_cache
+from hashlib import file_digest
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
@@ -216,6 +218,17 @@ def documents(db: Annotated[Session, Depends(get_db)]) -> list[DocumentRead]:
 def document_detail(document_id: str, db: Annotated[Session, Depends(get_db)]) -> DocumentDetail:
     document = get_document_or_404(db, document_id)
     return document_detail_read(document)
+
+
+@router.get("/{document_id}/checksum")
+def document_checksum(document_id: str, db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+    document = get_document_or_404(db, document_id)
+    try:
+        with Path(document.file_path).open("rb") as source:
+            digest = file_digest(source, "sha256").hexdigest()
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="Original source file is unavailable.") from exc
+    return {"sha256": digest}
 
 
 @router.get("/{document_id}/status", response_model=DocumentProcessingStatusRead)

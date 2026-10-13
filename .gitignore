@@ -27,6 +27,8 @@ storage/
 models/
 .worktrees/
 .superpowers/
+demo/.local/
+backups/
 
 # Docker and databases
 *.sqlite
