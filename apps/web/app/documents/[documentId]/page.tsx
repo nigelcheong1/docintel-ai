@@ -2,10 +2,8 @@ import { DocumentWorkbenchPage } from "@/components/document-workbench-page";
 import { parseInitialChunk, parseInitialPage } from "@/lib/document-deep-link";
 
 type DocumentDetailPageProps = {
-  params: Promise<{ documentId: string }> | { documentId: string };
-  searchParams?:
-    | Promise<{ page?: string | string[]; chunk?: string | string[] }>
-    | { page?: string | string[]; chunk?: string | string[] };
+  params: Promise<{ documentId: string }>;
+  searchParams?: Promise<{ page?: string | string[]; chunk?: string | string[] }>;
 };
 
 export default async function DocumentDetailPage({ params, searchParams }: DocumentDetailPageProps) {

@@ -73,3 +73,20 @@ def test_extract_image_pages_uses_ocr_as_page_one(tmp_path):
     assert result.pages[0].page_number == 1
     assert result.pages[0].text == "Receipt total is RM 42.00"
     assert result.pages[0].text_source == "ocr"
+
+
+def test_native_extraction_replaces_nul_before_persistence(monkeypatch, tmp_path):
+    monkeypatch.setattr("app.documents.extraction.parse_pdf", lambda path: [
+        ParsedPage(page_number=1, text="Quarterly\x00report\nTotal: 42.00", width=900, height=200)
+    ])
+    result = extract_pdf_pages(tmp_path / "sample.pdf", ocr_provider=None,
+        language="eng", dpi=120, max_ocr_pages=0)
+    assert result.pages[0].text == "Quarterly report\nTotal: 42.00"
+    assert result.pages[0].text_source == "native"
+
+
+def test_ocr_extraction_replaces_nul_without_joining_words(tmp_path):
+    image_path = tmp_path / "scan.png"
+    Image.new("RGB", (120, 60), "white").save(image_path)
+    result = extract_image_pages(image_path, ocr_provider=FakeOcrProvider("Total\x00USD 10.00"), language="eng")
+    assert result.pages[0].text == "Total USD 10.00"

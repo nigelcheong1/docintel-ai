@@ -1,12 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentBenchmarks } from "@/components/document-benchmarks";
 import * as api from "@/lib/document-evaluation";
-import { benchmarkDocument, benchmarkSuite, benchmarkRun } from "./document-evaluation-fixtures";
+import { benchmarkDocument, benchmarkSuite, benchmarkRun, benchmarkResult } from "./document-evaluation-fixtures";
 
-vi.mock("@/lib/document-evaluation", () => ({ listDocumentSuites: vi.fn(), createDocumentSuite: vi.fn(), getDocumentSuite: vi.fn(), updateDocumentSuite: vi.fn(), deleteDocumentSuite: vi.fn(), deleteDocumentCase: vi.fn(), listDocumentRuns: vi.fn(), createDocumentRun: vi.fn() }));
-vi.mock("@/components/benchmark-run-results", () => ({ BenchmarkRunResults: ({ runId }: { runId: string }) => <p>Saved results {runId}</p> }));
+vi.mock("@/lib/document-evaluation", () => ({ listDocumentSuites: vi.fn(), createDocumentSuite: vi.fn(), getDocumentSuite: vi.fn(), updateDocumentSuite: vi.fn(), deleteDocumentSuite: vi.fn(), deleteDocumentCase: vi.fn(), listDocumentRuns: vi.fn(), createDocumentRun: vi.fn(), getDocumentRun: vi.fn(), getDocumentRunResults: vi.fn(), cancelDocumentRun: vi.fn(), assessDocumentResult: vi.fn() }));
 vi.mock("@/lib/api", () => ({ getDocuments: vi.fn(async () => [benchmarkDocument]) }));
+const flush = async () => { await act(async () => { await Promise.resolve(); }); };
 describe("DocumentBenchmarks", () => {
   beforeEach(() => {
     vi.clearAllMocks(); localStorage.clear();
@@ -15,6 +15,8 @@ describe("DocumentBenchmarks", () => {
     vi.mocked(api.createDocumentSuite).mockResolvedValue(benchmarkSuite);
     vi.mocked(api.listDocumentRuns).mockResolvedValue([]);
     vi.mocked(api.createDocumentRun).mockResolvedValue(benchmarkRun);
+    vi.mocked(api.getDocumentRun).mockResolvedValue({ ...benchmarkRun, status: "completed" });
+    vi.mocked(api.getDocumentRunResults).mockResolvedValue([benchmarkResult]);
   });
   it("creates a suite from the empty state without fabricated cases", async () => {
     vi.mocked(api.listDocumentSuites).mockResolvedValue([]);
@@ -53,11 +55,13 @@ describe("DocumentBenchmarks", () => {
     await waitFor(() => expect(runButton).toBeEnabled());
     fireEvent.click(runButton);
     await waitFor(() => expect(api.createDocumentRun).toHaveBeenCalledWith("suite-1"));
-    expect(await screen.findByText("Saved results run-1")).toBeInTheDocument();
+    expect(await screen.findByText("1 / 2 cases finished")).toBeInTheDocument();
+    expect(screen.getByLabelText("Saved run")).toHaveValue("run-1");
     view.unmount();
     vi.mocked(api.listDocumentRuns).mockResolvedValue([benchmarkRun]);
     render(<DocumentBenchmarks />);
-    expect(await screen.findByText("Saved results run-1")).toBeInTheDocument();
+    expect(await screen.findByText("1 / 2 cases finished")).toBeInTheDocument();
+    expect(screen.getByLabelText("Saved run")).toHaveValue("run-1");
   });
   it("surfaces an actionable globally-busy error without a false new run", async () => {
     vi.mocked(api.getDocumentSuite).mockResolvedValue({ ...benchmarkSuite, cases: benchmarkSuite.cases.map((item) => ({ ...item, review_state: "reviewed", availability: "ready" })) });
@@ -66,6 +70,53 @@ describe("DocumentBenchmarks", () => {
     await screen.findByText("Reviewed");
     fireEvent.click(screen.getByRole("button", { name: "Run benchmark" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Wait or cancel it.");
-    expect(screen.queryByText("Saved results run-1")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Saved benchmark run" })).not.toBeInTheDocument();
+  });
+  describe("saved run status sync", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+    it.each(["completed", "cancelled", "interrupted", "failed"] as const)("syncs queued and running progress through %s without refetching or remounting", async (status) => {
+      const queued = { ...benchmarkRun, status: "queued" as const };
+      const historical = { ...benchmarkRun, id: "run-2", status: "completed" as const, suite_snapshot: { id: "old-suite", name: "Historical checks" } };
+      vi.mocked(api.listDocumentRuns).mockResolvedValue([historical, queued]);
+      vi.mocked(api.getDocumentRun).mockResolvedValue(queued);
+      localStorage.setItem("docintel-benchmark-run", "run-1");
+      render(<DocumentBenchmarks />); await flush();
+      const select = screen.getByLabelText("Saved run") as HTMLSelectElement;
+      const option = select.querySelector('option[value="run-1"]');
+      expect(option).toHaveTextContent("queued");
+      fireEvent.click(screen.getByRole("button", { name: "Needs human review" }));
+      fireEvent.change(screen.getByLabelText("Assessment note"), { target: { value: "Keep this review" } });
+      expect(api.getDocumentRun).toHaveBeenCalledTimes(1);
+      vi.mocked(api.getDocumentRun).mockResolvedValue(benchmarkRun);
+      await act(async () => vi.advanceTimersByTimeAsync(2000));
+      expect(option).toHaveTextContent("running");
+      expect(api.getDocumentRun).toHaveBeenCalledTimes(2);
+      vi.mocked(api.getDocumentRun).mockResolvedValue({ ...benchmarkRun, status, completed_cases: 2 });
+      await act(async () => vi.advanceTimersByTimeAsync(2000));
+      expect(option).toHaveTextContent(status);
+      expect(screen.getByText("2 / 2 cases finished")).toBeInTheDocument();
+      expect(select).toHaveValue("run-1");
+      expect(Array.from(select.options, (item) => item.value)).toEqual(["", "run-2", "run-1"]);
+      expect(localStorage.getItem("docintel-benchmark-run")).toBe("run-1");
+      expect(screen.getByRole("button", { name: "Needs human review" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByLabelText("Assessment note")).toHaveValue("Keep this review");
+      await act(async () => vi.advanceTimersByTimeAsync(6000));
+      expect(api.getDocumentRun).toHaveBeenCalledTimes(3);
+      expect(api.getDocumentRunResults).toHaveBeenCalledTimes(3);
+      expect(api.listDocumentRuns).toHaveBeenCalledTimes(1);
+    });
+    it("updates the saved status from cancellation before the follow-up refresh resolves", async () => {
+      vi.mocked(api.listDocumentRuns).mockResolvedValue([benchmarkRun]);
+      vi.mocked(api.getDocumentRun).mockResolvedValueOnce(benchmarkRun).mockReturnValueOnce(new Promise(() => {}));
+      vi.mocked(api.cancelDocumentRun).mockResolvedValue({ ...benchmarkRun, status: "cancelled", cancel_requested: true });
+      render(<DocumentBenchmarks />); await flush();
+      fireEvent.click(screen.getByRole("button", { name: "Cancel run" })); await flush();
+      const select = screen.getByLabelText("Saved run");
+      expect(select.querySelector('option[value="run-1"]')).toHaveTextContent("cancelled");
+      expect(select).toHaveValue("run-1");
+      expect(screen.getByRole("heading", { name: benchmarkResult.case_snapshot.question })).toBeInTheDocument();
+      expect(api.listDocumentRuns).toHaveBeenCalledTimes(1);
+    });
   });
 });

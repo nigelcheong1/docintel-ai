@@ -1,3 +1,5 @@
+import pytest
+
 from app.db.models import Chunk, Document, DocumentStatus, Page
 from app.documents.intelligence import build_document_profile
 
@@ -502,3 +504,171 @@ def test_profile_detects_academic_project_report_without_legal_contract_false_po
     assert not any(fact.value == "1" and "Table of Contents" in fact.source_text for fact in profile.key_numbers)
     assert any(fact.label == "Lecturer" and fact.value == "Goh Sim Kuan" for fact in profile.key_entities)
     assert any(fact.label == "Prepared by" and "Nigel Cheong Tze Hock" in fact.value for fact in profile.key_entities)
+
+
+@pytest.mark.parametrize("heading,label", [("ABSTRACT", "Contribution"), ("METHOD", "Method"), ("RESULTS", "Result")])
+@pytest.mark.parametrize(
+    "fragment",
+    [
+        "Transformer TSN I3D LSTM 2021 \u2713 2022 \u2717 2023 \u2713 91.10 89.58.",
+        "TOP1(%) TOP5(%) F1 score(%) Random 30.650 85.028 25.455.",
+        "TOP1(%) TOP5(%) TSN 41.06 75.20.",
+        "TOP1(%) TOP5(%) Random 30.650 85.028.",
+        "[12] Smith J, Brown L (2021) A transformer for visual action recognition, IEEE Robotics 12 44-51.",
+        "Keywords: transformer; visual encoder; temporal attention; action recognition; multimodal fusion.",
+        "The architecture is described in Fig.",
+    ],
+)
+def test_research_profile_omits_fragmentary_prose_facts(heading, label, fragment):
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\n{heading}\n{fragment}\nReferences",
+        [(f"{heading} {fragment}", heading)],
+    )
+
+    profile = build_document_profile(document)
+
+    assert profile.document_type == "research_paper"
+    assert not any(fact.label == label for fact in profile.key_entities)
+
+
+def test_research_profile_keeps_method_prose_beside_table_and_complete_figure_reference():
+    method = "The visual encoder fuses video and language features as shown in Fig. 3."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nMethod\n{method}\nReferences",
+        [(f"METHOD {method}\nTOP1(%) TOP5(%) TSN 41.06 75.20", "METHOD")],
+    )
+
+    profile = build_document_profile(document)
+
+    assert any(
+        fact.label == "Method" and fact.value == method.rstrip(".")
+        for fact in profile.key_entities
+    )
+
+
+def test_research_profile_preserves_multiplication_in_method_prose():
+    method = "The visual encoder processes 32 \u00d7 32 image patches with a transformer model."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nMethod\n{method}\nReferences",
+        [(f"METHOD {method}", "METHOD")],
+    )
+
+    profile = build_document_profile(document)
+
+    assert [fact.value for fact in profile.key_entities if fact.label == "Method"] == [method.rstrip(".")]
+    assert "What methods are used?" in profile.suggested_questions
+
+
+def test_research_profile_preserves_narrative_top1_top5_results():
+    result = "The encoder achieves TOP1 91.10 and TOP5 98.63 on unseen videos."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nResults\n{result}\nReferences",
+        [(f"RESULTS {result}", "RESULTS")],
+    )
+
+    profile = build_document_profile(document)
+
+    assert [fact.value for fact in profile.key_entities if fact.label == "Result"] == [result.rstrip(".")]
+
+
+def test_research_profile_does_not_suggest_methods_from_terse_metric_table():
+    table = "TOP1(%) TOP5(%) Random 30.650 85.028."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\nThis paper studies robot collaboration.\nMethod\n{table}\nReferences",
+        [(f"METHOD {table}", "METHOD")],
+    )
+
+    profile = build_document_profile(document)
+
+    assert "What methods are used?" not in profile.suggested_questions
+
+
+def test_research_profile_does_not_promote_keywords_after_abstract_to_contribution():
+    contribution = "We propose a visual encoder for robot collaboration."
+    document = make_document(
+        "paper.pdf",
+        f"Abstract\n{contribution}\nKeywords\nTransformer; visual attention; multimodal fusion\nReferences",
+        [(f"ABSTRACT {contribution} Keywords: transformer; visual attention; multimodal fusion.", "ABSTRACT")],
+    )
+
+    profile = build_document_profile(document)
+
+    assert [fact.value for fact in profile.key_entities if fact.label == "Contribution"] == [
+        contribution.rstrip(".")
+    ]
+
+
+@pytest.mark.parametrize(
+    "filename,page_text,document_type,overview_question",
+    [
+        ("paper.pdf", "Abstract\nThis paper discusses robot collaboration.\nReferences", "research_paper", "What is this document about?"),
+        ("project.pdf", "Course Code: ENG101\nAssessment Title: Project Submission\nOverview\nThe project explores robot collaboration.", "academic_report", "What is this project report about?"),
+        ("notes.txt", "Garden Notes\nThe garden has a shaded planting area.", "generic", "What is this document about?"),
+    ],
+)
+def test_profile_suggests_only_overview_when_specialized_evidence_is_absent(
+    filename, page_text, document_type, overview_question
+):
+    document = make_document(filename, page_text, [(page_text, None)])
+
+    profile = build_document_profile(document)
+
+    assert profile.document_type == document_type
+    assert profile.overview
+    assert profile.suggested_questions == [overview_question]
+
+
+def test_research_questions_ignore_empty_headings_keywords_and_bibliography():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nThis paper discusses robot collaboration.\nMethod\nResults\nDataset\nLimitations\nKeywords\nMNIST\nReferences\n[1] A study of COCO.",
+        [
+            ("ABSTRACT This paper discusses robot collaboration.", "ABSTRACT"),
+            ("KEYWORDS MNIST", "KEYWORDS"),
+            ("REFERENCES [1] A study of COCO.", "REFERENCES"),
+        ],
+    )
+
+    profile = build_document_profile(document)
+
+    assert profile.suggested_questions == ["What is this document about?"]
+
+
+def test_research_questions_use_meaningful_page_sections_without_chunks():
+    document = make_document(
+        "paper.pdf",
+        "Abstract\nWe propose a visual encoder for robot collaboration.\nMethod\nThe encoder fuses video and language features.\nDataset\nWe evaluate on the RobotBench collection of annotated videos.\nResults\nThe encoder improves recognition accuracy over the baseline.\nLimitations\nThe encoder requires paired video and language inputs.\nReferences",
+        [],
+    )
+
+    profile = build_document_profile(document)
+
+    assert profile.suggested_questions == [
+        "What is this document about?",
+        "What methods are used?",
+        "What datasets are mentioned?",
+        "What results are reported?",
+        "What limitations or future work are discussed?",
+    ]
+
+
+@pytest.mark.parametrize(
+    "filename,page_text,document_type",
+    [
+        ("invoice.pdf", "Invoice INV-1001\nAn invoice has been requested for the repair.", "invoice"),
+        ("agreement.pdf", "Agreement\nThis agreement describes a proposed collaboration.", "contract"),
+        ("report.pdf", "Executive Summary\nThe report reviews laboratory usage.", "report"),
+    ],
+)
+def test_profile_omits_unsupported_questions_for_existing_document_types(filename, page_text, document_type):
+    document = make_document(filename, page_text, [(page_text, None)])
+
+    profile = build_document_profile(document)
+
+    assert profile.document_type == document_type
+    assert profile.suggested_questions == ["What is this document about?"]

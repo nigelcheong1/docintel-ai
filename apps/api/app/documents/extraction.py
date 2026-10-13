@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import fitz
@@ -59,7 +59,8 @@ def extract_pdf_pages(
     dpi: int,
     max_ocr_pages: int,
 ) -> ExtractionResult:
-    native_pages = parse_pdf(file_path)
+    # PostgreSQL text cannot contain NUL glyph artifacts from PDF fonts.
+    native_pages = [replace(page, text=page.text.replace("\x00", " ")) for page in parse_pdf(file_path)]
     extracted_pages = [
         ExtractedPage(
             page_number=page.page_number,
@@ -88,7 +89,7 @@ def extract_pdf_pages(
                 native_page = native_pages[index]
                 ocr_result = ocr_provider.ocr_image(_page_image(document[index], dpi=dpi), language=language)
                 ocr_duration_ms += ocr_result.duration_ms
-                ocr_text = " ".join(ocr_result.text.split())
+                ocr_text = " ".join(ocr_result.text.replace("\x00", " ").split())
                 if not ocr_text:
                     continue
                 ocr_page_count += 1
@@ -125,7 +126,7 @@ def extract_image_pages(file_path: Path, *, ocr_provider: OcrProvider | None, la
     except Exception as exc:
         raise DocumentParseError(f"Could not read image for OCR: {exc}") from exc
 
-    text = " ".join(ocr_result.text.split())
+    text = " ".join(ocr_result.text.replace("\x00", " ").split())
     if not text:
         return ExtractionResult(pages=[], ocr_page_count=0, ocr_duration_ms=ocr_result.duration_ms)
 

@@ -6,6 +6,7 @@ from typing import Literal
 
 from app.db.models import Chunk, Document
 from app.documents.intelligence import (
+    _SENTENCE_BOUNDARY as _RESEARCH_SENTENCE_BOUNDARY,
     chunk_heading,
     clean_research_text,
     clean_text,
@@ -301,7 +302,7 @@ def _research_snippet(text: str, query: str, *, intent: str | None = None, prefe
     cleaned = clean_research_text(text)
     raw_sentences = [
         sentence.strip()
-        for sentence in _SENTENCE_BOUNDARY.split(cleaned)
+        for sentence in _RESEARCH_SENTENCE_BOUNDARY.split(cleaned)
         if sentence.strip() and not is_research_noise_sentence(sentence)
     ]
     if raw_sentences and _is_research_sentence_fragment(raw_sentences[0]):

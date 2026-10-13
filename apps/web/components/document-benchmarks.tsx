@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pencil, Play, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { BenchmarkCaseEditor, benchmarkInputClass, caseStateLabel } from "@/components/benchmark-case-editor";
 import { BenchmarkRunResults } from "@/components/benchmark-run-results";
@@ -24,6 +24,11 @@ export function DocumentBenchmarks() {
   const [refresh, setRefresh] = useState(0);
   const [runs, setRuns] = useState<DocumentEvalRun[]>([]);
   const [runId, setRunId] = useState("");
+  const updateRun = useCallback((updated: DocumentEvalRun) => {
+    setRuns((current) => current.some((item) => item.id === updated.id)
+      ? current.map((item) => item.id === updated.id ? updated : item)
+      : [updated, ...current]);
+  }, []);
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(async () => {
@@ -120,6 +125,6 @@ export function DocumentBenchmarks() {
       </> : <p role="status" className="text-sm text-slate-600">Loading suite...</p>}
     </>}
     {runs.length ? <div className="border-t border-line pt-5"><label className="block text-sm font-semibold">Saved run<select className={benchmarkInputClass} value={runId} onChange={(event) => setRunId(event.target.value)}><option value="">Select run</option>{runs.map((run) => <option key={run.id} value={run.id}>{run.suite_snapshot.name} · {new Date(run.created_at).toLocaleString()} · {run.status}</option>)}</select></label></div> : null}
-    {runId ? <BenchmarkRunResults key={runId} runId={runId} /> : null}
+    {runId ? <BenchmarkRunResults key={runId} runId={runId} onRunUpdated={updateRun} /> : null}
   </section>;
 }

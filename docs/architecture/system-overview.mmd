@@ -1,11 +1,15 @@
 flowchart LR
-  Browser[Browser] --> Web[Next.js web app]
-  Web --> API[FastAPI backend]
-  API --> Storage[Local file storage]
-  API --> Parser[PyMuPDF PDF parser]
-  Parser --> Chunks[Text chunks]
-  Chunks --> Embedder[Local BGE embeddings]
-  Embedder --> DB[(PostgreSQL + pgvector)]
-  API --> DB
-  DB --> Search[Cited retrieval results]
-  Search --> Web
+    Browser[Next.js workspace] --> API[FastAPI]
+    API --> Originals[Local originals]
+    Originals --> Extract[Native PDF text / local OCR]
+    Extract --> Pages[Pages, chunks, table metadata]
+    Pages --> BGE[Local BGE embeddings]
+    BGE --> DB[(PostgreSQL + pgvector)]
+    API --> DB
+    DB --> Retrieve[Hybrid retrieval + heuristic reranking]
+    Retrieve --> Pack[Selected evidence pack]
+    Pack --> Check[Extractive answer + deterministic sentence checks]
+    Check --> Result[Cited answer or abstention]
+    Result --> Browser
+    API --> Preview[Rendered source pages]
+    Preview --> Browser

@@ -1,0 +1,10 @@
+{
+  "documents": [
+    {"file":"colpali-paper.pdf","kind":"public research paper","title":"ColPali: Efficient Document Retrieval with Vision Language Models","authors":"Manuel Faysse, Hugues Sibille, Tony Wu, Bilel Omrani, Gautier Viaud, Celine Hudelot, Pierre Colombo","version":"arXiv:2407.01449v6","source":"https://arxiv.org/pdf/2407.01449v6","license":"CC0-1.0 as linked by the arXiv abstract","license_url":"https://arxiv.org/abs/2407.01449v6","sha256":"852ec724f3d48316265611579f4c556a14fea24f29360b5929d02e4604662631"},
+    {"file":"nist-ai-rmf-1.0.pdf","kind":"public technical report","title":"Artificial Intelligence Risk Management Framework (AI RMF 1.0)","authors":"National Institute of Standards and Technology","version":"NIST AI 100-1, January 2023","source":"https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf","license":"NIST Technical Series worldwide reprint permission; third-party material retains its notices","license_url":"https://www.nist.gov/nist-research-library/nist-publications","sha256":"7576edb531d9848825814ee88e28b1795d3a84b435b4b797d3670eafdc4a89f1"},
+    {"file":"sample-invoice.pdf","kind":"original fictional invoice","license":"CC0-1.0, demo asset only","sha256":"936b2ff33a5760049b1fbb9c7bfadb6a253a95c818e5f7701a9227e92145c5d5"},
+    {"file":"sample-contract.pdf","kind":"original fictional services agreement","license":"CC0-1.0, demo asset only","sha256":"076c42cc853bf149b6e2e048a599b5fe37859add3b4e3c3c908babf64f70d5ff"},
+    {"file":"sample-resume.pdf","kind":"original fictional resume","license":"CC0-1.0, demo asset only","sha256":"ea86a3b332dffff8636d9090c21a46164c18f7673c3227d85bc24c5d9ad9773f"},
+    {"file":"sample-receipt.png","kind":"original fictional receipt raster for OCR","license":"CC0-1.0, demo asset only","sha256":"6b6572b41174b941f6b53229a07da8fa222511de1b900e0429b61f671e66d972"}
+  ]
+}
