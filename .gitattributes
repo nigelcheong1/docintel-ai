@@ -1,0 +1,5 @@
+# Preserve published source checksums and media bytes on every platform.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.mp4 binary
