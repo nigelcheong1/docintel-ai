@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 
 from app.retrieval.answers import AnswerCitation, AnswerQuality, ExtractiveAnswer, build_grounded_answer
@@ -13,6 +14,19 @@ class VerifiedAnswerResult:
     answer: ExtractiveAnswer | None
     quality: AnswerQuality
     verification: VerificationResult
+
+
+_PRONOUN_FOLLOWUP = re.compile(r"(?:,\s*(?:and\s+)?|\band\s+)(?:when|where|who|what|how)\b[^?;]*\bit\b", re.IGNORECASE)
+_ENTITY_WORDS = re.compile(r"\b[A-Z][A-Za-z0-9-]+\b")
+_GENERIC_ENTITY_WORDS = {"a", "an", "the", "education", "project", "report", "framework", "degree", "method", "invoice", "receipt"}
+
+
+def _same_referent(first: str, followup: str) -> bool:
+    if first == followup:
+        return True
+    names = {word.lower() for word in _ENTITY_WORDS.findall(first)} - _GENERIC_ENTITY_WORDS
+    followup_words = set(re.findall(r"[a-z0-9-]+", followup.lower()))
+    return bool(names) and names.issubset(followup_words)
 
 
 def _quality(status: str, reason: str, evidence_count: int, support: float) -> AnswerQuality:
@@ -49,6 +63,8 @@ def _draft_answer(query: str, pack: EvidencePack) -> str:
         best_hit = next(hit for hit in hits if hit.chunk_id == answer.citations[0].chunk_id)
         answer, _ = build_grounded_answer(subquery, [best_hit])
         if answer is None:
+            return ""
+        if drafts and _PRONOUN_FOLLOWUP.search(pack.question) and not _same_referent(drafts[0], answer.summary):
             return ""
         if answer.summary not in drafts:
             drafts.append(answer.summary)

@@ -181,3 +181,41 @@ def test_named_functions_do_not_use_an_unrelated_contents_page_colon():
     answer, _ = build_grounded_answer("What are the four functions of the Framework Core?", [contents, named])
     assert answer is not None
     assert [citation.chunk_id for citation in answer.citations] == ["named"]
+
+
+@pytest.mark.parametrize("query,text", [
+    ("How many total results were initially obtained from CatalogX?", "CatalogX screening retained 2092 records."),
+    ("How many records were there before duplicate removal?", "After duplicate removal, 2092 records remained."),
+])
+def test_count_values_keep_the_requested_processing_stage(query, text):
+    answer, _ = build_grounded_answer(query, [evidence(text)])
+    assert answer is None
+
+
+def test_semicolon_price_clause_does_not_borrow_another_items_amount():
+    answer, _ = build_grounded_answer("What is the coffee price?", [evidence("Coffee is sold here; the sandwich costs USD 6.00.")])
+    assert answer is None
+
+
+def test_price_keeps_conjunctions_inside_the_requested_item_name():
+    answer, _ = build_grounded_answer("What is the price of fish and chips?", [evidence("Fish and chips: USD 12.00.")])
+    assert answer is not None
+    assert answer.summary == "Fish and chips: USD 12.00."
+
+
+def test_publication_identifier_year_is_not_a_publication_date():
+    answer, _ = build_grounded_answer("When was Alpha Framework published?", [evidence("Alpha Framework publication uses document identifier 2024.")])
+    assert answer is None
+
+
+def test_completion_allows_an_explicit_completion_event_alongside_a_start_event():
+    hit = evidence("Education: The Bachelor of Science degree started in 2018 and was completed in 2021.", heading="EDUCATION")
+    answer, _ = build_grounded_answer("When was the degree completed?", [hit])
+    assert answer is not None
+    assert "was completed in 2021" in answer.summary
+
+
+def test_publication_date_accepts_an_explicit_publication_year():
+    answer, _ = build_grounded_answer("When was Alpha Framework published?", [evidence("Alpha Framework was published in 2024.")])
+    assert answer is not None
+    assert "published in 2024" in answer.summary

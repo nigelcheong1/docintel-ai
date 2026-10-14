@@ -24,6 +24,13 @@ _COUNT_QUERY_PATTERN = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 _DATE_QUERY_PATTERN = re.compile(r"\bdates?\b|\bwhen\s+(?:is|was|were|did|will)\b", re.IGNORECASE)
 _PUBLICATION_QUERY_PATTERN = re.compile(r"\b(?:published|publication|release|released|issued)\b", re.IGNORECASE)
 _CALENDAR_DATE_PATTERN = re.compile(r"\b(?:19|20)\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
+_PUBLICATION_DATE_PATTERN = re.compile(
+    r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
+    r"|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?:\d{1,2}[, ]+)?(?:19|20)\d{2}\b"
+    r"|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"
+    r"|\b(?:published|released|issued)\s+(?:(?:on|in|during)\s+)?(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
 _DURATION_PATTERN = re.compile(r"\b\d+\s+(?:days?|weeks?|months?|years?)\b", re.IGNORECASE)
 _NUMBER_PATTERN = re.compile(r"\b\d+(?:[,.]\d+)*\b")
 _PRICE_QUERY_PATTERN = re.compile(r"\bprices?\b|\bcost\b", re.IGNORECASE)
@@ -407,13 +414,30 @@ def _quality_from_signals(
 def _requested_value_present(query: str, sentence: str) -> bool:
     if _COUNT_QUERY_PATTERN.search(query) and not (_NUMBER_PATTERN.search(sentence) or _words(sentence).intersection(_COUNT_WORDS)):
         return False
+    if _COUNT_QUERY_PATTERN.search(query):
+        query_words, sentence_words = _words(query), _words(sentence)
+        if "before" in query_words and "before" not in sentence_words:
+            return False
+        if query_words.intersection({"initial", "initially", "original"}) and not sentence_words.intersection({
+            "initial", "initially", "original", "before", "began", "identified", "obtained", "collected",
+        }):
+            return False
+        if "after" in query_words and not sentence_words.intersection({
+            "after", "remained", "retained", "consolidated", "resulting", "final",
+        }):
+            return False
     if _DATE_QUERY_PATTERN.search(query):
         if not (_CALENDAR_DATE_PATTERN.search(sentence) or (not _PUBLICATION_QUERY_PATTERN.search(query) and _DURATION_PATTERN.search(sentence))):
             return False
         if _PUBLICATION_QUERY_PATTERN.search(query) and not _words(sentence).intersection({"publish", "release", "released", "issued"}):
             return False
-        if _is_education_degree_query(query) and _NON_COMPLETION_PATTERN.search(sentence):
+        if _PUBLICATION_QUERY_PATTERN.search(query) and not _PUBLICATION_DATE_PATTERN.search(sentence):
             return False
+        if _is_education_degree_query(query) and _NON_COMPLETION_PATTERN.search(sentence):
+            clauses = re.split(r"\s+and\s+|;", sentence, flags=re.IGNORECASE)
+            if not any(re.search(r"\b(?:completed|graduated|earned)\b", clause, re.IGNORECASE)
+                       and not _NON_COMPLETION_PATTERN.search(clause) for clause in clauses):
+                return False
     if _is_price_query(query) and not _MONEY_PATTERN.search(sentence):
         return False
     if _BILL_TO_PATTERN.search(query) and not _BILL_TO_PATTERN.search(sentence):
@@ -447,7 +471,10 @@ def _build_snippet(text: str, query_terms: set[str], query: str = "") -> str:
         ]
     if _is_price_query(query):
         # Separate item clauses so one product cannot borrow another's amount.
-        spans = [clause for span in spans for clause in re.split(r"\s+(?:and|but|whereas)\s+", span, flags=re.IGNORECASE)]
+        separator = r";|\s+(?:but|whereas)\s+"
+        if not re.search(r"\band\b", query, re.IGNORECASE):
+            separator += r"|\s+and\s+"
+        spans = [clause for span in spans for clause in re.split(separator, span, flags=re.IGNORECASE)]
     sentences = [sentence.strip() for sentence in spans if sentence.strip() and _requested_value_present(query, sentence)]
     if not sentences:
         return ""

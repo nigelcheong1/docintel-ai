@@ -56,7 +56,8 @@ flowchart LR
     Question[Question + optional document scope] --> Rewrite[Normalization / decomposition]
     Rewrite --> Retrieve[Lexical + pgvector candidates]
     Retrieve --> Rank[Heuristic reranking]
-    Rank --> Pack[Selected evidence pack]
+    Rank --> Span[Requested-value and sentence-focus ranking]
+    Span --> Pack[Selected evidence pack]
     Pack --> Draft[Extractive answer per requested part]
     Draft --> Verify[Deterministic sentence support]
     Verify -->|Supported| Answer[Answer with page/chunk citations]
@@ -70,6 +71,18 @@ flowchart LR
 and candidate/selected-evidence trace. Multi-part handling is heuristic decomposition and
 evidence combination, not a general reasoning agent. Reranking is heuristic, not a trained
 cross-encoder. BGE embeddings use 384-dimensional vectors and can run on CPU.
+
+Before the verified top-five cutoff, answer-focused ranking favors source spans containing
+the requested value over repeated headers or keywords scattered across a chunk. Section
+headings are hints, not exclusive filters. Date, count-stage, named-list, invoice role,
+and item-price checks are conservative text rules; they are not a semantic parser.
+Answers retain complete selected spans, while search previews remain bounded.
+
+Decomposition supports explicit who/when clauses and shared item-price questions. Quoted
+names are preserved. Unambiguous singular pronouns carry a topic into the follow-up, but
+answer construction also requires a shared selected span or matching named entity; a
+different project's date cannot complete the first project's answer. Ambiguous or
+unrecognized references can abstain. This is not general coreference resolution.
 
 Verified Answers is extractive. Its verifier checks lexical overlap, numbers, entities,
 and negation against source sentences. It can filter unsupported text and abstain, but

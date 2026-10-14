@@ -58,6 +58,27 @@ def evidence_item(text: str, chunk_id: str = "chunk-1", heading: str | None = No
     return EvidenceItem(chunk_id, "doc-1", "paper.pdf", 1, 0, text, text, 0.95, 0.95, {}, heading, "q", 0.95)
 
 
+def test_pronoun_followup_does_not_combine_different_named_projects():
+    question = "What project is used, and when was it completed?"
+    pack = EvidencePack(question, question, ["What project is used?", "When was the project completed?"], [
+        evidence_item("Project Alpha is used.", "alpha"),
+        evidence_item("Project Beta completed in 2024.", "beta"),
+    ], is_multi_hop=True)
+    result = build_verified_answer(question, pack)
+    assert result.answer is None
+
+
+def test_pronoun_followup_accepts_the_same_named_project():
+    question = "What project is used, and when was it completed?"
+    pack = EvidencePack(question, question, ["What project is used?", "When was the project completed?"], [
+        evidence_item("Project Alpha is used.", "used"),
+        evidence_item("Project Alpha completed in 2024.", "completed"),
+    ], is_multi_hop=True)
+    result = build_verified_answer(question, pack)
+    assert result.answer is not None
+    assert "Project Alpha completed in 2024" in result.answer.summary
+
+
 def test_verified_answer_abstains_on_high_ranked_but_irrelevant_text():
     item = evidence_item("The paper reviews human robot collaboration.", heading="ABSTRACT")
     pack = EvidencePack("What private GPU cluster was used?", "GPU cluster", ["GPU cluster"], [item])
