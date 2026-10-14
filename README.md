@@ -175,9 +175,21 @@ checks on a small mixed corpus, not general accuracy or a model comparison.
 | Multi-part case checks | 1/5 | Five multi-part cases only |
 
 [Full measurements and failure analysis](docs/demo/evaluation-results.md) include the
-portable result export. The seven misses remain visible; label review is not human approval
-of the generated answers. Next quality work should target answer relevance, complete
-multi-part coverage, and source-aware ranking before expanding the feature list.
+portable result export. The seven original misses remain visible in that historical record;
+label review is not human approval of the generated answers.
+
+### Answer-Quality Hardening
+
+On **2026-10-14**, the hardened pipeline passed **25/25 automatic case checks** on the
+same frozen labels, facts, anchors, and documents, including **6/6 negative cases** and
+**5/5 multi-part cases**. No execution errors, missing sources, or lexical fallbacks occurred.
+The [comparison and separate result export](docs/demo/answer-quality-hardening.md) identify
+the evaluated code commit and preserve the 18/25 baseline.
+
+This is **regression evidence after fixing known misses**, not held-out accuracy or proof
+of semantic correctness. Eight additional questions are available as a separate draft
+suite; they remain unreviewed and unscored. Further accuracy claims need independently
+reviewed, unseen documents and human assessments of generated answers.
 
 ### Tests
 

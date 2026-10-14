@@ -61,6 +61,10 @@ need a separate run plus additional held-out documents, not only tuning to these
 
 ## Portfolio Position
 
+The historical baseline above is preserved. See the separate
+[2026-10-14 hardening comparison](answer-quality-hardening.md) for a later run on the same
+frozen suite. It does not convert these development cases into held-out accuracy evidence.
+
 This project demonstrates end-to-end ingestion, local retrieval, citation inspection,
 explicit abstention, persisted evaluations, and honest failure analysis. It is suitable
 to describe as a **local portfolio MVP**, not a production service or universally accurate

@@ -12,6 +12,7 @@ import httpx
 ROOT = Path(__file__).resolve().parent
 UPLOAD_FILES = frozenset({"colpali-paper.pdf", "nist-ai-rmf-1.0.pdf",
     "sample-invoice.pdf", "sample-contract.pdf", "sample-resume.pdf", "sample-receipt.png"})
+CASE_PACK_WORKSPACES = {"cases.json": "workspace.json", "unseen-cases.json": "workspace-unseen.json"}
 
 
 def validate_api_url(url):
@@ -31,8 +32,10 @@ def validate_workspace(documents, allowlist=UPLOAD_FILES):
         raise ValueError("Duplicate demo filenames; refusing ambiguous source reuse.")
 
 
-def read_cases():
-    data = json.loads((ROOT / "cases.json").read_text(encoding="utf-8"))
+def read_cases(case_pack="cases.json"):
+    if case_pack not in CASE_PACK_WORKSPACES:
+        raise ValueError("Choose a fixed demo case pack: cases.json or unseen-cases.json.")
+    data = json.loads((ROOT / case_pack).read_text(encoding="utf-8"))
     if data.get("review_status") != "draft":
         raise ValueError("Pack labels must remain draft pending human review.")
     if any(case["document"] not in UPLOAD_FILES or "review_state" in case or "reviewed_at" in case for case in data["cases"]):
@@ -66,10 +69,10 @@ def validate_existing_files(client, documents):
             raise ValueError(f"Checksum mismatch for existing {document['filename']}; refusing substituted sources.")
 
 
-def load_demo(api_url, timeout=300):
+def load_demo(api_url, timeout=300, case_pack="cases.json"):
     api_url = validate_api_url(api_url)
     validate_files()
-    pack = read_cases()
+    pack = read_cases(case_pack)
     with httpx.Client(base_url=api_url, timeout=timeout) as client:
         health = request(client, "GET", "/health")
         if health.get("service") != "DocIntel AI Demo API":
@@ -106,15 +109,24 @@ def load_demo(api_url, timeout=300):
             payload = {key: case[key] for key in ("question", "expected_outcome", "facts", "anchors", "tags", "review_rationale")}
             payload["document_id"] = by_name[case["document"]]["id"]
             request(client, "POST", f"/eval/document-suites/{suite['id']}/cases", json=payload)
-        print("Prepared 25 candidate cases. No cases were marked reviewed; inspect sources in Evaluation Lab.")
+        print(f"Prepared {len(pack['cases'])} candidate cases. No cases were marked reviewed; inspect sources in Evaluation Lab.")
         return {"api": api_url, "suite_id": suite["id"], "documents": {name: value["id"] for name, value in by_name.items()}}
 
 
-if __name__ == "__main__":
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default="http://127.0.0.1:8001")
-    args = parser.parse_args()
-    loaded = load_demo(args.api)
+    parser.add_argument("--case-pack", choices=CASE_PACK_WORKSPACES, default="cases.json")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    loaded = load_demo(args.api, case_pack=args.case_pack)
     destination = ROOT / ".local"
     destination.mkdir(exist_ok=True)
-    (destination / "workspace.json").write_text(json.dumps(loaded, indent=2) + "\n", encoding="utf-8")
+    (destination / CASE_PACK_WORKSPACES[args.case_pack]).write_text(json.dumps(loaded, indent=2) + "\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()

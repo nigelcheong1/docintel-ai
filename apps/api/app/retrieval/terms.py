@@ -2,6 +2,13 @@ import re
 
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _WORD_VARIANTS = {
+    "billed": "bill",
+    "introduced": "introduce",
+    "introduces": "introduce",
+    "publication": "publish",
+    "published": "publish",
+    "screened": "screen",
+    "screening": "screen",
     "duplicates": "duplicate",
     "eliminate": "remove",
     "eliminated": "remove",

@@ -73,3 +73,17 @@ def test_empty_document_has_empty_trace_without_embedding():
     assert execution.response.answer is None
     assert execution.candidates_by_subquery == {}
     assert execution.selected_evidence == ()
+
+
+def test_verified_retrieval_reserves_top_five_for_evidence_with_the_requested_date(monkeypatch):
+    module = service()
+    vague = [SearchHit(f"header-{i}", "document-1", "report.pdf", i + 4, i,
+        "Example AI Framework 1.0 discusses interpretability and risk.", 0.99, 0.99) for i in range(6)]
+    dated = SearchHit("publication", "document-1", "report.pdf", 2, 6,
+        "Example AI Framework 1.0 This publication is available from the institute. Published January 2024.", 0.7, 0.7)
+    monkeypatch.setattr(module, "hybrid_search_chunks", lambda *_args, **_kwargs: ([*vague, dated], RetrievalMode(mode="hybrid")))
+    execution = module.execute_search(SearchRequest(query="When was Example AI Framework 1.0 published?", answer_mode="verified"), object(), lambda: Embedder())
+    assert execution.response.answer is not None
+    assert "January 2024" in execution.response.answer.summary
+    assert [citation.chunk_id for citation in execution.response.answer.citations] == ["publication"]
+    assert next(iter(execution.candidates_by_subquery.values()))[0].chunk_id == "publication"

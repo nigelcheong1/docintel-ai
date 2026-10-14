@@ -85,6 +85,23 @@ workspace. The [recorded baseline](../docs/demo/evaluation-results.md) has 18 au
 passes and seven failures. This does not auto-approve a fresh import: the distributed JSON
 remains draft, and generated answers have not received separate human result assessments.
 
+### Additional Draft Questions
+
+[unseen-cases.json](unseen-cases.json) adds eight new questions in a separate suite on the
+same sample documents. They are **not independently reviewed or scored**. This is a
+question-level follow-up set, not held-out-document generalization. Leave them draft until
+a human checks the sources and absence rationale; do not tune on their outputs and then
+describe them as an untouched test set.
+
+From the repository root, with the isolated API running:
+
+```powershell
+.\apps\api\.venv\Scripts\python.exe demo/load_demo.py --case-pack unseen-cases.json
+```
+
+Select **Portfolio unseen-question source-review candidates** in Evaluation Lab. The loader
+writes separate local workspace metadata and does not change reviews in the original suite.
+
 ## Media and Rebuilding
 
 Screenshots in `docs/demo/screenshots` are captured from the isolated app, not mockups or
@@ -105,3 +122,8 @@ Its captions and screenshots are fixed to the published baseline; review them be
 replacing footage. `python demo/export_benchmark.py RUN_UUID` exports a completed,
 source-reviewed demo run without local database IDs or full retrieval traces, after
 verifying the workspace's original-file checksums. Review the export before publishing.
+
+For the hardening comparison, commit the evaluated implementation before starting the run,
+then use `python demo/export_benchmark.py RUN_UUID --report-kind hardening`. This writes
+`docs/demo/evaluation-hardening.json` separately and preserves the historical baseline.
+The published screenshots/video still depict the dated baseline, not the new comparison.
