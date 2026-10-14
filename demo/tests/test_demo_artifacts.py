@@ -67,3 +67,20 @@ def test_export_allows_repeated_case_and_citation_document_references(monkeypatc
     assert report["measurements"] == baseline["measurements"]
     assert len(report["cases"][0]["citations"]) == 2 * len(baseline["cases"][0]["citations"])
     assert "raw_trace" not in json.dumps(report)
+
+
+def test_hardening_export_preserves_frozen_labels_and_historical_baseline():
+    directory = ROOT.parent / "docs/demo"
+    baseline = json.loads((directory / "evaluation-baseline.json").read_text(encoding="utf-8"))
+    hardened = json.loads((directory / "evaluation-hardening.json").read_text(encoding="utf-8"))
+    assert baseline["passed_count"] == 18
+    assert hardened["total_cases"] == len(hardened["cases"]) == 25
+    assert hardened["passed_count"] == sum(case["status"] == "pass" for case in hardened["cases"])
+    assert hardened["failed_count"] == sum(case["status"] == "fail" for case in hardened["cases"])
+    frozen_fields = ("expected_outcome", "facts", "anchors", "tags", "content_version", "label_reviewed_at")
+    before = {(case["document"], case["question"]): {key: case[key] for key in frozen_fields}
+              for case in baseline["cases"]}
+    after = {(case["document"], case["question"]): {key: case[key] for key in frozen_fields}
+             for case in hardened["cases"]}
+    assert after == before
+    assert all(case["human_result_assessment"] is None for case in hardened["cases"])

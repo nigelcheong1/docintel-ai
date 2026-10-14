@@ -1,0 +1,2523 @@
+{
+  "scope": "Independently source-reviewed cases from public/fictional demo documents; not representative accuracy",
+  "started_at": "2026-10-14T14:48:48.048468Z",
+  "finished_at": "2026-10-14T14:49:30.007819Z",
+  "implementation_note": "Recorded after committed answer-quality hardening; pipeline_config.revision identifies the evaluated commit.",
+  "pipeline_config": {
+    "top_k": 5,
+    "revision": "dbb92e97fc2507095249f90653474a6710a9c33a",
+    "answer_mode": "verified",
+    "embedding_model": "BAAI/bge-small-en-v1.5",
+    "embedding_device": "cpu",
+    "embedding_dimension": 384
+  },
+  "total_cases": 25,
+  "passed_count": 25,
+  "failed_count": 0,
+  "error_count": 0,
+  "unavailable_count": 0,
+  "mode_counts": {
+    "hybrid": 24,
+    "vector": 1
+  },
+  "fallback_count": 0,
+  "measurements": {
+    "latency": {
+      "value": 1623.6977040022612,
+      "numerator": 40592.44260005653,
+      "denominator": 25,
+      "unit": "ms",
+      "scope": "Mean execution milliseconds per successfully executed case"
+    },
+    "fact_match": {
+      "value": 1.0,
+      "numerator": 30.0,
+      "denominator": 30,
+      "unit": "ratio",
+      "scope": "Required approved fact patterns"
+    },
+    "outcome_match": {
+      "value": 1.0,
+      "numerator": 25.0,
+      "denominator": 25,
+      "unit": "ratio",
+      "scope": "Successfully executed reviewed cases"
+    },
+    "checker_support": {
+      "value": 1.0,
+      "numerator": 23.0,
+      "denominator": 23,
+      "unit": "ratio",
+      "scope": "Sentences accepted by the deterministic evidence checker"
+    },
+    "abstention_match": {
+      "value": 1.0,
+      "numerator": 6.0,
+      "denominator": 6,
+      "unit": "ratio",
+      "scope": "Successfully executed reviewed negative cases"
+    },
+    "citation_precision": {
+      "value": 1.0,
+      "numerator": 20.0,
+      "denominator": 20,
+      "unit": "ratio",
+      "scope": "Unique cited chunks matching reviewed anchors"
+    },
+    "pack_anchor_coverage": {
+      "value": 1.0,
+      "numerator": 20.0,
+      "denominator": 20,
+      "unit": "ratio",
+      "scope": "Required anchors represented in selected evidence"
+    },
+    "table_case_pass_rate": {
+      "value": 1.0,
+      "numerator": 2.0,
+      "denominator": 2,
+      "unit": "ratio",
+      "scope": "Automatically passing reviewed cases tagged table"
+    },
+    "citation_anchor_coverage": {
+      "value": 1.0,
+      "numerator": 20.0,
+      "denominator": 20,
+      "unit": "ratio",
+      "scope": "Required anchors represented by cited source text"
+    },
+    "multi_part_case_pass_rate": {
+      "value": 1.0,
+      "numerator": 5.0,
+      "denominator": 5,
+      "unit": "ratio",
+      "scope": "Automatically passing reviewed cases tagged multi-part"
+    },
+    "retrieval_anchor_recall_at_5": {
+      "value": 1.0,
+      "numerator": 20.0,
+      "denominator": 20,
+      "unit": "ratio",
+      "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+    }
+  },
+  "cases": [
+    {
+      "document": "colpali-paper.pdf",
+      "question": "What is the visual document retrieval benchmark introduced in this paper?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "ViDoRe",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Visual Document Retrieval Benchmark ViDoRe",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "research-paper"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:44:41.611849Z",
+      "status": "pass",
+      "answer": "To benchmark current systems on visually rich document retrieval, we introduce the Visual Document Retrieval Benchmark ViDoRe, composed of various page-level retrieval tasks spanning multiple domains, languages, and practical settings.",
+      "citations": [
+        {
+          "document": "colpali-paper.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 13796.876700012945,
+          "numerator": 13796.876700012945,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "colpali-paper.pdf",
+      "question": "What does ColPali produce embeddings from?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "images of document pages",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "high-quality multi-vector embeddings from images of document pages",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "research-paper"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:44:54.380853Z",
+      "status": "pass",
+      "answer": "We release ColPali, a Vision Language Model trained to produce high-quality multi-vector embeddings from images of document pages.",
+      "citations": [
+        {
+          "document": "colpali-paper.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 2451.2374999467283,
+          "numerator": 2451.2374999467283,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "colpali-paper.pdf",
+      "question": "What matching mechanism is combined with ColPali embeddings?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "late interaction matching mechanism",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Combined with a late interaction matching mechanism",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "research-paper"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:45:21.852546Z",
+      "status": "pass",
+      "answer": "Combined with a late interaction matching mechanism, ColPali largely outperforms modern document retrieval pipelines while being drastically simpler, faster and end-to-end trainable.",
+      "citations": [
+        {
+          "document": "colpali-paper.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 2561.1810999689624,
+          "numerator": 2561.1810999689624,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "colpali-paper.pdf",
+      "question": "What benchmark is introduced, and what matching mechanism is used?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "ViDoRe",
+          "alternatives": []
+        },
+        {
+          "pattern": "late interaction",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Visual Document Retrieval Benchmark ViDoRe",
+          "page_number": 1
+        },
+        {
+          "quote": "Combined with a late interaction matching mechanism",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "research-paper",
+        "multi-part"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:48:23.147787Z",
+      "status": "pass",
+      "answer": "To benchmark current systems on visually rich document retrieval, we introduce the Visual Document Retrieval Benchmark ViDoRe, composed of various page-level retrieval tasks spanning multiple domains, languages, and practical settings. Combined with a late interaction matching mechanism, ColPali largely outperforms modern document retrieval pipelines while being drastically simpler, faster and end-to-end trainable.",
+      "citations": [
+        {
+          "document": "colpali-paper.pdf",
+          "page_number": 1
+        },
+        {
+          "document": "colpali-paper.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 2615.2783000143245,
+          "numerator": 2615.2783000143245,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "colpali-paper.pdf",
+      "question": "What publisher invoice number was assigned to this paper?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": [
+        "research-paper",
+        "abstention"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:48:59.423880Z",
+      "status": "pass",
+      "answer": null,
+      "citations": [],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 2494.848800008185,
+          "numerator": 2494.848800008185,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "nist-ai-rmf-1.0.pdf",
+      "question": "When was AI RMF 1.0 published?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "January 2023",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "January 2023",
+          "page_number": 2
+        }
+      ],
+      "tags": [
+        "report"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:07.565776Z",
+      "status": "pass",
+      "answer": "NIST AI 100-1 Artificial Intelligence Risk Management Framework (AI RMF 1.0) This publication is available free of charge from: https://doi.org/10.6028/NIST.AI.100-1 January 2023 U.S.",
+      "citations": [
+        {
+          "document": "nist-ai-rmf-1.0.pdf",
+          "page_number": 2
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 3095.2454999787733,
+          "numerator": 3095.2454999787733,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "nist-ai-rmf-1.0.pdf",
+      "question": "What are the four functions of the AI RMF Core?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "GOVERN",
+          "alternatives": []
+        },
+        {
+          "pattern": "MAP",
+          "alternatives": []
+        },
+        {
+          "pattern": "MEASURE",
+          "alternatives": []
+        },
+        {
+          "pattern": "MANAGE",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "the Core is composed of four functions: GOVERN, MAP, MEASURE, and MANAGE",
+          "page_number": 25
+        }
+      ],
+      "tags": [
+        "report"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:31.990678Z",
+      "status": "pass",
+      "answer": "As illus- trated in Figure 5, the Core is composed of four functions: GOVERN, MAP, MEASURE, and MANAGE.",
+      "citations": [
+        {
+          "document": "nist-ai-rmf-1.0.pdf",
+          "page_number": 25
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 3072.0785000594333,
+          "numerator": 3072.0785000594333,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 4.0,
+          "denominator": 4,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "nist-ai-rmf-1.0.pdf",
+      "question": "Is use of the Framework voluntary or mandatory?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "voluntary",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "The Framework is intended to be voluntary",
+          "page_number": 7
+        }
+      ],
+      "tags": [
+        "report"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:42.672001Z",
+      "status": "pass",
+      "answer": "The Framework is intended to be voluntary, rights-preserving, non-sector-specific, and use-case agnostic, providing flexibil- ity to organizations of all sizes and in all sectors and throughout society to implement the approaches in the Framework.",
+      "citations": [
+        {
+          "document": "nist-ai-rmf-1.0.pdf",
+          "page_number": 7
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 3132.716199965216,
+          "numerator": 3132.716199965216,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "nist-ai-rmf-1.0.pdf",
+      "question": "What does GOVERN 1.1 require for legal and regulatory requirements involving AI?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "understood, managed, and documented",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "GOVERN 1.1: Legal and regulatory requirements involving AI are understood, managed, and documented.",
+          "page_number": 27
+        }
+      ],
+      "tags": [
+        "report",
+        "table"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:47:05.237337Z",
+      "status": "pass",
+      "answer": "GOVERN 1.1: Legal and regulatory requirements involving AI are understood, managed, and documented.",
+      "citations": [
+        {
+          "document": "nist-ai-rmf-1.0.pdf",
+          "page_number": 27
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 3122.6058999309316,
+          "numerator": 3122.6058999309316,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "nist-ai-rmf-1.0.pdf",
+      "question": "What API key must an organization use to apply this Framework?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": [
+        "report",
+        "abstention"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:50:07.561149Z",
+      "status": "pass",
+      "answer": null,
+      "citations": [],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 3288.0752000492066,
+          "numerator": 3288.0752000492066,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-invoice.pdf",
+      "question": "What total amount is due?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "USD 550.00",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Total amount due: USD 550.00.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "invoice",
+        "fictional"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:57.373177Z",
+      "status": "pass",
+      "answer": "Total amount due: USD 550.00.",
+      "citations": [
+        {
+          "document": "sample-invoice.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 87.06020005047321,
+          "numerator": 87.06020005047321,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-invoice.pdf",
+      "question": "When is payment due, and what are the payment terms?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "04 November 2026",
+          "alternatives": []
+        },
+        {
+          "pattern": "net 30 days",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Payment is due on 04 November 2026. Payment terms are net 30 days.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "invoice",
+        "fictional",
+        "multi-part"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:48:50.921582Z",
+      "status": "pass",
+      "answer": "Payment terms Payment is due on 04 November 2026. Payment terms are net 30 days.",
+      "citations": [
+        {
+          "document": "sample-invoice.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 48.01180004142225,
+          "numerator": 48.01180004142225,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-invoice.pdf",
+      "question": "Who is the supplier, and who is the invoice billed to?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "Northstar Analytics Demo Ltd",
+          "alternatives": []
+        },
+        {
+          "pattern": "Harbor Research Demo Co",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Supplier: Northstar Analytics Demo Ltd. Bill to: Harbor Research Demo Co.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "invoice",
+        "fictional",
+        "multi-part"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:24.231558Z",
+      "status": "pass",
+      "answer": "Supplier: Northstar Analytics Demo Ltd. Bill to: Harbor Research Demo Co.",
+      "citations": [
+        {
+          "document": "sample-invoice.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 137.0312999933958,
+          "numerator": 137.0312999933958,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-invoice.pdf",
+      "question": "What is the line total for the document indexing service?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "USD 300.00",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Document indexing service 2 USD 150.00 USD 300.00",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "invoice",
+        "fictional",
+        "table"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:50.517173Z",
+      "status": "pass",
+      "answer": "Services Description Quantity Unit price Line total Document indexing service 2 USD 150.00 USD 300.00 Evidence review workshop 1 USD 200.00 USD 200.00 Subtotal: USD 500.00.",
+      "citations": [
+        {
+          "document": "sample-invoice.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 43.60679991077632,
+          "numerator": 43.60679991077632,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-invoice.pdf",
+      "question": "What bank account number should receive payment?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": [
+        "invoice",
+        "fictional",
+        "abstention"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:45:32.869417Z",
+      "status": "pass",
+      "answer": null,
+      "citations": [],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 86.56930003780872,
+          "numerator": 86.56930003780872,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-contract.pdf",
+      "question": "Who are the parties to the services agreement?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "Northstar Analytics Demo Ltd",
+          "alternatives": []
+        },
+        {
+          "pattern": "Harbor Research Demo Co",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "The parties are Northstar Analytics Demo Ltd (the supplier) and Harbor Research Demo Co (the client).",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "contract",
+        "fictional"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:49:14.751803Z",
+      "status": "pass",
+      "answer": "Parties The parties are Northstar Analytics Demo Ltd (the supplier) and Harbor Research Demo Co (the client).",
+      "citations": [
+        {
+          "document": "sample-contract.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 53.445099969394505,
+          "numerator": 53.445099969394505,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-contract.pdf",
+      "question": "How long does the confidentiality duty continue after termination?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "12 months after termination",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "This duty continues for 12 months after termination.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "contract",
+        "fictional"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:47:22.001855Z",
+      "status": "pass",
+      "answer": "This duty continues for 12 months after termination.",
+      "citations": [
+        {
+          "document": "sample-contract.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 95.40450002532452,
+          "numerator": 95.40450002532452,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-contract.pdf",
+      "question": "How much written notice is required to terminate the agreement?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "14 days",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Either party may terminate the agreement with 14 days of written notice.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "contract",
+        "fictional"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:48:03.282167Z",
+      "status": "pass",
+      "answer": "Termination Either party may terminate the agreement with 14 days of written notice.",
+      "citations": [
+        {
+          "document": "sample-contract.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 53.42040001414716,
+          "numerator": 53.42040001414716,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-contract.pdf",
+      "question": "Which country's law governs this agreement?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": [
+        "contract",
+        "fictional",
+        "abstention"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:47:14.382314Z",
+      "status": "pass",
+      "answer": null,
+      "citations": [],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 53.19210002198815,
+          "numerator": 53.19210002198815,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-resume.pdf",
+      "question": "What technical skills are listed?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "Python",
+          "alternatives": []
+        },
+        {
+          "pattern": "TypeScript",
+          "alternatives": []
+        },
+        {
+          "pattern": "PostgreSQL",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Python, TypeScript, FastAPI, React, PostgreSQL, Docker, and automated testing.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "resume",
+        "fictional"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:46:56.706542Z",
+      "status": "pass",
+      "answer": "Technical Skills Python, TypeScript, FastAPI, React, PostgreSQL, Docker, and automated testing.",
+      "citations": [
+        {
+          "document": "sample-resume.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 51.75270000472665,
+          "numerator": 51.75270000472665,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 3.0,
+          "denominator": 3,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-resume.pdf",
+      "question": "What degree is listed, and when was it completed?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "Bachelor of Computer Science",
+          "alternatives": []
+        },
+        {
+          "pattern": "2023",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Bachelor of Computer Science, Example University, 2023.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "resume",
+        "fictional",
+        "multi-part"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:46:45.622765Z",
+      "status": "pass",
+      "answer": "Education Bachelor of Computer Science, Example University, 2023.",
+      "citations": [
+        {
+          "document": "sample-resume.pdf",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 58.12439997680485,
+          "numerator": 58.12439997680485,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-resume.pdf",
+      "question": "What is the candidate's date of birth?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": [
+        "resume",
+        "fictional",
+        "abstention"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:46:35.488579Z",
+      "status": "pass",
+      "answer": null,
+      "citations": [],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 50.11349997948855,
+          "numerator": 50.11349997948855,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-receipt.png",
+      "question": "What total was paid on the receipt?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "USD 10.00",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Total paid: USD 10.00.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "invoice",
+        "fictional",
+        "ocr"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:46:20.585968Z",
+      "status": "pass",
+      "answer": "Total paid: USD 10.00.",
+      "citations": [
+        {
+          "document": "sample-receipt.png",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 32.61300001759082,
+          "numerator": 32.61300001759082,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-receipt.png",
+      "question": "What are the listed coffee and sandwich prices?",
+      "expected_outcome": "answerable",
+      "facts": [
+        {
+          "pattern": "Coffee: USD 4.00",
+          "alternatives": []
+        },
+        {
+          "pattern": "Sandwich: USD 6.00",
+          "alternatives": []
+        }
+      ],
+      "anchors": [
+        {
+          "quote": "Coffee: USD 4.00. Sandwich: USD 6.00.",
+          "page_number": 1
+        }
+      ],
+      "tags": [
+        "invoice",
+        "fictional",
+        "ocr",
+        "multi-part"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:46:11.311001Z",
+      "status": "pass",
+      "answer": "Items Coffee: USD 4.00. Sandwich: USD 6.00.",
+      "citations": [
+        {
+          "document": "sample-receipt.png",
+          "page_number": 1
+        }
+      ],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 40.71890003979206,
+          "numerator": 40.71890003979206,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": 1.0,
+          "numerator": 2.0,
+          "denominator": 2,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    },
+    {
+      "document": "sample-receipt.png",
+      "question": "What credit card number was used for this purchase?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": [
+        "invoice",
+        "fictional",
+        "ocr",
+        "abstention"
+      ],
+      "content_version": 1,
+      "label_reviewed_at": "2026-10-13T05:45:58.112382Z",
+      "status": "pass",
+      "answer": null,
+      "citations": [],
+      "failure_reasons": [],
+      "measurements": {
+        "latency": {
+          "value": 71.23490003868937,
+          "numerator": 71.23490003868937,
+          "denominator": 1,
+          "unit": "ms",
+          "scope": "Mean execution milliseconds per successfully executed case"
+        },
+        "fact_match": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required approved fact patterns"
+        },
+        "outcome_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed cases"
+        },
+        "checker_support": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Sentences accepted by the deterministic evidence checker"
+        },
+        "abstention_match": {
+          "value": 1.0,
+          "numerator": 1.0,
+          "denominator": 1,
+          "unit": "ratio",
+          "scope": "Successfully executed reviewed negative cases"
+        },
+        "citation_precision": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Unique cited chunks matching reviewed anchors"
+        },
+        "pack_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented in selected evidence"
+        },
+        "citation_anchor_coverage": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors represented by cited source text"
+        },
+        "retrieval_anchor_recall_at_5": {
+          "value": null,
+          "numerator": 0.0,
+          "denominator": 0,
+          "unit": "ratio",
+          "scope": "Required anchors across top five reranked candidates per subquery, before pack selection"
+        }
+      },
+      "human_result_assessment": null
+    }
+  ]
+}
