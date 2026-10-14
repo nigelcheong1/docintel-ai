@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Chunk, Document, DocumentStatus
 from app.documents.intelligence import build_document_profile
 from app.documents.service import EmbeddingProviderFactory
-from app.retrieval.answers import AnswerQuality, build_grounded_answer
+from app.retrieval.answers import AnswerQuality, build_grounded_answer, rank_answer_evidence
 from app.retrieval.evidence_pack import EvidenceItem, EvidencePack, build_evidence_pack
 from app.retrieval.multihop import build_query_plan
 from app.retrieval.document_answers import build_document_aware_answer
@@ -302,7 +302,7 @@ def execute_search(
                 vector_search=search_chunks,
                 fallback_reason=embedding_failure_reason,
             )
-            reranked = rerank_hits(subquery, candidates)
+            reranked = rank_answer_evidence(subquery, rerank_hits(subquery, candidates))
             candidates_by_subquery[subquery] = tuple(reranked[:5])
             hits_by_subquery[subquery] = reranked[: request.top_k]
             retrieval_modes.append(mode.mode)

@@ -9,8 +9,30 @@ import httpx
 
 from load_demo import ROOT, request, validate_api_url, validate_existing_files, validate_workspace
 
+REPORT_PROFILES = {
+    "baseline": {
+        "filename": "evaluation-baseline.json",
+        "implementation_note": "Recorded on the portfolio-v1 working tree; pipeline revision identifies its base HEAD, not uncommitted changes.",
+    },
+    "hardening": {
+        "filename": "evaluation-hardening.json",
+        "implementation_note": "Recorded after committed answer-quality hardening; pipeline_config.revision identifies the evaluated commit.",
+    },
+}
 
-def public_report(run, results):
+
+def _report_profile(report_kind):
+    if report_kind not in REPORT_PROFILES:
+        raise ValueError("Choose a fixed report kind: baseline or hardening.")
+    return REPORT_PROFILES[report_kind]
+
+
+def report_destination(report_kind="baseline"):
+    return ROOT.parent / "docs/demo" / _report_profile(report_kind)["filename"]
+
+
+def public_report(run, results, report_kind="baseline"):
+    profile = _report_profile(report_kind)
     if run["status"] != "completed" or len(results) != run["total_cases"]:
         raise ValueError("Only completed runs with all result records can be published.")
     validate_workspace([{"filename": name} for name in {item["case_snapshot"]["document_filename"] for item in results}])
@@ -36,7 +58,7 @@ def public_report(run, results):
     return {
         "scope": "Independently source-reviewed cases from public/fictional demo documents; not representative accuracy",
         "started_at": run["started_at"], "finished_at": run["finished_at"],
-        "implementation_note": "Recorded on the portfolio-v1 working tree; pipeline revision identifies its base HEAD, not uncommitted changes.",
+        "implementation_note": profile["implementation_note"],
         "pipeline_config": run["pipeline_config"], "total_cases": run["total_cases"],
         "passed_count": run["passed_count"], "failed_count": run["failed_count"],
         "error_count": run["error_count"], "unavailable_count": run["unavailable_count"],
@@ -45,19 +67,24 @@ def public_report(run, results):
     }
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_id", type=UUID)
     parser.add_argument("--api", default="http://127.0.0.1:8001")
-    args = parser.parse_args()
+    parser.add_argument("--report-kind", choices=REPORT_PROFILES, default="baseline")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
     with httpx.Client(base_url=validate_api_url(args.api), timeout=30) as client:
         if request(client, "GET", "/health").get("service") != "DocIntel AI Demo API":
             raise ValueError("Refusing a non-demo workspace.")
         validate_existing_files(client, request(client, "GET", "/documents"))
         run = request(client, "GET", f"/eval/document-runs/{args.run_id}")
         results = request(client, "GET", f"/eval/document-runs/{args.run_id}/results")
-    destination = ROOT.parent / "docs/demo/evaluation-baseline.json"
-    destination.write_text(json.dumps(public_report(run, results), indent=2) + "\n", encoding="utf-8")
+    destination = report_destination(args.report_kind)
+    destination.write_text(json.dumps(public_report(run, results, report_kind=args.report_kind), indent=2) + "\n", encoding="utf-8")
     print(f"Exported {len(results)} scoped results to {destination}")
 
 

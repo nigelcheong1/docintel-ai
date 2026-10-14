@@ -1,0 +1,87 @@
+{
+  "suite_name": "Portfolio unseen-question source-review candidates",
+  "review_status": "draft",
+  "notice": "Eight new question candidates on the same allowlisted public/fictional documents; not new-document generalization. Labels require independent human source review before Mark reviewed. This file contains no benchmark scores.",
+  "cases": [
+    {
+      "id": "unseen-invoice-subtotal",
+      "document": "sample-invoice.pdf",
+      "question": "What is the invoice subtotal before tax?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "USD 500.00", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "Subtotal: USD 500.00."}],
+      "tags": ["invoice", "fictional", "unseen-question"],
+      "review_rationale": "Candidate label: inspect the subtotal on PDF page 1; USD 550.00 is the total including tax. Independent human review is still required."
+    },
+    {
+      "id": "unseen-invoice-tax",
+      "document": "sample-invoice.pdf",
+      "question": "How much tax is charged on the invoice?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "USD 50.00", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "Tax: USD 50.00."}],
+      "tags": ["invoice", "fictional", "unseen-question"],
+      "review_rationale": "Candidate label: inspect the tax amount on PDF page 1, separately from subtotal and total. Independent human review is still required."
+    },
+    {
+      "id": "unseen-contract-fee",
+      "document": "sample-contract.pdf",
+      "question": "What is the fixed service fee, and does it include tax?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "USD 500.00", "alternatives": []}, {"pattern": "excluding tax", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "The fixed service fee is USD 500.00 excluding tax."}],
+      "tags": ["contract", "fictional", "multi-part", "unseen-question"],
+      "review_rationale": "Candidate label: inspect the Payment clause on PDF page 1 for both the amount and the exclusion of tax. This is a fictional agreement; independent human review is still required."
+    },
+    {
+      "id": "unseen-contract-term-end",
+      "document": "sample-contract.pdf",
+      "question": "When does the initial term of the agreement end?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "31 December 2026", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "The initial term ends on 31 December 2026."}],
+      "tags": ["contract", "fictional", "unseen-question"],
+      "review_rationale": "Candidate label: inspect the initial term end on PDF page 1, not the effective date or termination notice period. Independent human review is still required."
+    },
+    {
+      "id": "unseen-resume-university",
+      "document": "sample-resume.pdf",
+      "question": "Which university is listed in the fictional candidate's education?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "Example University", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "Bachelor of Computer Science, Example University, 2023."}],
+      "tags": ["resume", "fictional", "unseen-question"],
+      "review_rationale": "Candidate label: inspect Education on PDF page 1 of the original fictional resume. Never substitute a personal resume; independent human review is still required."
+    },
+    {
+      "id": "unseen-receipt-payment",
+      "document": "sample-receipt.png",
+      "question": "What payment method is recorded on the receipt?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "cash", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "Payment method: cash."}],
+      "tags": ["invoice", "fictional", "ocr", "unseen-question"],
+      "review_rationale": "Candidate label: inspect the raster receipt and compare its payment method with OCR. The retained receipt source PDF is a static cross-check, not an additional upload or human approval."
+    },
+    {
+      "id": "unseen-receipt-number",
+      "document": "sample-receipt.png",
+      "question": "What is the receipt number?",
+      "expected_outcome": "answerable",
+      "facts": [{"pattern": "DEMO-R-007", "alternatives": []}],
+      "anchors": [{"page_number": 1, "quote": "Receipt number: DEMO-R-007."}],
+      "tags": ["invoice", "fictional", "ocr", "unseen-question"],
+      "review_rationale": "Candidate label: inspect the receipt number on the raster and check that OCR preserves DEMO-R-007 exactly. Independent human review is still required."
+    },
+    {
+      "id": "unseen-framework-password",
+      "document": "nist-ai-rmf-1.0.pdf",
+      "question": "What administrator password does the AI RMF specify?",
+      "expected_outcome": "insufficient_evidence",
+      "facts": [],
+      "anchors": [],
+      "tags": ["report", "abstention", "unseen-question"],
+      "review_rationale": "Candidate negative: inspect all 48 PDF pages to confirm no administrator password is specified. A static text search found no password term; that search is not independent human source review or label approval."
+    }
+  ]
+}
